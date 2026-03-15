@@ -3,14 +3,14 @@ set -euo pipefail
 
 # Production serve script for a 4090 host.
 # Usage:
-#   MODEL_GLOB="./artifacts_ens/m*/best.pt" ENSEMBLE_CONFIG="./artifacts_ens/ensemble_config.json" DOMAIN_CONFIG="./artifacts_ens/domain_config.json" FUSION_CONFIG="./artifacts_ens/fusion_config.json" PORT=8000 bash scripts/serve_prod_4090.sh
+#   MODEL_GLOB="./artifacts_ens/m*/best.safetensors" ENSEMBLE_CONFIG="./artifacts_ens/ensemble_config.json" DOMAIN_CONFIG="./artifacts_ens/domain_config.json" FUSION_CONFIG="./artifacts_ens/fusion_config.json" PORT=8000 bash scripts/serve_prod_4090.sh
 
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
 UNKNOWN_MARGIN="${UNKNOWN_MARGIN:-0.05}"
 MAX_BYTES="${MAX_BYTES:-10485760}"
 RATE_LIMIT="${RATE_LIMIT:-300}"
-MODEL_GLOB="${MODEL_GLOB:-./artifacts_ens/m*/best.pt}"
+MODEL_GLOB="${MODEL_GLOB:-./artifacts_ens/m*/best.safetensors}"
 ENSEMBLE_CONFIG="${ENSEMBLE_CONFIG:-./artifacts_ens/ensemble_config.json}"
 DOMAIN_CONFIG="${DOMAIN_CONFIG:-./artifacts_ens/domain_config.json}"
 FUSION_CONFIG="${FUSION_CONFIG:-./artifacts_ens/fusion_config.json}"
@@ -27,7 +27,10 @@ source .venv/bin/activate
 
 mapfile -t MODELS < <(ls $MODEL_GLOB)
 if [[ "${#MODELS[@]}" -eq 0 ]]; then
-  echo "No model checkpoints found for pattern: $MODEL_GLOB"
+  mapfile -t MODELS < <(ls ./artifacts_ens/m*/best.pt 2>/dev/null || true)
+fi
+if [[ "${#MODELS[@]}" -eq 0 ]]; then
+  echo "No model checkpoints found for pattern: $MODEL_GLOB (or legacy .pt fallback)"
   exit 1
 fi
 

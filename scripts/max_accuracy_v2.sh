@@ -24,7 +24,7 @@ bash scripts/do.sh train-all
 
 python scripts/fit_domain_thresholds.py \
   --data "$DATA_DIR" \
-  --model "$ENS_OUT"/m1/best.pt "$ENS_OUT"/m2/best.pt "$ENS_OUT"/m3/best.pt "$ENS_OUT"/m4/best.pt \
+  --model "$ENS_OUT"/m1/best.safetensors "$ENS_OUT"/m2/best.safetensors "$ENS_OUT"/m3/best.safetensors "$ENS_OUT"/m4/best.safetensors \
   --ensemble-config "$ENS_OUT/ensemble_config.json" \
   --out "$DOMAIN_CONFIG" \
   --objective balanced
@@ -32,7 +32,7 @@ python scripts/fit_domain_thresholds.py \
 for ((i=1; i<=REFINE_LOOPS; i++)); do
   python scripts/mine_hard_negatives.py \
     --data "$DATA_DIR" \
-    --model "$ENS_OUT"/m1/best.pt "$ENS_OUT"/m2/best.pt "$ENS_OUT"/m3/best.pt "$ENS_OUT"/m4/best.pt \
+    --model "$ENS_OUT"/m1/best.safetensors "$ENS_OUT"/m2/best.safetensors "$ENS_OUT"/m3/best.safetensors "$ENS_OUT"/m4/best.safetensors \
     --ensemble-config "$ENS_OUT/ensemble_config.json" \
     --out "$ENS_OUT/hard_mined_v2_loop$i" \
     --top-k "$HARD_TOPK"
@@ -42,7 +42,7 @@ for ((i=1; i<=REFINE_LOOPS; i++)); do
 
   python scripts/fit_domain_thresholds.py \
     --data "$DATA_DIR" \
-    --model "$ENS_OUT"/m1/best.pt "$ENS_OUT"/m2/best.pt "$ENS_OUT"/m3/best.pt "$ENS_OUT"/m4/best.pt \
+    --model "$ENS_OUT"/m1/best.safetensors "$ENS_OUT"/m2/best.safetensors "$ENS_OUT"/m3/best.safetensors "$ENS_OUT"/m4/best.safetensors \
     --ensemble-config "$ENS_OUT/ensemble_config.json" \
     --out "$DOMAIN_CONFIG" \
     --objective balanced

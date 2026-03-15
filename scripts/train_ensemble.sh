@@ -14,4 +14,4 @@ aid-train --data "$DATA_DIR" --epochs "$EPOCHS" --batch-size 20 --img-size 384 -
 aid-train --data "$DATA_DIR" --epochs "$EPOCHS" --batch-size 12 --img-size 320 --lr 8e-5 --loss focal --focal-gamma 2.2 --backbone effb2 --grad-accum 3 --threshold-objective balanced --out "$OUT_DIR/m4"
 
 echo "ensemble_models:"
-ls -1 "$OUT_DIR"/m*/best.pt
+ls -1 "$OUT_DIR"/m*/best.safetensors

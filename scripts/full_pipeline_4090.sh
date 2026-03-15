@@ -155,7 +155,7 @@ fi
 run_cmd "bash scripts/train_ensemble.sh \"$DATA_DIR\" \"$ENS_OUT\" \"$EPOCHS\""
 
 if [[ "$RUN_ENSEMBLE_FIT" == "1" ]]; then
-  run_cmd "python scripts/fit_ensemble.py --data \"$DATA_DIR\" --model \"$ENS_OUT\"/m1/best.pt \"$ENS_OUT\"/m2/best.pt \"$ENS_OUT\"/m3/best.pt \"$ENS_OUT\"/m4/best.pt --out \"$ENS_CONFIG_PATH\" --steps \"$ENS_FIT_STEPS\" --lr \"$ENS_FIT_LR\" --l2 \"$ENS_FIT_L2\" --max-val-images \"$ENS_FIT_MAX_VAL_IMAGES\" --objective balanced"
+  run_cmd "python scripts/fit_ensemble.py --data \"$DATA_DIR\" --model \"$ENS_OUT\"/m1/best.safetensors \"$ENS_OUT\"/m2/best.safetensors \"$ENS_OUT\"/m3/best.safetensors \"$ENS_OUT\"/m4/best.safetensors --out \"$ENS_CONFIG_PATH\" --steps \"$ENS_FIT_STEPS\" --lr \"$ENS_FIT_LR\" --l2 \"$ENS_FIT_L2\" --max-val-images \"$ENS_FIT_MAX_VAL_IMAGES\" --objective balanced"
 fi
 
 if [[ "$RUN_HARD_MINING" == "1" ]]; then
@@ -163,21 +163,21 @@ if [[ "$RUN_HARD_MINING" == "1" ]]; then
   if [[ -f "$ENS_CONFIG_PATH" ]]; then
     hard_cfg="--ensemble-config \"$ENS_CONFIG_PATH\""
   fi
-  run_cmd "python scripts/mine_hard_negatives.py --data \"$DATA_DIR\" --model \"$ENS_OUT\"/m1/best.pt \"$ENS_OUT\"/m2/best.pt \"$ENS_OUT\"/m3/best.pt \"$ENS_OUT\"/m4/best.pt $hard_cfg --out \"$ENS_OUT\"/hard_mined --top-k \"$HARD_MINING_TOPK\""
+  run_cmd "python scripts/mine_hard_negatives.py --data \"$DATA_DIR\" --model \"$ENS_OUT\"/m1/best.safetensors \"$ENS_OUT\"/m2/best.safetensors \"$ENS_OUT\"/m3/best.safetensors \"$ENS_OUT\"/m4/best.safetensors $hard_cfg --out \"$ENS_OUT\"/hard_mined --top-k \"$HARD_MINING_TOPK\""
 fi
 
 eval_cfg=""
 if [[ -f "$ENS_CONFIG_PATH" ]]; then
   eval_cfg="--ensemble-config \"$ENS_CONFIG_PATH\""
 fi
-run_cmd "python scripts/eval_test_ensemble.py --data \"$DATA_DIR\" --model \"$ENS_OUT\"/m1/best.pt \"$ENS_OUT\"/m2/best.pt \"$ENS_OUT\"/m3/best.pt \"$ENS_OUT\"/m4/best.pt $eval_cfg --out \"$ENS_OUT\"/test_metrics.json"
+run_cmd "python scripts/eval_test_ensemble.py --data \"$DATA_DIR\" --model \"$ENS_OUT\"/m1/best.safetensors \"$ENS_OUT\"/m2/best.safetensors \"$ENS_OUT\"/m3/best.safetensors \"$ENS_OUT\"/m4/best.safetensors $eval_cfg --out \"$ENS_OUT\"/test_metrics.json"
 
 if [[ "$RUN_DISTILL" == "1" ]]; then
   distill_cfg=""
   if [[ -f "$ENS_CONFIG_PATH" ]]; then
     distill_cfg="--ensemble-config \"$ENS_CONFIG_PATH\""
   fi
-  run_cmd "python scripts/train_distill.py --data \"$DATA_DIR\" --teacher \"$ENS_OUT\"/m1/best.pt \"$ENS_OUT\"/m2/best.pt \"$ENS_OUT\"/m3/best.pt \"$ENS_OUT\"/m4/best.pt $distill_cfg --out \"$ENS_OUT\"/distill --student-backbone effb0 --img-size 320 --batch-size 64 --epochs \"$DISTILL_EPOCHS\""
+  run_cmd "python scripts/train_distill.py --data \"$DATA_DIR\" --teacher \"$ENS_OUT\"/m1/best.safetensors \"$ENS_OUT\"/m2/best.safetensors \"$ENS_OUT\"/m3/best.safetensors \"$ENS_OUT\"/m4/best.safetensors $distill_cfg --out \"$ENS_OUT\"/distill --student-backbone effb0 --img-size 320 --batch-size 64 --epochs \"$DISTILL_EPOCHS\""
 fi
 
 if [[ "$DRY_RUN" != "1" ]]; then
@@ -189,10 +189,10 @@ from pathlib import Path
 ens = Path(os.environ.get("ENS_OUT", "./artifacts_ens"))
 manifest = {
     "models": [
-        str((ens / "m1" / "best.pt").resolve()),
-        str((ens / "m2" / "best.pt").resolve()),
-        str((ens / "m3" / "best.pt").resolve()),
-        str((ens / "m4" / "best.pt").resolve()),
+        str((ens / "m1" / "best.safetensors").resolve()),
+        str((ens / "m2" / "best.safetensors").resolve()),
+        str((ens / "m3" / "best.safetensors").resolve()),
+        str((ens / "m4" / "best.safetensors").resolve()),
     ],
     "test_metrics": str((ens / "test_metrics.json").resolve()),
 }
@@ -202,7 +202,10 @@ if ens_cfg.exists():
 domain_cfg = ens / "domain_config.json"
 if domain_cfg.exists():
     manifest["domain_config"] = str(domain_cfg.resolve())
-video_best = Path(os.environ.get("VIDEO_ARTIFACTS_OUT", "./video_artifacts")) / "best_video.pt"
+video_dir = Path(os.environ.get("VIDEO_ARTIFACTS_OUT", "./video_artifacts"))
+video_best = video_dir / "best_video.safetensors"
+if not video_best.exists():
+    video_best = video_dir / "best_video.pt"
 if video_best.exists():
     manifest["video_model"] = str(video_best.resolve())
 out = ens / "prod_manifest.json"

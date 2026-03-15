@@ -196,17 +196,18 @@ train_all_pipeline() {
 
 validate_train_artifacts() {
   local ens_dir="${ENS_OUT:-./artifacts_ens}"
-  local vid_best="${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.pt"
+  local vid_best_pt="${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.pt"
+  local vid_best_sft="${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.safetensors"
   local missing=0
 
-  for p in "$ens_dir/m1/best.pt" "$ens_dir/m2/best.pt" "$ens_dir/m3/best.pt" "$ens_dir/m4/best.pt" "$ens_dir/test_metrics.json" "$ens_dir/prod_manifest.json"; do
+  for p in "$ens_dir/m1/best.safetensors" "$ens_dir/m2/best.safetensors" "$ens_dir/m3/best.safetensors" "$ens_dir/m4/best.safetensors" "$ens_dir/test_metrics.json" "$ens_dir/prod_manifest.json"; do
     if [[ ! -f "$p" ]]; then
       echo "missing_artifact=$p"
       missing=1
     fi
   done
-  if [[ ! -f "$vid_best" ]]; then
-    echo "missing_artifact=$vid_best"
+  if [[ ! -f "$vid_best_sft" && ! -f "$vid_best_pt" ]]; then
+    echo "missing_artifact=$vid_best_sft"
     missing=1
   fi
 
@@ -246,7 +247,7 @@ show_status() {
   echo "image data: ${DATA_DIR:-./data_best}"
   echo "video data: ${VIDEO_OUT:-./video_data}"
   echo "image ensemble: ${ENS_OUT:-./artifacts_ens}"
-  echo "video model: ${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.pt"
+  echo "video model: ${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.safetensors"
 }
 
 cmd="${1:-start}"
@@ -342,9 +343,12 @@ case "$cmd" in
       exit 2
     fi
     ensure_env
-    mapfile -t detect_models < <(ls ${MODEL_GLOB:-./artifacts_ens/m*/best.pt} 2>/dev/null || true)
+    mapfile -t detect_models < <(ls ${MODEL_GLOB:-./artifacts_ens/m*/best.safetensors} 2>/dev/null || true)
     if [[ "${#detect_models[@]}" -eq 0 ]]; then
-      detect_models=("${MODEL_PATH:-./artifacts/best.pt}")
+      mapfile -t detect_models < <(ls ./artifacts_ens/m*/best.pt 2>/dev/null || true)
+    fi
+    if [[ "${#detect_models[@]}" -eq 0 ]]; then
+      detect_models=("${MODEL_PATH:-./artifacts/best.safetensors}")
     fi
     detect_extra=()
     if [[ -f "${ENSEMBLE_CONFIG:-./artifacts_ens/ensemble_config.json}" ]]; then

@@ -58,11 +58,12 @@ def main() -> int:
         ens / "prod_manifest.json",
         ens / "ensemble_config.json",
         ens / "domain_config.json",
-        video / "best_video.pt",
     ]
     for p in required:
         if not p.exists():
             failures.append(f"missing {p}")
+    if not (video / "best_video.safetensors").exists() and not (video / "best_video.pt").exists():
+        failures.append(f"missing {video / 'best_video.safetensors'}")
 
     out = {"ok": len(failures) == 0, "checks": checks, "failures": failures}
     print(json.dumps(out, indent=2))

@@ -18,6 +18,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, Dataset
 from torchvision import models
+from .checkpoints import load_checkpoint, resolve_checkpoint_path, save_safetensors_checkpoint
 
 
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
@@ -281,9 +282,9 @@ def train_main() -> None:
         )
         (out / "latest_checkpoint.txt").write_text(path.name, encoding="utf-8")
 
-    resume_path = Path(args.resume) if args.resume else (out / "last_video.pt")
+    resume_path = Path(args.resume) if args.resume else resolve_checkpoint_path(out / "last_video.pt")
     if resume_path.exists():
-        ckpt = torch.load(resume_path, map_location=device)
+        ckpt = load_checkpoint(resume_path, map_location=device)
         model.load_state_dict(ckpt["state_dict"])
         if "optimizer" in ckpt:
             opt.load_state_dict(ckpt["optimizer"])
@@ -353,6 +354,16 @@ def train_main() -> None:
                     },
                     out / "best_video.pt",
                 )
+                save_safetensors_checkpoint(
+                    out / "best_video.safetensors",
+                    {
+                        "state_dict": model.state_dict(),
+                        "img_size": args.img_size,
+                        "frames": args.frames,
+                        "threshold": 0.5,
+                        "model_id": "temporal-video-detector",
+                    },
+                )
             else:
                 no_improve += 1
                 if args.patience > 0 and no_improve >= args.patience:
@@ -365,17 +376,19 @@ def train_main() -> None:
         print(f"training_interrupted saved={out / 'interrupted_video.pt'}")
         return
 
-    if args.export_release and (out / "best_video.pt").exists():
+    best_release = (out / "best_video.safetensors") if (out / "best_video.safetensors").exists() else (out / "best_video.pt")
+    if args.export_release and best_release.exists():
         rel = out / "releases" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         rel.mkdir(parents=True, exist_ok=True)
-        for name in ("best_video.pt", "config.json"):
+        for name in (best_release.name, "config.json"):
             src = out / name
             if src.exists():
                 shutil.copy2(src, rel / name)
         (out / "latest_release.txt").write_text(str(rel), encoding="utf-8")
         print(f"saved release bundle to {rel}")
 
-    print(f"saved best temporal model to {out / 'best_video.pt'} best_acc={best_acc:.4f}")
+    best_out = (out / "best_video.safetensors") if (out / "best_video.safetensors").exists() else (out / "best_video.pt")
+    print(f"saved best temporal model to {best_out} best_acc={best_acc:.4f}")
 
 
 def infer_main() -> None:
@@ -386,7 +399,7 @@ def infer_main() -> None:
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    ckpt = torch.load(args.model, map_location=device)
+    ckpt = load_checkpoint(args.model, map_location=device)
     model = TemporalVideoDetector().to(device)
     model.load_state_dict(ckpt["state_dict"])
     model.eval()

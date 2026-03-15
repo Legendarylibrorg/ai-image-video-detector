@@ -17,6 +17,24 @@ A production-oriented, forensics-first detector with:
 
 ## Quick start
 
+Linux local-only (recommended):
+
+```bash
+cd "/Users/devcomputer/Downloads/spam filter/image spam"
+./local.sh setup      # installs deps + runs full optimized local pipeline
+./local.sh serve      # starts local supervisor on Linux
+./local.sh status
+./local.sh logs
+```
+
+Minimal local command surface:
+- `./local.sh setup`
+- `./local.sh collect`
+- `./local.sh train`
+- `./local.sh serve`
+- `./local.sh full`
+- `./local.sh status|logs|pause|resume|stop|restart`
+
 Linux (Ubuntu/Debian) prerequisites:
 
 ```bash

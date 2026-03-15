@@ -66,6 +66,6 @@ run_cmd "bash scripts/full_pipeline_4090.sh"
 
 # 4) Optional serve right after training
 if [[ "$AUTO_SERVE" == "1" ]]; then
-  MODEL_GLOB="${MODEL_GLOB:-./artifacts_ens/m*/best.pt}"
+  MODEL_GLOB="${MODEL_GLOB:-./artifacts_ens/m*/best.safetensors}"
   run_cmd "HOST=\"$HOST\" PORT=\"$PORT\" MODEL_GLOB=\"$MODEL_GLOB\" bash scripts/serve_prod_4090.sh"
 fi
