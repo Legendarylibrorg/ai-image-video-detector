@@ -10,10 +10,12 @@ STOP_FILE="$STATE_DIR/stop"
 PAUSE_FILE="$STATE_DIR/pause"
 TRAIN_DONE_FILE="$STATE_DIR/training_done.flag"
 CHILD_PID_FILE="$STATE_DIR/child.pid"
+TRAIN_LOCK="${TRAIN_LOCK:-$ROOT_DIR/.local/training.lock}"
 
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
 RETRY_SLEEP_SEC="${RETRY_SLEEP_SEC:-15}"
+WORKER_MODE="${WORKER_MODE:-serve}"   # serve|full
 
 mkdir -p "$STATE_DIR"
 
@@ -48,7 +50,7 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   exit 1
 fi
 
-log "worker_start host=$HOST port=$PORT"
+log "worker_start host=$HOST port=$PORT mode=$WORKER_MODE"
 linux_setup
 
 while true; do
@@ -63,7 +65,7 @@ while true; do
     continue
   fi
 
-  if [[ ! -f "$TRAIN_DONE_FILE" ]]; then
+  if [[ "$WORKER_MODE" == "full" && ! -f "$TRAIN_DONE_FILE" ]]; then
     log "phase=train_all_types start"
     if run_child bash scripts/do.sh train-all-types; then
       touch "$TRAIN_DONE_FILE"
@@ -73,6 +75,12 @@ while true; do
       sleep "$RETRY_SLEEP_SEC"
       continue
     fi
+  fi
+
+  if [[ -f "$TRAIN_LOCK" ]]; then
+    log "training_lock_detected waiting"
+    sleep 5
+    continue
   fi
 
   log "phase=serve start"

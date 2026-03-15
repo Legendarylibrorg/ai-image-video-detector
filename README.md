@@ -98,6 +98,8 @@ Use fitted ensemble weights/config when available:
 aid-detect --model ./artifacts_ens/m1/best.pt ./artifacts_ens/m2/best.pt ./artifacts_ens/m3/best.pt ./artifacts_ens/m4/best.pt \
   --ensemble-config ./artifacts_ens/ensemble_config.json \
   --domain-config ./artifacts_ens/domain_config.json \
+  --tools-config ./artifacts_ens/tools_config.json \
+  --tta-views 2 \
   --image ./example.jpg --json
 ```
 
@@ -127,7 +129,9 @@ Weighted ensemble serving:
 ```bash
 aid-serve --model ./artifacts_ens/m1/best.pt ./artifacts_ens/m2/best.pt ./artifacts_ens/m3/best.pt ./artifacts_ens/m4/best.pt \
   --ensemble-config ./artifacts_ens/ensemble_config.json \
-  --domain-config ./artifacts_ens/domain_config.json
+  --domain-config ./artifacts_ens/domain_config.json \
+  --tools-config ./artifacts_ens/tools_config.json \
+  --tta-views 2
 ```
 
 Endpoints:
@@ -141,6 +145,50 @@ Endpoints:
 - `POST /analyze/pdf` (multipart file field `file`)
 - `POST /analyze/audio` (multipart file field `file`)
 - `POST /analyze/multimodal` (JSON: `{ "scores": { "image": 0.7, "text": 0.4, ... } }`)
+- Optional: learned multimodal fusion config via `--fusion-config ./artifacts_ens/fusion_config.json`
+- Optional active-learning queue capture in API serve:
+  - `--uncertain-capture --uncertain-dir ./incoming_review_queue`
+- Optional inference tools config:
+  - `--tools-config ./artifacts_ens/tools_config.json` (risk/probability bias and rule-engine adjustments)
+- Optional test-time augmentation consensus:
+  - `--tta-views 2` (or `3` for stronger but slower inference)
+
+Fit learned multimodal fusion weights from labeled outcomes:
+
+```bash
+python scripts/fit_multimodal_fusion.py \
+  --csv ./artifacts_ens/fusion_train.csv \
+  --label-col label \
+  --out ./artifacts_ens/fusion_config.json
+```
+
+Promotion gate and weekly retrain loop:
+
+```bash
+python scripts/benchmark_gate.py --ens-out ./artifacts_ens --video-out ./video_artifacts
+bash scripts/weekly_retrain_v3.sh
+```
+
+Reviewed uncertainty queue ingestion:
+
+```bash
+python scripts/review_queue_to_dataset.py --queue ./incoming_review_queue --dst ./data_new/train
+```
+
+Compliance/privacy mode (recommended baseline):
+- `UNCERTAIN_CAPTURE=0` (default in `serve_prod_4090.sh`)
+- `IP_LOG_MODE=masked` (default; no raw IP logging)
+- Optional stricter: `IP_LOG_MODE=none`
+- Run periodic retention cleanup:
+
+```bash
+bash scripts/privacy_cleanup.sh
+```
+
+Useful retention envs:
+- `QUEUE_RETENTION_DAYS` (default `7`)
+- `LOG_RETENTION_DAYS` (default `14`)
+- `MODEL_OUTPUT_RETENTION_DAYS` (default `30`)
 
 ## Explainability
 
@@ -393,6 +441,7 @@ Diverse dataset preset:
 - Each run now executes `scripts/audit_diversity.py` to check unique source spread, hard-negative mode variety, and class balance.
 - Audit knobs: `DIVERSE_MIN_UNIQUE_SOURCES`, `DIVERSE_MIN_HARDNEG_MODES`, `DIVERSE_MAX_CLASS_IMBALANCE`.
 - HF cache-first behavior is enabled by default (`--hf-cache-only-if-present`) and uses local cache dirs (`./.local/hf`) to reduce repeated Hub API/resolver calls.
+- `collect-diverse` now auto-falls back to cache-only source mode if discovery stalls/fails (timeout via `DIVERSE_DISCOVERY_TIMEOUT_SEC`, default `900`).
 
 HF 5-minute limit fast-safe profile:
 - Keep `VIDEO_MODE=snapshot` (default) and `VIDEO_SNAPSHOT_MAX_WORKERS=1`.
@@ -441,7 +490,8 @@ This command installs all required system and Python dependencies (including Hug
 Linux run control (auto-restart + pause/resume):
 
 ```bash
-bash scripts/linux_service.sh start
+bash scripts/linux_service.sh start      # prod mode: serve-only auto-restart
+bash scripts/linux_service.sh full-start # train + serve loop mode
 bash scripts/linux_service.sh pause
 bash scripts/linux_service.sh resume
 bash scripts/linux_service.sh restart
@@ -451,11 +501,18 @@ bash scripts/linux_service.sh logs
 ```
 
 Behavior:
-- Runs end-to-end training once (`train-all-types`), then serves continuously.
+- `start` runs serve-only loop for production stability.
+- `full-start` runs end-to-end training once (`train-all-types`), then serves continuously.
 - If training or serve process exits unexpectedly, worker auto-restarts.
 - `pause` stops the active child process and keeps worker idle.
 - `resume` continues from where it left off.
 - `reset-training` forces a fresh full training cycle before serving again.
+
+Local retrain without mixing prod serve:
+
+```bash
+PAUSE_PROD=1 bash scripts/local_retrain_4090.sh
+```
 
 Maximum-quality profile (slowest, strongest defaults, includes video training):
 

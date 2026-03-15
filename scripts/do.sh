@@ -95,31 +95,48 @@ ingest_outputs() {
 collect_diverse_image_data() {
   mapfile -t diverse_query_args < <(add_diverse_queries)
   ensure_env
-  python scripts/build_best_dataset.py \
-    --out "${DATA_DIR:-./data_best}" \
-    --train-per-class "${DIVERSE_TRAIN_PER_CLASS:-100000}" \
-    --val-per-class "${DIVERSE_VAL_PER_CLASS:-25000}" \
-    --test-per-class "${DIVERSE_TEST_PER_CLASS:-25000}" \
-    --discover-hf \
-    --hf-discovery-limit "${DIVERSE_HF_DISCOVERY_LIMIT:-140}" \
-    --hf-max-sources "${DIVERSE_HF_MAX_SOURCES:-320}" \
-    --hf-cache-file "${DIVERSE_HF_CACHE_FILE:-./.local/hf_diverse_sources.txt}" \
-    --hf-cache-only-if-present \
-    --cache-dir "${DIVERSE_CACHE_DIR:-./.local/hf}" \
-    --streaming \
-    --stream-buffer-size "${DIVERSE_STREAM_BUFFER_SIZE:-16000}" \
-    --max-samples-per-source "${DIVERSE_MAX_SAMPLES_PER_SOURCE:-80000}" \
-    --repo-base-pause-ms "${DIVERSE_REPO_BASE_PAUSE_MS:-1400}" \
-    --repo-jitter-ms "${DIVERSE_REPO_JITTER_MS:-1200}" \
-    --repo-cooldown-ms "${DIVERSE_REPO_COOLDOWN_MS:-45000}" \
-    --max-consecutive-failures "${DIVERSE_MAX_CONSECUTIVE_FAILURES:-2}" \
-    --min-side "${DIVERSE_MIN_SIDE:-192}" \
-    --max-aspect-ratio "${DIVERSE_MAX_ASPECT_RATIO:-3.2}" \
-    --min-entropy "${DIVERSE_MIN_ENTROPY:-3.1}" \
-    --hardneg-fraction "${DIVERSE_HARDNEG_FRACTION:-1.0}" \
-    --local-source "${DIVERSE_LOCAL_SOURCES:-./data}" \
-    --local-source "${DIVERSE_LOCAL_NEW_SOURCES:-./data_new/train}" \
-    "${diverse_query_args[@]}"
+  local hf_cache="${DIVERSE_HF_CACHE_FILE:-./.local/hf_diverse_sources.txt}"
+  local timeout_sec="${DIVERSE_DISCOVERY_TIMEOUT_SEC:-900}"
+  common_args=(
+    --out "${DATA_DIR:-./data_best}"
+    --train-per-class "${DIVERSE_TRAIN_PER_CLASS:-100000}"
+    --val-per-class "${DIVERSE_VAL_PER_CLASS:-25000}"
+    --test-per-class "${DIVERSE_TEST_PER_CLASS:-25000}"
+    --hf-cache-file "$hf_cache"
+    --hf-cache-only-if-present
+    --cache-dir "${DIVERSE_CACHE_DIR:-./.local/hf}"
+    --streaming
+    --stream-buffer-size "${DIVERSE_STREAM_BUFFER_SIZE:-16000}"
+    --max-samples-per-source "${DIVERSE_MAX_SAMPLES_PER_SOURCE:-80000}"
+    --repo-base-pause-ms "${DIVERSE_REPO_BASE_PAUSE_MS:-1400}"
+    --repo-jitter-ms "${DIVERSE_REPO_JITTER_MS:-1200}"
+    --repo-cooldown-ms "${DIVERSE_REPO_COOLDOWN_MS:-45000}"
+    --max-consecutive-failures "${DIVERSE_MAX_CONSECUTIVE_FAILURES:-2}"
+    --min-side "${DIVERSE_MIN_SIDE:-192}"
+    --max-aspect-ratio "${DIVERSE_MAX_ASPECT_RATIO:-3.2}"
+    --min-entropy "${DIVERSE_MIN_ENTROPY:-3.1}"
+    --hardneg-fraction "${DIVERSE_HARDNEG_FRACTION:-1.0}"
+    --local-source "${DIVERSE_LOCAL_SOURCES:-./data}"
+    --local-source "${DIVERSE_LOCAL_NEW_SOURCES:-./data_new/train}"
+  )
+  discover_args=(
+    --discover-hf
+    --hf-discovery-limit "${DIVERSE_HF_DISCOVERY_LIMIT:-140}"
+    --hf-max-sources "${DIVERSE_HF_MAX_SOURCES:-320}"
+  )
+  cache_args=(--no-discover-hf --sources-file "$hf_cache")
+
+  if command -v timeout >/dev/null 2>&1; then
+    if ! timeout "${timeout_sec}s" python scripts/build_best_dataset.py "${common_args[@]}" "${discover_args[@]}" "${diverse_query_args[@]}"; then
+      echo "collect_diverse_fallback=cache_only reason=timeout_or_failure"
+      python scripts/build_best_dataset.py "${common_args[@]}" "${cache_args[@]}" "${diverse_query_args[@]}"
+    fi
+  else
+    if ! python scripts/build_best_dataset.py "${common_args[@]}" "${discover_args[@]}" "${diverse_query_args[@]}"; then
+      echo "collect_diverse_fallback=cache_only reason=failure"
+      python scripts/build_best_dataset.py "${common_args[@]}" "${cache_args[@]}" "${diverse_query_args[@]}"
+    fi
+  fi
 
   python scripts/audit_diversity.py \
     --data "${DATA_DIR:-./data_best}" \
@@ -327,7 +344,11 @@ case "$cmd" in
     if [[ -f "${DOMAIN_CONFIG:-./artifacts_ens/domain_config.json}" ]]; then
       domain_extra=(--domain-config "${DOMAIN_CONFIG:-./artifacts_ens/domain_config.json}")
     fi
-    aid-detect --model "${detect_models[@]}" "${detect_extra[@]}" "${domain_extra[@]}" --image "$image_path" --json
+    tools_extra=()
+    if [[ -f "${TOOLS_CONFIG:-./artifacts_ens/tools_config.json}" ]]; then
+      tools_extra=(--tools-config "${TOOLS_CONFIG:-./artifacts_ens/tools_config.json}")
+    fi
+    aid-detect --model "${detect_models[@]}" "${detect_extra[@]}" "${domain_extra[@]}" "${tools_extra[@]}" --tta-views "${TTA_VIEWS:-2}" --image "$image_path" --json
     ;;
 
   status)

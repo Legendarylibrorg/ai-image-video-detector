@@ -23,6 +23,7 @@ is_running() {
 }
 
 start() {
+  local mode="${1:-serve}"
   if [[ "$(uname -s)" != "Linux" ]]; then
     echo "linux_service requires Linux (found: $(uname -s))"
     exit 1
@@ -32,9 +33,9 @@ start() {
     exit 0
   fi
   rm -f "$STOP_FILE"
-  nohup bash scripts/linux_worker.sh >> "$LOG_FILE" 2>&1 &
+  nohup env WORKER_MODE="$mode" bash scripts/linux_worker.sh >> "$LOG_FILE" 2>&1 &
   echo "$!" > "$PID_FILE"
-  echo "started pid=$! log=$LOG_FILE"
+  echo "started pid=$! mode=$mode log=$LOG_FILE"
 }
 
 pause() {
@@ -102,7 +103,8 @@ logs() {
 
 cmd="${1:-start}"
 case "$cmd" in
-  start) start ;;
+  start) start "serve" ;;
+  full-start) start "full" ;;
   pause) pause ;;
   resume) resume ;;
   stop) stop ;;
@@ -111,7 +113,7 @@ case "$cmd" in
   logs) logs ;;
   reset-training) reset_training ;;
   *)
-    echo "usage: bash scripts/linux_service.sh [start|pause|resume|stop|restart|status|logs|reset-training]"
+    echo "usage: bash scripts/linux_service.sh [start|full-start|pause|resume|stop|restart|status|logs|reset-training]"
     exit 2
     ;;
 esac

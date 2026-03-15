@@ -1,130 +1,194 @@
-const fileInput = document.getElementById("fileInput");
-const dropzone = document.getElementById("dropzone");
-const analyzeBtn = document.getElementById("analyzeBtn");
-const statusEl = document.getElementById("status");
-const previewEl = document.getElementById("preview");
-const resultPanel = document.getElementById("resultPanel");
+const qs = (s) => document.querySelector(s);
+const qsa = (s) => Array.from(document.querySelectorAll(s));
 
-let selectedFile = null;
+const tabs = qsa('.tab');
+const panels = qsa('.tab-panel');
+for (const t of tabs) {
+  t.addEventListener('click', () => {
+    const tab = t.dataset.tab;
+    tabs.forEach((x) => x.classList.toggle('active', x === t));
+    panels.forEach((p) => p.classList.toggle('active', p.dataset.panel === tab));
+  });
+}
 
-const setStatus = (msg) => {
-  statusEl.textContent = msg;
+const statusEl = qs('#status');
+const setStatus = (m) => { if (statusEl) statusEl.textContent = m; };
+const clamp = (v) => Math.max(0, Math.min(1, Number(v || 0)));
+
+const renderJson = (id, data) => {
+  const el = qs(id);
+  if (!el) return;
+  el.textContent = JSON.stringify(data, null, 2);
 };
 
-const clamp01 = (v) => Math.max(0, Math.min(1, Number(v || 0)));
+const postJson = async (url, body) => {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+};
 
-const fillMeter = (id, value) => {
-  const el = document.getElementById(id);
-  el.style.width = `${Math.round(clamp01(value) * 100)}%`;
+const postFile = async (url, file) => {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(url, { method: 'POST', body: form });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+};
+
+// Image detect
+let selectedFile = null;
+const fileInput = qs('#fileInput');
+const dropzone = qs('#dropzone');
+const analyzeBtn = qs('#analyzeBtn');
+const preview = qs('#preview');
+
+const metricsNode = (title, value) => {
+  const d = document.createElement('article');
+  d.className = 'metric';
+  d.innerHTML = `<h4>${title}</h4><p>${value}</p>`;
+  return d;
 };
 
 const renderFlags = (id, flags) => {
-  const ul = document.getElementById(id);
-  ul.innerHTML = "";
-  const list = Array.isArray(flags) && flags.length ? flags : ["none"];
+  const ul = qs(id);
+  if (!ul) return;
+  ul.innerHTML = '';
+  const list = Array.isArray(flags) && flags.length ? flags : ['none'];
   for (const f of list) {
-    const li = document.createElement("li");
+    const li = document.createElement('li');
     li.textContent = String(f);
     ul.appendChild(li);
   }
 };
 
 const setBadge = (label) => {
-  const badge = document.getElementById("resultBadge");
-  badge.textContent = String(label || "-").toUpperCase();
-  badge.style.borderColor = label === "AI-generated" ? "#ff7089" : label === "Unknown" ? "#ffc46b" : "#47d8a5";
+  const badge = qs('#resultBadge');
+  if (!badge) return;
+  badge.textContent = String(label || '-').toUpperCase();
+  badge.style.borderColor = label === 'AI-generated' ? '#f26f7f' : label === 'Unknown' ? '#f2be68' : '#2dd8a3';
 };
 
-const showPreview = (file) => {
+const handleFile = (f) => {
+  selectedFile = f;
+  analyzeBtn.disabled = false;
+  setStatus(`${f.name} ready`);
   const reader = new FileReader();
   reader.onload = () => {
-    previewEl.src = String(reader.result);
-    previewEl.style.display = "block";
+    preview.src = String(reader.result);
+    preview.style.display = 'block';
   };
-  reader.readAsDataURL(file);
+  reader.readAsDataURL(f);
 };
 
-const handleFile = (file) => {
-  selectedFile = file;
-  analyzeBtn.disabled = false;
-  showPreview(file);
-  setStatus(`${file.name} ready`);
-};
-
-fileInput.addEventListener("change", (e) => {
-  const file = e.target.files?.[0];
-  if (file) handleFile(file);
+fileInput?.addEventListener('change', (e) => {
+  const f = e.target.files?.[0];
+  if (f) handleFile(f);
 });
 
-["dragenter", "dragover"].forEach((ev) => {
-  dropzone.addEventListener(ev, (e) => {
+['dragenter', 'dragover'].forEach((ev) => {
+  dropzone?.addEventListener(ev, (e) => {
     e.preventDefault();
-    e.stopPropagation();
-    dropzone.classList.add("drag");
+    dropzone.classList.add('drag');
   });
 });
-
-["dragleave", "drop"].forEach((ev) => {
-  dropzone.addEventListener(ev, (e) => {
+['dragleave', 'drop'].forEach((ev) => {
+  dropzone?.addEventListener(ev, (e) => {
     e.preventDefault();
-    e.stopPropagation();
-    dropzone.classList.remove("drag");
+    dropzone.classList.remove('drag');
   });
 });
-
-dropzone.addEventListener("drop", (e) => {
-  const file = e.dataTransfer?.files?.[0];
-  if (file) handleFile(file);
+dropzone?.addEventListener('drop', (e) => {
+  const f = e.dataTransfer?.files?.[0];
+  if (f) handleFile(f);
 });
 
-analyzeBtn.addEventListener("click", async () => {
+analyzeBtn?.addEventListener('click', async () => {
   if (!selectedFile) return;
-
   analyzeBtn.disabled = true;
-  setStatus("Analyzing image...");
-
+  setStatus('Analyzing image...');
   try {
     const form = new FormData();
-    form.append("image", selectedFile);
+    form.append('image', selectedFile);
+    const res = await fetch('/detect', { method: 'POST', body: form });
+    if (!res.ok) throw new Error(await res.text());
+    const d = await res.json();
 
-    const res = await fetch("/detect", { method: "POST", body: form });
-    if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(txt || `HTTP ${res.status}`);
-    }
+    qs('#resultLabel').textContent = `${d.label || 'Result'} (${d.domain || 'n/a'})`;
+    setBadge(d.label);
 
-    const data = await res.json();
+    const metrics = qs('#imageMetrics');
+    metrics.innerHTML = '';
+    metrics.appendChild(metricsNode('AI Probability', clamp(d.prob_ai).toFixed(3)));
+    metrics.appendChild(metricsNode('Combined Risk', clamp(d.combined_risk).toFixed(3)));
+    metrics.appendChild(metricsNode('Metadata', clamp(d.metadata_score).toFixed(3)));
+    metrics.appendChild(metricsNode('OOD', clamp(d.ood_score).toFixed(3)));
+    metrics.appendChild(metricsNode('Text', clamp(d.text_score).toFixed(3)));
 
-    document.getElementById("resultLabel").textContent = data.label || "Result";
-    setBadge(data.label);
+    renderFlags('#metadataFlags', d.metadata_flags);
+    renderFlags('#provenanceFlags', d.provenance_flags);
+    renderFlags('#oodFlags', d.ood_flags);
+    renderFlags('#textFlags', d.text_flags);
+    renderJson('#imageJson', d);
 
-    document.getElementById("probAi").textContent = clamp01(data.prob_ai).toFixed(3);
-    document.getElementById("combinedRisk").textContent = clamp01(data.combined_risk).toFixed(3);
-    document.getElementById("metadataScore").textContent = clamp01(data.metadata_score).toFixed(3);
-    document.getElementById("oodScore").textContent = clamp01(data.ood_score).toFixed(3);
-    document.getElementById("textScore").textContent = clamp01(data.text_score).toFixed(3);
-
-    fillMeter("probBar", data.prob_ai);
-    fillMeter("riskBar", data.combined_risk);
-    fillMeter("metaBar", data.metadata_score);
-    fillMeter("oodBar", data.ood_score);
-    fillMeter("textBar", data.text_score);
-
-    renderFlags("metadataFlags", data.metadata_flags);
-    renderFlags("provenanceFlags", data.provenance_flags);
-    renderFlags("oodFlags", data.ood_flags);
-    renderFlags("textFlags", data.text_flags);
-
-    document.getElementById("thresholdVal").textContent = Number(data.threshold || 0).toFixed(3);
-    document.getElementById("unknownVal").textContent = Number(data.unknown_margin || 0).toFixed(3);
-    document.getElementById("modelCountVal").textContent = String(data.model_count ?? "-");
-    document.getElementById("versionVal").textContent = String(data.model_version ?? "-");
-
-    resultPanel.classList.remove("hidden");
-    setStatus("Analysis complete");
-  } catch (err) {
-    setStatus(`Error: ${err.message || err}`);
+    qs('#resultPanel').classList.remove('hidden');
+    setStatus('Image analysis complete');
+  } catch (e) {
+    setStatus(`Error: ${e.message || e}`);
   } finally {
     analyzeBtn.disabled = false;
   }
+});
+
+// Text/conversation/url
+qs('#textBtn')?.addEventListener('click', async () => {
+  try { renderJson('#textOut', await postJson('/analyze/text', { text: qs('#textInput').value })); }
+  catch (e) { renderJson('#textOut', { error: String(e) }); }
+});
+
+qs('#conversationBtn')?.addEventListener('click', async () => {
+  try { renderJson('#conversationOut', await postJson('/analyze/conversation', { text: qs('#conversationInput').value })); }
+  catch (e) { renderJson('#conversationOut', { error: String(e) }); }
+});
+
+qs('#urlBtn')?.addEventListener('click', async () => {
+  try { renderJson('#urlOut', await postJson('/analyze/url', { url: qs('#urlInput').value })); }
+  catch (e) { renderJson('#urlOut', { error: String(e) }); }
+});
+
+// PDF/audio
+qs('#pdfBtn')?.addEventListener('click', async () => {
+  const f = qs('#pdfInput').files?.[0];
+  if (!f) return renderJson('#pdfOut', { error: 'Choose a PDF file first' });
+  try { renderJson('#pdfOut', await postFile('/analyze/pdf', f)); }
+  catch (e) { renderJson('#pdfOut', { error: String(e) }); }
+});
+
+qs('#audioBtn')?.addEventListener('click', async () => {
+  const f = qs('#audioInput').files?.[0];
+  if (!f) return renderJson('#audioOut', { error: 'Choose an audio file first' });
+  try { renderJson('#audioOut', await postFile('/analyze/audio', f)); }
+  catch (e) { renderJson('#audioOut', { error: String(e) }); }
+});
+
+// Fusion
+qs('#fusionBtn')?.addEventListener('click', async () => {
+  const fields = {
+    image: qs('#fImage').value,
+    video: qs('#fVideo').value,
+    text: qs('#fText').value,
+    conversation: qs('#fConversation').value,
+    url: qs('#fUrl').value,
+    pdf: qs('#fPdf').value,
+    audio: qs('#fAudio').value,
+  };
+  const scores = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (v !== '' && !Number.isNaN(Number(v))) scores[k] = clamp(v);
+  }
+  try { renderJson('#fusionOut', await postJson('/analyze/multimodal', { scores })); }
+  catch (e) { renderJson('#fusionOut', { error: String(e) }); }
 });

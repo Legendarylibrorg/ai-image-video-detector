@@ -13,6 +13,7 @@ from .domain import classify_domain, load_domain_config, resolve_domain_threshol
 from .ensemble import EnsembleDetector, load_models
 from .metadata import analyze_metadata
 from .provenance import analyze_provenance
+from .risk_tools import apply_risk_tools, load_tools_config
 from .text_signals import analyze_text_signals
 
 
@@ -23,6 +24,8 @@ def main():
     ap.add_argument("--image", required=True)
     ap.add_argument("--threshold", type=float, default=None)
     ap.add_argument("--domain-config", default="", help="Optional JSON with per-domain thresholds")
+    ap.add_argument("--tools-config", default="", help="Optional JSON for rule/policy risk adjustments")
+    ap.add_argument("--tta-views", type=int, default=1, help="1=none, 2=+hflip, 3=+vflip")
     ap.add_argument("--unknown-margin", type=float, default=0.08)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
@@ -34,6 +37,7 @@ def main():
 
     base_threshold = float(args.threshold) if args.threshold is not None else float(loaded.threshold)
     domain_cfg = load_domain_config(args.domain_config)
+    tools_cfg = load_tools_config(args.tools_config)
 
     tf = transforms.Compose([
         transforms.Resize((loaded.img_size, loaded.img_size)),
@@ -46,7 +50,12 @@ def main():
     x = tf(img).unsqueeze(0).to(device)
 
     with torch.no_grad():
-        logit = model(x)
+        views = [x]
+        if args.tta_views >= 2:
+            views.append(torch.flip(x, dims=[3]))
+        if args.tta_views >= 3:
+            views.append(torch.flip(x, dims=[2]))
+        logit = torch.stack([model(v) for v in views], dim=0).mean(dim=0)
         prob_ai = torch.sigmoid(logit / max(loaded.temperature, 1e-6)).item()
 
     meta = analyze_metadata(args.image)
@@ -60,6 +69,16 @@ def main():
     domain = classify_domain(img, text_score=text_score)
     threshold = resolve_domain_threshold(base_threshold, domain, domain_cfg)
     c_risk = combined_risk(prob_ai, metadata_score, provenance_score, text_score)
+    adjusted = apply_risk_tools(
+        prob_ai=prob_ai,
+        combined_risk=c_risk,
+        metadata_flags=meta["metadata_flags"],
+        ood_flags=ood["ood_flags"],
+        text_flags=text["text_flags"],
+        cfg=tools_cfg,
+    )
+    prob_ai = float(adjusted["prob_ai"])
+    c_risk = float(adjusted["combined_risk"])
     label = decide_label(prob_ai, threshold, args.unknown_margin, float(ood["ood_score"]))
 
     out = {
@@ -85,6 +104,9 @@ def main():
         "ensemble_config": args.ensemble_config or None,
         "domain": domain,
         "domain_config": args.domain_config or None,
+        "tools_config": args.tools_config or None,
+        "tool_adjustments": adjusted["tool_adjustments"],
+        "tta_views": int(max(args.tta_views, 1)),
     }
 
     if args.json:
