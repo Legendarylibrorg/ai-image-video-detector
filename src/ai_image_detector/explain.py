@@ -51,6 +51,7 @@ def patch_scores(heat: np.ndarray, grid: int = 8) -> list[tuple[int, int, float]
 def main() -> None:
     ap = argparse.ArgumentParser(description="Generate saliency heatmap and patch-level risk")
     ap.add_argument("--model", nargs="+", required=True)
+    ap.add_argument("--ensemble-config", default="", help="Optional JSON with learned ensemble weights/threshold")
     ap.add_argument("--image", required=True)
     ap.add_argument("--out", default="./artifacts/explain")
     ap.add_argument("--grid", type=int, default=8)
@@ -61,8 +62,8 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    loaded = load_models(args.model, device)
-    model = EnsembleDetector(loaded.models).to(device)
+    loaded = load_models(args.model, device, ensemble_config=args.ensemble_config)
+    model = EnsembleDetector(loaded.models, weights=loaded.weights).to(device)
     model.eval()
 
     img = Image.open(args.image).convert("RGB")

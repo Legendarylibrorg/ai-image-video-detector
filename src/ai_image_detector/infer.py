@@ -17,6 +17,7 @@ from .provenance import analyze_provenance
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", nargs="+", required=True, help="One or more model checkpoints for ensembling")
+    ap.add_argument("--ensemble-config", default="", help="Optional JSON with learned ensemble weights/threshold")
     ap.add_argument("--image", required=True)
     ap.add_argument("--threshold", type=float, default=None)
     ap.add_argument("--unknown-margin", type=float, default=0.08)
@@ -24,8 +25,8 @@ def main():
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    loaded = load_models(args.model, device)
-    model = EnsembleDetector(loaded.models).to(device)
+    loaded = load_models(args.model, device, ensemble_config=args.ensemble_config)
+    model = EnsembleDetector(loaded.models, weights=loaded.weights).to(device)
     model.eval()
 
     threshold = float(args.threshold) if args.threshold is not None else float(loaded.threshold)
@@ -69,6 +70,8 @@ def main():
         "model_ids": loaded.model_ids,
         "model_count": len(loaded.model_ids),
         "temperature": float(loaded.temperature),
+        "ensemble_weights": [float(w) for w in loaded.weights],
+        "ensemble_config": args.ensemble_config or None,
     }
 
     if args.json:

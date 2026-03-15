@@ -39,6 +39,7 @@ def health():
         "ok": True,
         "version": __version__,
         "model_ids": _state.get("model_ids", []),
+        "ensemble_config": _state.get("ensemble_config") or None,
     }
 
 
@@ -119,6 +120,8 @@ async def detect(request: Request, image: UploadFile = File(...)):
         "unknown_margin": _state["unknown_margin"],
         "model_ids": _state["model_ids"],
         "model_count": len(_state["model_ids"]),
+        "ensemble_weights": _state.get("ensemble_weights", []),
+        "ensemble_config": _state.get("ensemble_config") or None,
         "model_version": __version__,
     }
 
@@ -137,10 +140,16 @@ async def detect(request: Request, image: UploadFile = File(...)):
     return response
 
 
-def load(model_paths: list[str], max_bytes: int, rate_limit_per_min: int, unknown_margin: float):
+def load(
+    model_paths: list[str],
+    max_bytes: int,
+    rate_limit_per_min: int,
+    unknown_margin: float,
+    ensemble_config: str = "",
+):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    loaded = load_models(model_paths, device)
-    model = EnsembleDetector(loaded.models).to(device)
+    loaded = load_models(model_paths, device, ensemble_config=ensemble_config)
+    model = EnsembleDetector(loaded.models, weights=loaded.weights).to(device)
     model.eval()
 
     _state["device"] = device
@@ -149,6 +158,8 @@ def load(model_paths: list[str], max_bytes: int, rate_limit_per_min: int, unknow
     _state["temperature"] = loaded.temperature
     _state["model_ids"] = loaded.model_ids
     _state["unknown_margin"] = float(unknown_margin)
+    _state["ensemble_weights"] = [float(w) for w in loaded.weights]
+    _state["ensemble_config"] = ensemble_config
 
     _state["tf"] = transforms.Compose([
         transforms.Resize((loaded.img_size, loaded.img_size)),
@@ -170,10 +181,11 @@ def main():
     ap.add_argument("--max-bytes", type=int, default=10 * 1024 * 1024)
     ap.add_argument("--rate-limit-per-min", type=int, default=60)
     ap.add_argument("--unknown-margin", type=float, default=0.08)
+    ap.add_argument("--ensemble-config", default="", help="Optional JSON with learned ensemble weights/threshold")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    load(args.model, args.max_bytes, args.rate_limit_per_min, args.unknown_margin)
+    load(args.model, args.max_bytes, args.rate_limit_per_min, args.unknown_margin, args.ensemble_config)
     uvicorn.run(app, host=args.host, port=args.port)
 
 

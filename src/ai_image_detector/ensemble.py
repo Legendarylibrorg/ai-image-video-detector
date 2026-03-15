@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 
 import torch
@@ -15,16 +16,59 @@ class LoadedModels:
     threshold: float
     temperature: float
     model_ids: list[str]
+    model_temperatures: list[float]
+    model_thresholds: list[float]
+    weights: list[float]
 
 
 class EnsembleDetector(torch.nn.Module):
-    def __init__(self, models: list[torch.nn.Module]):
+    def __init__(self, models: list[torch.nn.Module], weights: list[float] | None = None):
         super().__init__()
+        if not models:
+            raise ValueError("EnsembleDetector requires at least one model")
         self.models = torch.nn.ModuleList(models)
+        if weights is None:
+            weights = [1.0 / len(models)] * len(models)
+        if len(weights) != len(models):
+            raise ValueError(f"weights count {len(weights)} != models count {len(models)}")
+        w = torch.tensor(weights, dtype=torch.float32)
+        w = w / torch.clamp(w.sum(), min=1e-8)
+        self.register_buffer("weights", w)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        logits = [m(x) for m in self.models]
-        return torch.stack(logits, dim=0).mean(dim=0)
+        logits = torch.stack([m(x) for m in self.models], dim=0)
+        w = self.weights.view(-1, 1)
+        return (logits * w).sum(dim=0)
+
+
+def _resolve_model_weights(
+    model_paths: list[str],
+    weights_cfg: dict,
+) -> list[float]:
+    raw_weights = weights_cfg.get("weights")
+    if not isinstance(raw_weights, list) or not raw_weights:
+        raise ValueError("ensemble config must include non-empty 'weights' list")
+
+    cfg_paths = weights_cfg.get("model_paths")
+    if isinstance(cfg_paths, list) and len(cfg_paths) == len(raw_weights):
+        cfg_map = {str(Path(p).resolve()): float(w) for p, w in zip(cfg_paths, raw_weights)}
+        resolved = [str(Path(p).resolve()) for p in model_paths]
+        if all(p in cfg_map for p in resolved):
+            out = [cfg_map[p] for p in resolved]
+            s = float(sum(out))
+            if s <= 0:
+                raise ValueError("ensemble config weights must sum to positive value")
+            return [float(x / s) for x in out]
+
+    if len(raw_weights) != len(model_paths):
+        raise ValueError(
+            f"ensemble config weights length {len(raw_weights)} does not match model count {len(model_paths)}"
+        )
+    out = [float(w) for w in raw_weights]
+    s = float(sum(out))
+    if s <= 0:
+        raise ValueError("ensemble config weights must sum to positive value")
+    return [float(x / s) for x in out]
 
 
 def _load_single(path: str, device: torch.device):
@@ -41,7 +85,7 @@ def _load_single(path: str, device: torch.device):
     return model, img_size, threshold, temperature, model_id
 
 
-def load_models(model_paths: list[str], device: torch.device) -> LoadedModels:
+def load_models(model_paths: list[str], device: torch.device, ensemble_config: str = "") -> LoadedModels:
     if not model_paths:
         raise ValueError("At least one model path is required")
 
@@ -51,14 +95,28 @@ def load_models(model_paths: list[str], device: torch.device) -> LoadedModels:
     thresholds = [x[2] for x in loaded]
     temps = [x[3] for x in loaded]
     model_ids = [x[4] for x in loaded]
+    weights = [1.0 / len(loaded)] * len(loaded)
+    threshold = float(sum(thresholds) / len(thresholds))
+    temperature = float(sum(temps) / len(temps))
 
     if len(set(img_sizes)) != 1:
         raise ValueError(f"All models must use same img_size, got {img_sizes}")
 
+    if ensemble_config:
+        cfg = json.loads(Path(ensemble_config).read_text(encoding="utf-8"))
+        weights = _resolve_model_weights(model_paths, cfg)
+        if "threshold" in cfg:
+            threshold = float(cfg["threshold"])
+        if "temperature" in cfg:
+            temperature = float(cfg["temperature"])
+
     return LoadedModels(
         models=models,
         img_size=img_sizes[0],
-        threshold=float(sum(thresholds) / len(thresholds)),
-        temperature=float(sum(temps) / len(temps)),
+        threshold=threshold,
+        temperature=temperature,
         model_ids=model_ids,
+        model_temperatures=[float(t) for t in temps],
+        model_thresholds=[float(t) for t in thresholds],
+        weights=[float(w) for w in weights],
     )

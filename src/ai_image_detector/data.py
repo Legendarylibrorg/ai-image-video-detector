@@ -59,11 +59,21 @@ def make_loaders(data_root: str, img_size: int, batch_size: int, num_workers: in
     train_tf = transforms.Compose([
         transforms.Resize((img_size, img_size)),
         transforms.RandomHorizontalFlip(),
+        transforms.RandomApply(
+            [transforms.RandomAffine(degrees=5, translate=(0.02, 0.02), scale=(0.95, 1.05))],
+            p=0.2,
+        ),
+        transforms.RandomApply(
+            [transforms.RandomPerspective(distortion_scale=0.15, p=1.0)],
+            p=0.15,
+        ),
         transforms.ColorJitter(0.1, 0.1, 0.1, 0.05),
+        transforms.RandomGrayscale(p=0.05),
         RandomJpegCompression(p=0.35),
         RandomResizeRoundtrip(p=0.35),
         RandomBlur(p=0.25),
         transforms.ToTensor(),
+        transforms.RandomErasing(p=0.15, scale=(0.02, 0.12), ratio=(0.3, 3.3), value="random"),
     ])
     val_tf = transforms.Compose([
         transforms.Resize((img_size, img_size)),

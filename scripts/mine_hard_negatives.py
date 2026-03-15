@@ -15,6 +15,7 @@ def main():
     ap = argparse.ArgumentParser(description="Mine hard negatives from train split via ensemble uncertainty")
     ap.add_argument("--data", default="./data_best")
     ap.add_argument("--model", nargs="+", required=True)
+    ap.add_argument("--ensemble-config", default="", help="Optional JSON with learned ensemble weights/threshold")
     ap.add_argument("--out", default="./data_hard")
     ap.add_argument("--top-k", type=int, default=3000)
     args = ap.parse_args()
@@ -27,8 +28,8 @@ def main():
     ai_idx = int(ds.class_to_idx["ai"])
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    loaded = load_models(args.model, device)
-    model = EnsembleDetector(loaded.models).to(device)
+    loaded = load_models(args.model, device, ensemble_config=args.ensemble_config)
+    model = EnsembleDetector(loaded.models, weights=loaded.weights).to(device)
     model.eval()
 
     tf = transforms.Compose([

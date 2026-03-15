@@ -42,6 +42,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Robustness evaluation across perturbations")
     ap.add_argument("--data", required=True, help="Dataset root containing val/ai and val/real")
     ap.add_argument("--model", nargs="+", required=True)
+    ap.add_argument("--ensemble-config", default="", help="Optional JSON with learned ensemble weights/threshold")
     ap.add_argument("--max-images", type=int, default=400)
     ap.add_argument("--out", default="./artifacts/robust_eval.json")
     args = ap.parse_args()
@@ -53,8 +54,8 @@ def main() -> None:
     ai_idx = int(ds.class_to_idx["ai"])
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    loaded = load_models(args.model, device)
-    model = EnsembleDetector(loaded.models).to(device)
+    loaded = load_models(args.model, device, ensemble_config=args.ensemble_config)
+    model = EnsembleDetector(loaded.models, weights=loaded.weights).to(device)
     model.eval()
 
     tf = transforms.Compose([

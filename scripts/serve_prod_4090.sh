@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Production serve script for a 4090 host.
 # Usage:
-#   MODEL_GLOB="./artifacts_ens/m*/best.pt" PORT=8000 bash scripts/serve_prod_4090.sh
+#   MODEL_GLOB="./artifacts_ens/m*/best.pt" ENSEMBLE_CONFIG="./artifacts_ens/ensemble_config.json" PORT=8000 bash scripts/serve_prod_4090.sh
 
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
@@ -11,6 +11,7 @@ UNKNOWN_MARGIN="${UNKNOWN_MARGIN:-0.05}"
 MAX_BYTES="${MAX_BYTES:-10485760}"
 RATE_LIMIT="${RATE_LIMIT:-300}"
 MODEL_GLOB="${MODEL_GLOB:-./artifacts_ens/m*/best.pt}"
+ENSEMBLE_CONFIG="${ENSEMBLE_CONFIG:-./artifacts_ens/ensemble_config.json}"
 
 source .venv/bin/activate
 
@@ -22,9 +23,16 @@ fi
 
 echo "Serving models: ${MODELS[*]}"
 
+extra_ensemble_args=()
+if [[ -f "$ENSEMBLE_CONFIG" ]]; then
+  extra_ensemble_args=(--ensemble-config "$ENSEMBLE_CONFIG")
+  echo "Using ensemble config: $ENSEMBLE_CONFIG"
+fi
+
 # One worker is intentional for single-GPU inference stability.
 aid-serve \
   --model "${MODELS[@]}" \
+  "${extra_ensemble_args[@]}" \
   --host "$HOST" \
   --port "$PORT" \
   --unknown-margin "$UNKNOWN_MARGIN" \

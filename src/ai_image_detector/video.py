@@ -40,6 +40,7 @@ def _iter_frames(path: str, every: int, max_frames: int):
 def main() -> None:
     ap = argparse.ArgumentParser(description="Video AI-image style detector")
     ap.add_argument("--model", nargs="+", required=True)
+    ap.add_argument("--ensemble-config", default="", help="Optional JSON with learned ensemble weights/threshold")
     ap.add_argument("--video", required=True)
     ap.add_argument("--sample-every", type=int, default=10)
     ap.add_argument("--max-frames", type=int, default=48)
@@ -47,8 +48,8 @@ def main() -> None:
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    loaded = load_models(args.model, device)
-    model = EnsembleDetector(loaded.models).to(device)
+    loaded = load_models(args.model, device, ensemble_config=args.ensemble_config)
+    model = EnsembleDetector(loaded.models, weights=loaded.weights).to(device)
     model.eval()
 
     tf = transforms.Compose([

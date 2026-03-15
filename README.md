@@ -90,6 +90,14 @@ Ensemble with multiple models:
 aid-detect --model ./m1.pt ./m2.pt ./m3.pt --image ./example.jpg --json
 ```
 
+Use fitted ensemble weights/config when available:
+
+```bash
+aid-detect --model ./artifacts_ens/m1/best.pt ./artifacts_ens/m2/best.pt ./artifacts_ens/m3/best.pt ./artifacts_ens/m4/best.pt \
+  --ensemble-config ./artifacts_ens/ensemble_config.json \
+  --image ./example.jpg --json
+```
+
 Returns:
 
 - `label` (`AI-generated`, `Real`, or `Unknown`)
@@ -109,6 +117,13 @@ Optional hardening knobs:
 
 ```bash
 aid-serve --model ./artifacts/best.pt --max-bytes 10485760 --rate-limit-per-min 60 --unknown-margin 0.08
+```
+
+Weighted ensemble serving:
+
+```bash
+aid-serve --model ./artifacts_ens/m1/best.pt ./artifacts_ens/m2/best.pt ./artifacts_ens/m3/best.pt ./artifacts_ens/m4/best.pt \
+  --ensemble-config ./artifacts_ens/ensemble_config.json
 ```
 
 Endpoints:
@@ -280,6 +295,19 @@ Build a large multi-split dataset with hard negatives:
 python scripts/build_best_dataset.py --out data_best --train-per-class 30000 --val-per-class 7000 --test-per-class 7000
 ```
 
+Aggressive Hugging Face expansion mode (tries many HF candidates, skips incompatible datasets automatically):
+
+```bash
+HF_TOKEN=your_token python scripts/build_best_dataset.py \
+  --out data_best \
+  --train-per-class 80000 --val-per-class 20000 --test-per-class 20000 \
+  --discover-hf --hf-discovery-limit 90 --hf-max-sources 180 \
+  --hf-cache-file ./.local/hf_discovered_sources.txt \
+  --streaming --repo-base-pause-ms 1100 --repo-jitter-ms 900 --repo-cooldown-ms 45000 \
+  --min-side 224 --max-aspect-ratio 2.5 --min-entropy 3.4 \
+  --hardneg-fraction 0.8
+```
+
 Run hyperparameter sweep:
 
 ```bash
@@ -298,11 +326,46 @@ Evaluate the ensemble on held-out test split:
 python scripts/eval_test_ensemble.py \
   --data ./data_best \
   --model ./artifacts_ens/m1/best.pt ./artifacts_ens/m2/best.pt ./artifacts_ens/m3/best.pt ./artifacts_ens/m4/best.pt \
+  --ensemble-config ./artifacts_ens/ensemble_config.json \
   --out ./artifacts_ens/test_metrics.json
+```
+
+Fit ensemble weights on validation split (recommended before test/deploy):
+
+```bash
+python scripts/fit_ensemble.py \
+  --data ./data_best \
+  --model ./artifacts_ens/m1/best.pt ./artifacts_ens/m2/best.pt ./artifacts_ens/m3/best.pt ./artifacts_ens/m4/best.pt \
+  --out ./artifacts_ens/ensemble_config.json
 ```
 
 
 ## One-command full pipeline (4090)
+
+Minimal usage (recommended):
+
+```bash
+bash scripts/do.sh start          # full best-quality pipeline
+bash scripts/do.sh collect        # data only
+bash scripts/do.sh train          # training only
+bash scripts/do.sh autocollect    # continuous collection loop
+bash scripts/do.sh serve          # serve API/UI
+bash scripts/do.sh detect ./img.jpg
+```
+
+Linux shortcut launchers:
+
+```bash
+./start.sh                        # same as: bash scripts/do.sh start
+./collect.sh                      # same as: bash scripts/do.sh collect
+./train.sh                        # same as: bash scripts/do.sh train
+./autocollect.sh                  # same as: bash scripts/do.sh autocollect
+```
+
+Training/collection safety:
+- collection auto-skips while a training lock is active
+- continuous collection waits and retries after training completes
+- fresh model outputs are ingested from `./incoming_model_outputs/{ai,real}` into `./data_new/train/{ai,real}`
 
 Run everything end-to-end:
 
@@ -315,6 +378,14 @@ True one-command bootstrap (installs deps, trains optimized pipeline, optional a
 ```bash
 bash scripts/one_command_4090.sh
 ```
+
+Maximum-quality profile (slowest, strongest defaults, includes video training):
+
+```bash
+HF_TOKEN=your_token bash scripts/max_quality_4090.sh
+```
+
+Key quality knobs: `EPOCHS`, `SWEEP_EPOCHS`, `DISTILL_EPOCHS`, `HARD_MINING_TOPK`, `VIDEO_TRAIN_EPOCHS`, `BEST_DS_DISCOVER_HF`, `BEST_DS_HF_MAX_SOURCES`, `BEST_DS_REPO_BASE_PAUSE_MS`, `BEST_DS_REPO_COOLDOWN_MS`.
 
 Auto-start API/UI after training:
 
@@ -347,8 +418,10 @@ This executes:
 
 - dataset build (multi-split + hard negatives)
 - video dataset pull (rate-limit-friendly, staggered snapshot mode)
+- optional video temporal training (`RUN_VIDEO_TRAIN=1`)
 - sweep runs
 - 4-model ensemble training
+- ensemble weight fitting (`artifacts_ens/ensemble_config.json`)
 - held-out test evaluation
 - production manifest generation (`artifacts_ens/prod_manifest.json`)
 - hard-negative mining (`artifacts_ens/hard_mined`)
@@ -357,7 +430,7 @@ This executes:
 Advanced toggles:
 
 ```bash
-RUN_HARD_MINING=1 RUN_DISTILL=1 EPOCHS=20 bash scripts/full_pipeline_4090.sh
+RUN_HARD_MINING=1 RUN_DISTILL=1 RUN_VIDEO_TRAIN=1 EPOCHS=20 bash scripts/full_pipeline_4090.sh
 ```
 
 Disable automatic video pull if needed:

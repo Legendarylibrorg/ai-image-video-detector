@@ -17,6 +17,8 @@ def main():
     ap = argparse.ArgumentParser(description="Evaluate ensemble on test split")
     ap.add_argument("--data", default="./data_best")
     ap.add_argument("--model", nargs="+", required=True)
+    ap.add_argument("--ensemble-config", default="", help="Optional JSON with learned ensemble weights/threshold")
+    ap.add_argument("--tta", type=int, default=2, help="Test-time augmentation views (1=none, 2=+hflip, 3=+vflip)")
     ap.add_argument("--out", default="./artifacts_ens/test_metrics.json")
     args = ap.parse_args()
 
@@ -27,8 +29,8 @@ def main():
     ai_idx = int(ds.class_to_idx["ai"])
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    loaded = load_models(args.model, device)
-    model = EnsembleDetector(loaded.models).to(device)
+    loaded = load_models(args.model, device, ensemble_config=args.ensemble_config)
+    model = EnsembleDetector(loaded.models, weights=loaded.weights).to(device)
     model.eval()
 
     tf = transforms.Compose([
@@ -41,13 +43,22 @@ def main():
         for p, y in ds.samples:
             img = Image.open(p).convert("RGB")
             x = tf(img).unsqueeze(0).to(device)
-            prob = torch.sigmoid(model(x) / max(loaded.temperature, 1e-6)).item()
+            views = [x]
+            if args.tta >= 2:
+                views.append(torch.flip(x, dims=[3]))  # hflip
+            if args.tta >= 3:
+                views.append(torch.flip(x, dims=[2]))  # vflip
+            logits = torch.stack([model(v) for v in views], dim=0).mean(dim=0)
+            prob = torch.sigmoid(logits / max(loaded.temperature, 1e-6)).item()
             probs.append(prob)
             labels.append(1 if int(y) == ai_idx else 0)
 
     report = full_metric_report(np.array(probs), np.array(labels), threshold=loaded.threshold)
     report["n_samples"] = len(labels)
     report["model_ids"] = loaded.model_ids
+    report["ensemble_weights"] = [float(w) for w in loaded.weights]
+    report["ensemble_config"] = args.ensemble_config or None
+    report["tta_views"] = int(max(args.tta, 1))
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

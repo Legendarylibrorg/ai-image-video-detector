@@ -31,6 +31,7 @@ def main():
     ap = argparse.ArgumentParser(description="Distill ensemble teacher into a compact student")
     ap.add_argument("--data", default="./data_best")
     ap.add_argument("--teacher", nargs="+", required=True)
+    ap.add_argument("--ensemble-config", default="", help="Optional JSON with learned ensemble weights/threshold")
     ap.add_argument("--out", default="./artifacts_distill")
     ap.add_argument("--student-backbone", choices=["tiny", "effb0"], default="tiny")
     ap.add_argument("--img-size", type=int, default=256)
@@ -65,8 +66,8 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    loaded = load_models(args.teacher, device)
-    teacher = EnsembleDetector(loaded.models).to(device)
+    loaded = load_models(args.teacher, device, ensemble_config=args.ensemble_config)
+    teacher = EnsembleDetector(loaded.models, weights=loaded.weights).to(device)
     teacher.eval()
 
     student = build_model(backbone=args.student_backbone, pretrained_backbone=True).to(device)
