@@ -441,7 +441,9 @@ Diverse dataset preset:
 - Each run now executes `scripts/audit_diversity.py` to check unique source spread, hard-negative mode variety, and class balance.
 - Audit knobs: `DIVERSE_MIN_UNIQUE_SOURCES`, `DIVERSE_MIN_HARDNEG_MODES`, `DIVERSE_MAX_CLASS_IMBALANCE`.
 - HF cache-first behavior is enabled by default (`--hf-cache-only-if-present`) and uses local cache dirs (`./.local/hf`) to reduce repeated Hub API/resolver calls.
-- `collect-diverse` now auto-falls back to cache-only source mode if discovery stalls/fails (timeout via `DIVERSE_DISCOVERY_TIMEOUT_SEC`, default `900`).
+- `collect-diverse` now runs bounded discovery first (`--discover-only`) and always proceeds with a non-blocking build phase.
+- Discovery timeout is controlled by `DIVERSE_DISCOVERY_TIMEOUT_SEC` (default `900`).
+- Set `DIVERSE_SKIP_DISCOVERY=1` to skip live Hub discovery entirely and run cache/local-only.
 
 HF 5-minute limit fast-safe profile:
 - Keep `VIDEO_MODE=snapshot` (default) and `VIDEO_SNAPSHOT_MAX_WORKERS=1`.
@@ -480,7 +482,8 @@ bash scripts/one_command_4090.sh
 True one-command setup + start (broad collection, full training, then serve):
 
 ```bash
-./run.sh                            # starts Linux background supervisor
+./run.sh                            # starts Linux background supervisor (serve-only)
+./run.sh full-start                 # one-shot train + continuous serve mode
 bash scripts/linux_service.sh status
 bash scripts/linux_service.sh logs
 ```

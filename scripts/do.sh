@@ -97,7 +97,7 @@ collect_diverse_image_data() {
   ensure_env
   local hf_cache="${DIVERSE_HF_CACHE_FILE:-./.local/hf_diverse_sources.txt}"
   local timeout_sec="${DIVERSE_DISCOVERY_TIMEOUT_SEC:-900}"
-  common_args=(
+  local -a common_args=(
     --out "${DATA_DIR:-./data_best}"
     --train-per-class "${DIVERSE_TRAIN_PER_CLASS:-100000}"
     --val-per-class "${DIVERSE_VAL_PER_CLASS:-25000}"
@@ -119,24 +119,34 @@ collect_diverse_image_data() {
     --local-source "${DIVERSE_LOCAL_SOURCES:-./data}"
     --local-source "${DIVERSE_LOCAL_NEW_SOURCES:-./data_new/train}"
   )
-  discover_args=(
+  local -a discover_args=(
     --discover-hf
     --hf-discovery-limit "${DIVERSE_HF_DISCOVERY_LIMIT:-140}"
     --hf-max-sources "${DIVERSE_HF_MAX_SOURCES:-320}"
   )
-  cache_args=(--no-discover-hf --sources-file "$hf_cache")
+  local -a cache_args=(--no-discover-hf --sources-file "$hf_cache")
+  local -a full_args=("${common_args[@]}")
 
-  if command -v timeout >/dev/null 2>&1; then
-    if ! timeout "${timeout_sec}s" python scripts/build_best_dataset.py "${common_args[@]}" "${discover_args[@]}" "${diverse_query_args[@]}"; then
-      echo "collect_diverse_fallback=cache_only reason=timeout_or_failure"
-      python scripts/build_best_dataset.py "${common_args[@]}" "${cache_args[@]}" "${diverse_query_args[@]}"
-    fi
-  else
-    if ! python scripts/build_best_dataset.py "${common_args[@]}" "${discover_args[@]}" "${diverse_query_args[@]}"; then
-      echo "collect_diverse_fallback=cache_only reason=failure"
-      python scripts/build_best_dataset.py "${common_args[@]}" "${cache_args[@]}" "${diverse_query_args[@]}"
+  # Run discovery as a bounded pre-pass, then always do full build from cache/local sources.
+  if [[ "${DIVERSE_SKIP_DISCOVERY:-0}" != "1" ]]; then
+    if command -v timeout >/dev/null 2>&1; then
+      if ! timeout "${timeout_sec}s" python scripts/build_best_dataset.py "${common_args[@]}" "${discover_args[@]}" "${diverse_query_args[@]}" --discover-only; then
+        echo "collect_diverse_discovery=failed_or_timed_out fallback=cache_or_local"
+      fi
+    else
+      if ! python scripts/build_best_dataset.py "${common_args[@]}" "${discover_args[@]}" "${diverse_query_args[@]}" --discover-only; then
+        echo "collect_diverse_discovery=failed fallback=cache_or_local"
+      fi
     fi
   fi
+
+  if [[ -s "$hf_cache" ]]; then
+    full_args+=("${cache_args[@]}")
+  else
+    full_args+=(--no-discover-hf)
+    echo "collect_diverse_sources=local_only reason=hf_cache_missing"
+  fi
+  python scripts/build_best_dataset.py "${full_args[@]}" "${diverse_query_args[@]}"
 
   python scripts/audit_diversity.py \
     --data "${DATA_DIR:-./data_best}" \

@@ -2,4 +2,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-exec bash scripts/linux_service.sh "${1:-start}"
+if [[ "$#" -eq 0 ]]; then
+  exec bash scripts/linux_service.sh start
+fi
+exec bash scripts/linux_service.sh "$@"

@@ -362,6 +362,7 @@ def main():
     ap.add_argument("--repo-cooldown-ms", type=int, default=45000, help="Cooldown after rate-limit or repeated source failures")
     ap.add_argument("--max-consecutive-failures", type=int, default=2, help="Cooldown trigger for consecutive source failures")
     ap.add_argument("--token-env", default="HF_TOKEN")
+    ap.add_argument("--discover-only", action="store_true", default=False, help="Only run HF discovery/cache update and exit")
     args = ap.parse_args()
 
     random.seed(args.seed)
@@ -372,6 +373,11 @@ def main():
         print(f"using_token_env={args.token_env}")
     else:
         print(f"warning_no_token env={args.token_env} (public datasets still work, but with lower limits)")
+
+    if args.discover_only:
+        hf_sources = build_source_list(args)
+        print(f"discover_only=1 discovered_hf_sources={len(hf_sources)}")
+        return
 
     out = Path(args.out)
     for split in ["train", "val", "test"]:
@@ -621,9 +627,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    if args.cache_dir:
-        cache_dir = Path(args.cache_dir)
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        os.environ.setdefault("HF_HOME", str(cache_dir))
-        os.environ.setdefault("HF_DATASETS_CACHE", str(cache_dir / "datasets"))
-        print(f"hf_cache_dir={cache_dir}")
