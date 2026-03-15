@@ -13,15 +13,26 @@ import torch
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 from PIL import Image
 from torchvision import transforms
 import uvicorn
 
 from . import __version__
 from .decision import combined_risk, decide_label, image_ood_score
+from .domain import classify_domain, load_domain_config, resolve_domain_threshold
 from .ensemble import EnsembleDetector, load_models
 from .metadata import analyze_metadata
+from .multimodal import (
+    analyze_audio_bytes,
+    analyze_conversation,
+    analyze_pdf_bytes,
+    analyze_text_content,
+    analyze_url,
+    fuse_multimodal_risk,
+)
 from .provenance import analyze_provenance
+from .text_signals import analyze_text_signals
 
 
 app = FastAPI(title="Advanced AI Image Detector")
@@ -33,6 +44,18 @@ if WEB_DIR.exists():
     app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
 
 
+class TextRequest(BaseModel):
+    text: str = Field(default="")
+
+
+class URLRequest(BaseModel):
+    url: str = Field(default="")
+
+
+class MultimodalRequest(BaseModel):
+    scores: dict[str, float] = Field(default_factory=dict)
+
+
 @app.get("/health")
 def health():
     return {
@@ -40,6 +63,7 @@ def health():
         "version": __version__,
         "model_ids": _state.get("model_ids", []),
         "ensemble_config": _state.get("ensemble_config") or None,
+        "domain_config": _state.get("domain_config") or None,
     }
 
 
@@ -94,13 +118,17 @@ async def detect(request: Request, image: UploadFile = File(...)):
 
     prov = analyze_provenance(content)
     ood = image_ood_score(img)
+    text = analyze_text_signals(img)
 
     metadata_score = float(meta["metadata_score"])
     provenance_score = float(prov["provenance_score"])
-    c_risk = combined_risk(p, metadata_score, provenance_score)
+    text_score = float(text["text_score"])
+    domain = classify_domain(img, text_score=text_score)
+    threshold = resolve_domain_threshold(_state["base_threshold"], domain, _state.get("domain_cfg", {}))
+    c_risk = combined_risk(p, metadata_score, provenance_score, text_score)
     label = decide_label(
         p,
-        _state["threshold"],
+        threshold,
         _state["unknown_margin"],
         float(ood["ood_score"]),
     )
@@ -113,11 +141,15 @@ async def detect(request: Request, image: UploadFile = File(...)):
         "metadata_fields": meta["metadata_fields"],
         "provenance_score": provenance_score,
         "provenance_flags": prov["provenance_flags"],
+        "text_score": text_score,
+        "text_flags": text["text_flags"],
+        "text_regions": int(text.get("text_regions", 0)),
         "ood_score": float(ood["ood_score"]),
         "ood_flags": ood["ood_flags"],
         "combined_risk": c_risk,
-        "threshold": _state["threshold"],
+        "threshold": threshold,
         "unknown_margin": _state["unknown_margin"],
+        "domain": domain,
         "model_ids": _state["model_ids"],
         "model_count": len(_state["model_ids"]),
         "ensemble_weights": _state.get("ensemble_weights", []),
@@ -140,12 +172,49 @@ async def detect(request: Request, image: UploadFile = File(...)):
     return response
 
 
+@app.post("/analyze/text")
+def analyze_text(req: TextRequest):
+    return analyze_text_content(req.text)
+
+
+@app.post("/analyze/conversation")
+def analyze_conversation_text(req: TextRequest):
+    return analyze_conversation(req.text)
+
+
+@app.post("/analyze/url")
+def analyze_url_text(req: URLRequest):
+    return analyze_url(req.url)
+
+
+@app.post("/analyze/pdf")
+async def analyze_pdf(file: UploadFile = File(...)):
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="empty payload")
+    return analyze_pdf_bytes(content)
+
+
+@app.post("/analyze/audio")
+async def analyze_audio(file: UploadFile = File(...)):
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="empty payload")
+    return analyze_audio_bytes(content)
+
+
+@app.post("/analyze/multimodal")
+def analyze_multimodal(req: MultimodalRequest):
+    return fuse_multimodal_risk(req.scores)
+
+
 def load(
     model_paths: list[str],
     max_bytes: int,
     rate_limit_per_min: int,
     unknown_margin: float,
     ensemble_config: str = "",
+    domain_config: str = "",
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     loaded = load_models(model_paths, device, ensemble_config=ensemble_config)
@@ -154,12 +223,14 @@ def load(
 
     _state["device"] = device
     _state["model"] = model
-    _state["threshold"] = loaded.threshold
+    _state["base_threshold"] = float(loaded.threshold)
     _state["temperature"] = loaded.temperature
     _state["model_ids"] = loaded.model_ids
     _state["unknown_margin"] = float(unknown_margin)
     _state["ensemble_weights"] = [float(w) for w in loaded.weights]
     _state["ensemble_config"] = ensemble_config
+    _state["domain_config"] = domain_config
+    _state["domain_cfg"] = load_domain_config(domain_config)
 
     _state["tf"] = transforms.Compose([
         transforms.Resize((loaded.img_size, loaded.img_size)),
@@ -182,10 +253,11 @@ def main():
     ap.add_argument("--rate-limit-per-min", type=int, default=60)
     ap.add_argument("--unknown-margin", type=float, default=0.08)
     ap.add_argument("--ensemble-config", default="", help="Optional JSON with learned ensemble weights/threshold")
+    ap.add_argument("--domain-config", default="", help="Optional JSON with per-domain thresholds")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    load(args.model, args.max_bytes, args.rate_limit_per_min, args.unknown_margin, args.ensemble_config)
+    load(args.model, args.max_bytes, args.rate_limit_per_min, args.unknown_margin, args.ensemble_config, args.domain_config)
     uvicorn.run(app, host=args.host, port=args.port)
 
 

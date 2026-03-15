@@ -20,6 +20,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
+from .checkpoints import load_checkpoint, resolve_checkpoint_path, save_safetensors_checkpoint
 from .data import make_loaders
 from .metrics import find_best_threshold, fit_temperature, full_metric_report, sigmoid
 from .model import build_model
@@ -192,6 +193,8 @@ def main():
     ap.add_argument("--deterministic", action="store_true", help="Enable deterministic behavior (slower)")
     ap.add_argument("--export-release", action="store_true", default=True)
     ap.add_argument("--no-export-release", dest="export_release", action="store_false")
+    ap.add_argument("--save-safetensors", action="store_true", default=True)
+    ap.add_argument("--no-save-safetensors", dest="save_safetensors", action="store_false")
     args = ap.parse_args()
 
     out = Path(args.out)
@@ -288,9 +291,9 @@ def main():
         )
         (out / "latest_checkpoint.txt").write_text(path.name, encoding="utf-8")
 
-    resume_path = Path(args.resume) if args.resume else (out / "last.pt")
+    resume_path = Path(args.resume) if args.resume else resolve_checkpoint_path(out / "last.pt")
     if resume_path.exists():
-        ckpt = torch.load(resume_path, map_location=device)
+        ckpt = load_checkpoint(resume_path, map_location=device)
         model.load_state_dict(ckpt["state_dict"])
         ema.shadow.load_state_dict(ckpt.get("ema_state_dict", ckpt["state_dict"]))
         if "optimizer" in ckpt:
@@ -418,6 +421,8 @@ def main():
                     "backbone": args.backbone,
                 }
                 torch.save(ckpt, out / "best.pt")
+                if args.save_safetensors:
+                    save_safetensors_checkpoint(out / "best.safetensors", ckpt)
                 (out / "best_metrics.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
                 (out / "best_group_metrics.json").write_text(json.dumps(grouped, indent=2), encoding="utf-8")
                 (out / "calibration.json").write_text(

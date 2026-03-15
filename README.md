@@ -6,10 +6,12 @@ A production-oriented, forensics-first detector with:
 - Calibration (temperature scaling), threshold tuning, and full eval metrics
 - OOD rejection (`Unknown` mode)
 - Metadata anomaly and provenance signal scoring
+- Text overlay detection signal (text score + flags)
 - Ensemble inference (multiple checkpoints)
 - Explainability heatmaps + patch-level ranking
 - Robustness benchmarking under perturbations
 - Video scoring from sampled frames
+- Multimodal risk modules beyond photo/video (text, PDF, audio, URL, account/behavior/transaction)
 - API hardening (type/size limits, rate limiting, structured logs)
 - Dataset hygiene tooling (manifest, dedupe, near-dupes, balance report)
 
@@ -95,6 +97,7 @@ Use fitted ensemble weights/config when available:
 ```bash
 aid-detect --model ./artifacts_ens/m1/best.pt ./artifacts_ens/m2/best.pt ./artifacts_ens/m3/best.pt ./artifacts_ens/m4/best.pt \
   --ensemble-config ./artifacts_ens/ensemble_config.json \
+  --domain-config ./artifacts_ens/domain_config.json \
   --image ./example.jpg --json
 ```
 
@@ -123,7 +126,8 @@ Weighted ensemble serving:
 
 ```bash
 aid-serve --model ./artifacts_ens/m1/best.pt ./artifacts_ens/m2/best.pt ./artifacts_ens/m3/best.pt ./artifacts_ens/m4/best.pt \
-  --ensemble-config ./artifacts_ens/ensemble_config.json
+  --ensemble-config ./artifacts_ens/ensemble_config.json \
+  --domain-config ./artifacts_ens/domain_config.json
 ```
 
 Endpoints:
@@ -131,6 +135,12 @@ Endpoints:
 - `GET /health`
 - `GET /` (web UI)
 - `POST /detect` (multipart file field `image`)
+- `POST /analyze/text` (JSON: `{ "text": "..." }`)
+- `POST /analyze/conversation` (JSON: `{ "text": "..." }`)
+- `POST /analyze/url` (JSON: `{ "url": "..." }`)
+- `POST /analyze/pdf` (multipart file field `file`)
+- `POST /analyze/audio` (multipart file field `file`)
+- `POST /analyze/multimodal` (JSON: `{ "scores": { "image": 0.7, "text": 0.4, ... } }`)
 
 ## Explainability
 
@@ -346,11 +356,19 @@ Minimal usage (recommended):
 
 ```bash
 bash scripts/do.sh start          # full best-quality pipeline
-bash scripts/do.sh collect        # data only
-bash scripts/do.sh train          # training only
+bash scripts/do.sh start-v2       # max-accuracy v2 (domain calibration + refinement loops)
+bash scripts/do.sh collect        # full collection cycle (image + ingest + video)
+bash scripts/do.sh collect-diverse # super-diverse collection preset (recommended for robustness)
+bash scripts/do.sh collect-image  # image dataset only
+bash scripts/do.sh collect-video  # video dataset only
+bash scripts/do.sh ingest         # ingest incoming model outputs only
+bash scripts/do.sh train          # image training pipeline only
+bash scripts/do.sh train-all      # image + video training (no new data pull)
+bash scripts/do.sh train-all-types # collect-diverse + full image/video training + artifact validation
 bash scripts/do.sh autocollect    # continuous collection loop
 bash scripts/do.sh serve          # serve API/UI
 bash scripts/do.sh detect ./img.jpg
+bash scripts/do.sh status         # lock + artifact paths
 ```
 
 Linux shortcut launchers:
@@ -358,7 +376,7 @@ Linux shortcut launchers:
 ```bash
 ./start.sh                        # same as: bash scripts/do.sh start
 ./collect.sh                      # same as: bash scripts/do.sh collect
-./train.sh                        # same as: bash scripts/do.sh train
+./train.sh                        # same as: bash scripts/do.sh train (image pipeline)
 ./autocollect.sh                  # same as: bash scripts/do.sh autocollect
 ```
 
@@ -366,6 +384,37 @@ Training/collection safety:
 - collection auto-skips while a training lock is active
 - continuous collection waits and retries after training completes
 - fresh model outputs are ingested from `./incoming_model_outputs/{ai,real}` into `./data_new/train/{ai,real}`
+
+Diverse dataset preset:
+- `bash scripts/do.sh collect-diverse` expands toward memes/captions, screenshots/UI, posters/infographics, scanned docs/receipts/IDs, anime/illustration/3D/CGI, watermark/recompression styles, and newer generator outputs.
+- It now also targets: camera photos (phone/DSLR/webcam/CCTV), browser/dashboard screenshots, edited/low-quality variants, portrait/group face images, and game-render/CGI hard negatives.
+- Override scale with `DIVERSE_TRAIN_PER_CLASS`, `DIVERSE_VAL_PER_CLASS`, `DIVERSE_TEST_PER_CLASS`.
+- Override style query mix with `DIVERSE_HF_QUERIES` (comma-separated).
+- Each run now executes `scripts/audit_diversity.py` to check unique source spread, hard-negative mode variety, and class balance.
+- Audit knobs: `DIVERSE_MIN_UNIQUE_SOURCES`, `DIVERSE_MIN_HARDNEG_MODES`, `DIVERSE_MAX_CLASS_IMBALANCE`.
+- HF cache-first behavior is enabled by default (`--hf-cache-only-if-present`) and uses local cache dirs (`./.local/hf`) to reduce repeated Hub API/resolver calls.
+
+HF 5-minute limit fast-safe profile:
+- Keep `VIDEO_MODE=snapshot` (default) and `VIDEO_SNAPSHOT_MAX_WORKERS=1`.
+- Reuse discovery cache files (`./.local/hf_discovered_sources.txt`, `./.local/hf_diverse_sources.txt`) across runs.
+- Suggested run:
+
+```bash
+HF_TOKEN=your_token \
+DIVERSE_REPO_BASE_PAUSE_MS=1400 \
+DIVERSE_REPO_JITTER_MS=1200 \
+DIVERSE_REPO_COOLDOWN_MS=45000 \
+VIDEO_SNAPSHOT_MAX_WORKERS=1 \
+bash scripts/do.sh collect-diverse
+```
+
+All-data-type training run:
+- `bash scripts/do.sh train-all-types` runs broad collection and trains all trainable modalities in this repo (image + video), then verifies required artifacts exist.
+- Non-trainable analyzers (text/url/pdf/audio/conversation heuristics) are deterministic modules and do not require model training.
+
+Max-accuracy v2 run:
+- `bash scripts/do.sh start-v2` runs collect-diverse -> train-all -> domain threshold fitting -> hard-negative refresh loops.
+- Tune with `REFINE_LOOPS` and `HARD_TOPK` (used by `scripts/max_accuracy_v2.sh`).
 
 Run everything end-to-end:
 
@@ -378,6 +427,35 @@ True one-command bootstrap (installs deps, trains optimized pipeline, optional a
 ```bash
 bash scripts/one_command_4090.sh
 ```
+
+True one-command setup + start (broad collection, full training, then serve):
+
+```bash
+./run.sh                            # starts Linux background supervisor
+bash scripts/linux_service.sh status
+bash scripts/linux_service.sh logs
+```
+
+This command installs all required system and Python dependencies (including Hugging Face dataset tooling and safetensors support) before training starts.
+
+Linux run control (auto-restart + pause/resume):
+
+```bash
+bash scripts/linux_service.sh start
+bash scripts/linux_service.sh pause
+bash scripts/linux_service.sh resume
+bash scripts/linux_service.sh restart
+bash scripts/linux_service.sh stop
+bash scripts/linux_service.sh status
+bash scripts/linux_service.sh logs
+```
+
+Behavior:
+- Runs end-to-end training once (`train-all-types`), then serves continuously.
+- If training or serve process exits unexpectedly, worker auto-restarts.
+- `pause` stops the active child process and keeps worker idle.
+- `resume` continues from where it left off.
+- `reset-training` forces a fresh full training cycle before serving again.
 
 Maximum-quality profile (slowest, strongest defaults, includes video training):
 

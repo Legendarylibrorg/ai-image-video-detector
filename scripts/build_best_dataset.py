@@ -305,6 +305,11 @@ def build_source_list(args) -> List[str]:
         if cache_path and cache_path.exists():
             discovered = read_sources_file(cache_path)
             print(f"loaded_hf_discovery_cache={cache_path} count={len(discovered)}")
+            if args.hf_cache_only_if_present:
+                print("hf_discovery_mode=cache_only_if_present")
+                print(f"discovered_hf_sources={len(discovered)}")
+                sources.extend(discovered)
+                return unique_preserve(sources)
         if not discovered:
             discovered = discover_hf_sources(
                 queries=args.hf_query or DEFAULT_DISCOVERY_QUERIES,
@@ -345,8 +350,11 @@ def main():
     ap.add_argument("--hf-discovery-limit", type=int, default=120, help="Per-query max datasets to scan in discovery")
     ap.add_argument("--hf-max-sources", type=int, default=260, help="Global cap on discovered dataset ids")
     ap.add_argument("--hf-cache-file", default="", help="Optional file path to cache discovered HF source ids")
+    ap.add_argument("--hf-cache-only-if-present", action="store_true", default=True, help="If cache file exists, use it and skip live HF discovery calls")
+    ap.add_argument("--no-hf-cache-only-if-present", dest="hf_cache_only_if_present", action="store_false")
     ap.add_argument("--streaming", action="store_true", default=True, help="Use HF streaming mode to reduce metadata overhead")
     ap.add_argument("--no-streaming", dest="streaming", action="store_false")
+    ap.add_argument("--cache-dir", default="", help="HF datasets cache directory (improves resume and avoids repeated downloads)")
     ap.add_argument("--stream-buffer-size", type=int, default=12000, help="Shuffle buffer for streaming datasets")
     ap.add_argument("--max-samples-per-source", type=int, default=60000, help="Max examples to inspect per source before moving on")
     ap.add_argument("--repo-base-pause-ms", type=int, default=900, help="Base pause between HF repositories")
@@ -453,9 +461,9 @@ def main():
         source_rejects: DefaultDict[str, int] = defaultdict(int)
         try:
             try:
-                ds = load_dataset(src, token=token, streaming=args.streaming)
+                ds = load_dataset(src, token=token, streaming=args.streaming, cache_dir=(args.cache_dir or None))
             except TypeError:
-                ds = load_dataset(src, streaming=args.streaming)
+                ds = load_dataset(src, streaming=args.streaming, cache_dir=(args.cache_dir or None))
         except Exception as e:
             print(f"skip_source={src} reason={e}")
             consecutive_source_failures += 1
@@ -613,3 +621,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+    if args.cache_dir:
+        cache_dir = Path(args.cache_dir)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        os.environ.setdefault("HF_HOME", str(cache_dir))
+        os.environ.setdefault("HF_DATASETS_CACHE", str(cache_dir / "datasets"))
+        print(f"hf_cache_dir={cache_dir}")

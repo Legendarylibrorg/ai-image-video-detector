@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Production serve script for a 4090 host.
 # Usage:
-#   MODEL_GLOB="./artifacts_ens/m*/best.pt" ENSEMBLE_CONFIG="./artifacts_ens/ensemble_config.json" PORT=8000 bash scripts/serve_prod_4090.sh
+#   MODEL_GLOB="./artifacts_ens/m*/best.pt" ENSEMBLE_CONFIG="./artifacts_ens/ensemble_config.json" DOMAIN_CONFIG="./artifacts_ens/domain_config.json" PORT=8000 bash scripts/serve_prod_4090.sh
 
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
@@ -12,6 +12,7 @@ MAX_BYTES="${MAX_BYTES:-10485760}"
 RATE_LIMIT="${RATE_LIMIT:-300}"
 MODEL_GLOB="${MODEL_GLOB:-./artifacts_ens/m*/best.pt}"
 ENSEMBLE_CONFIG="${ENSEMBLE_CONFIG:-./artifacts_ens/ensemble_config.json}"
+DOMAIN_CONFIG="${DOMAIN_CONFIG:-./artifacts_ens/domain_config.json}"
 
 source .venv/bin/activate
 
@@ -29,10 +30,17 @@ if [[ -f "$ENSEMBLE_CONFIG" ]]; then
   echo "Using ensemble config: $ENSEMBLE_CONFIG"
 fi
 
+extra_domain_args=()
+if [[ -f "$DOMAIN_CONFIG" ]]; then
+  extra_domain_args=(--domain-config "$DOMAIN_CONFIG")
+  echo "Using domain config: $DOMAIN_CONFIG"
+fi
+
 # One worker is intentional for single-GPU inference stability.
 aid-serve \
   --model "${MODELS[@]}" \
   "${extra_ensemble_args[@]}" \
+  "${extra_domain_args[@]}" \
   --host "$HOST" \
   --port "$PORT" \
   --unknown-margin "$UNKNOWN_MARGIN" \

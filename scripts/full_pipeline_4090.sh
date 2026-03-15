@@ -18,6 +18,7 @@ BEST_DS_DISCOVER_HF="${BEST_DS_DISCOVER_HF:-0}"
 BEST_DS_HF_DISCOVERY_LIMIT="${BEST_DS_HF_DISCOVERY_LIMIT:-120}"
 BEST_DS_HF_MAX_SOURCES="${BEST_DS_HF_MAX_SOURCES:-260}"
 BEST_DS_HF_CACHE_FILE="${BEST_DS_HF_CACHE_FILE:-./.local/hf_discovered_sources.txt}"
+BEST_DS_CACHE_DIR="${BEST_DS_CACHE_DIR:-./.local/hf}"
 BEST_DS_HF_QUERIES="${BEST_DS_HF_QUERIES:-}"
 BEST_DS_SOURCES_FILE="${BEST_DS_SOURCES_FILE:-}"
 BEST_DS_EXTRA_SOURCES="${BEST_DS_EXTRA_SOURCES:-}"
@@ -48,6 +49,7 @@ ENS_FIT_MAX_VAL_IMAGES="${ENS_FIT_MAX_VAL_IMAGES:-0}"
 DRY_RUN="${DRY_RUN:-0}"
 RUN_VIDEO_DATA_PULL="${RUN_VIDEO_DATA_PULL:-1}"
 VIDEO_OUT="${VIDEO_OUT:-./video_data}"
+VIDEO_CACHE_DIR="${VIDEO_CACHE_DIR:-./.local/hf}"
 VIDEO_TRAIN_PER_CLASS="${VIDEO_TRAIN_PER_CLASS:-220}"
 VIDEO_VAL_PER_CLASS="${VIDEO_VAL_PER_CLASS:-60}"
 VIDEO_MODE="${VIDEO_MODE:-snapshot}"
@@ -85,10 +87,10 @@ if [[ ! -d .venv ]]; then
 fi
 source .venv/bin/activate
 run_cmd "python -m pip install --upgrade pip"
-run_cmd "pip install -e . datasets"
+run_cmd "pip install -e . datasets huggingface_hub safetensors"
 
 if [[ "$SKIP_DATA" != "1" ]]; then
-  dataset_cmd="python scripts/build_best_dataset.py --out \"$DATA_DIR\" --train-per-class \"$TRAIN_PER_CLASS\" --val-per-class \"$VAL_PER_CLASS\" --test-per-class \"$TEST_PER_CLASS\" --near-hamming \"$BEST_DS_NEAR_HAMMING\" --near-window \"$BEST_DS_NEAR_WINDOW\" --min-side \"$BEST_DS_MIN_SIDE\" --max-aspect-ratio \"$BEST_DS_MAX_ASPECT_RATIO\" --min-entropy \"$BEST_DS_MIN_ENTROPY\" --max-unique-per-source \"$BEST_DS_MAX_UNIQUE_PER_SOURCE\" --max-per-source-class \"$BEST_DS_MAX_PER_SOURCE_CLASS\" --jpeg-quality \"$BEST_DS_JPEG_QUALITY\" --hardneg-fraction \"$BEST_DS_HARDNEG_FRACTION\" --stream-buffer-size \"$BEST_DS_STREAM_BUFFER_SIZE\" --max-samples-per-source \"$BEST_DS_MAX_SAMPLES_PER_SOURCE\" --repo-base-pause-ms \"$BEST_DS_REPO_BASE_PAUSE_MS\" --repo-jitter-ms \"$BEST_DS_REPO_JITTER_MS\" --repo-cooldown-ms \"$BEST_DS_REPO_COOLDOWN_MS\" --max-consecutive-failures \"$BEST_DS_MAX_CONSECUTIVE_FAILURES\""
+  dataset_cmd="python scripts/build_best_dataset.py --out \"$DATA_DIR\" --train-per-class \"$TRAIN_PER_CLASS\" --val-per-class \"$VAL_PER_CLASS\" --test-per-class \"$TEST_PER_CLASS\" --near-hamming \"$BEST_DS_NEAR_HAMMING\" --near-window \"$BEST_DS_NEAR_WINDOW\" --min-side \"$BEST_DS_MIN_SIDE\" --max-aspect-ratio \"$BEST_DS_MAX_ASPECT_RATIO\" --min-entropy \"$BEST_DS_MIN_ENTROPY\" --max-unique-per-source \"$BEST_DS_MAX_UNIQUE_PER_SOURCE\" --max-per-source-class \"$BEST_DS_MAX_PER_SOURCE_CLASS\" --jpeg-quality \"$BEST_DS_JPEG_QUALITY\" --hardneg-fraction \"$BEST_DS_HARDNEG_FRACTION\" --cache-dir \"$BEST_DS_CACHE_DIR\" --hf-cache-only-if-present --stream-buffer-size \"$BEST_DS_STREAM_BUFFER_SIZE\" --max-samples-per-source \"$BEST_DS_MAX_SAMPLES_PER_SOURCE\" --repo-base-pause-ms \"$BEST_DS_REPO_BASE_PAUSE_MS\" --repo-jitter-ms \"$BEST_DS_REPO_JITTER_MS\" --repo-cooldown-ms \"$BEST_DS_REPO_COOLDOWN_MS\" --max-consecutive-failures \"$BEST_DS_MAX_CONSECUTIVE_FAILURES\""
 
   if [[ "$BEST_DS_STREAMING" == "1" ]]; then
     dataset_cmd="$dataset_cmd --streaming"
@@ -135,7 +137,7 @@ if [[ "$SKIP_DATA" != "1" ]]; then
 fi
 
 if [[ "$RUN_VIDEO_DATA_PULL" == "1" ]]; then
-  run_cmd "python scripts/build_video_dataset.py --out \"$VIDEO_OUT\" --train-per-class \"$VIDEO_TRAIN_PER_CLASS\" --val-per-class \"$VIDEO_VAL_PER_CLASS\" --mode \"$VIDEO_MODE\" --snapshot-max-workers \"$VIDEO_SNAPSHOT_MAX_WORKERS\" --repo-base-pause-ms \"$VIDEO_REPO_BASE_PAUSE_MS\" --repo-jitter-ms \"$VIDEO_REPO_JITTER_MS\" --copy-sleep-ms \"$VIDEO_COPY_SLEEP_MS\" --sleep-ms \"$VIDEO_SLEEP_MS\" --jitter-ms \"$VIDEO_JITTER_MS\" --chunk-pause-ms \"$VIDEO_CHUNK_PAUSE_MS\" --repo-cooldown-ms \"$VIDEO_REPO_COOLDOWN_MS\" --retries \"$VIDEO_RETRIES\""
+  run_cmd "python scripts/build_video_dataset.py --out \"$VIDEO_OUT\" --train-per-class \"$VIDEO_TRAIN_PER_CLASS\" --val-per-class \"$VIDEO_VAL_PER_CLASS\" --mode \"$VIDEO_MODE\" --cache-dir \"$VIDEO_CACHE_DIR\" --snapshot-max-workers \"$VIDEO_SNAPSHOT_MAX_WORKERS\" --repo-base-pause-ms \"$VIDEO_REPO_BASE_PAUSE_MS\" --repo-jitter-ms \"$VIDEO_REPO_JITTER_MS\" --copy-sleep-ms \"$VIDEO_COPY_SLEEP_MS\" --sleep-ms \"$VIDEO_SLEEP_MS\" --jitter-ms \"$VIDEO_JITTER_MS\" --chunk-pause-ms \"$VIDEO_CHUNK_PAUSE_MS\" --repo-cooldown-ms \"$VIDEO_REPO_COOLDOWN_MS\" --retries \"$VIDEO_RETRIES\""
 fi
 
 if [[ "$RUN_VIDEO_TRAIN" == "1" ]]; then
@@ -197,6 +199,9 @@ manifest = {
 ens_cfg = Path(os.environ.get("ENS_CONFIG_PATH", str(ens / "ensemble_config.json")))
 if ens_cfg.exists():
     manifest["ensemble_config"] = str(ens_cfg.resolve())
+domain_cfg = ens / "domain_config.json"
+if domain_cfg.exists():
+    manifest["domain_config"] = str(domain_cfg.resolve())
 video_best = Path(os.environ.get("VIDEO_ARTIFACTS_OUT", "./video_artifacts")) / "best_video.pt"
 if video_best.exists():
     manifest["video_model"] = str(video_best.resolve())

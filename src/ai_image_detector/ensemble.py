@@ -6,6 +6,7 @@ from pathlib import Path
 
 import torch
 
+from .checkpoints import load_checkpoint
 from .model import AdvancedAIDetector, build_model
 
 
@@ -72,7 +73,7 @@ def _resolve_model_weights(
 
 
 def _load_single(path: str, device: torch.device):
-    ckpt = torch.load(path, map_location=device)
+    ckpt = load_checkpoint(path, map_location=device)
     backbone = str(ckpt.get("backbone", "tiny"))
     model = build_model(backbone=backbone, pretrained_backbone=False).to(device)
     model.load_state_dict(ckpt["state_dict"])

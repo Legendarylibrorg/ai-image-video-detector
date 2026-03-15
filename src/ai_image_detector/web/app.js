@@ -102,15 +102,18 @@ analyzeBtn.addEventListener("click", async () => {
     document.getElementById("combinedRisk").textContent = clamp01(data.combined_risk).toFixed(3);
     document.getElementById("metadataScore").textContent = clamp01(data.metadata_score).toFixed(3);
     document.getElementById("oodScore").textContent = clamp01(data.ood_score).toFixed(3);
+    document.getElementById("textScore").textContent = clamp01(data.text_score).toFixed(3);
 
     fillMeter("probBar", data.prob_ai);
     fillMeter("riskBar", data.combined_risk);
     fillMeter("metaBar", data.metadata_score);
     fillMeter("oodBar", data.ood_score);
+    fillMeter("textBar", data.text_score);
 
     renderFlags("metadataFlags", data.metadata_flags);
     renderFlags("provenanceFlags", data.provenance_flags);
     renderFlags("oodFlags", data.ood_flags);
+    renderFlags("textFlags", data.text_flags);
 
     document.getElementById("thresholdVal").textContent = Number(data.threshold || 0).toFixed(3);
     document.getElementById("unknownVal").textContent = Number(data.unknown_margin || 0).toFixed(3);

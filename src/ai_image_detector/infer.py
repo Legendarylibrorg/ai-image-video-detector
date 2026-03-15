@@ -9,9 +9,11 @@ from PIL import Image
 from torchvision import transforms
 
 from .decision import combined_risk, decide_label, image_ood_score
+from .domain import classify_domain, load_domain_config, resolve_domain_threshold
 from .ensemble import EnsembleDetector, load_models
 from .metadata import analyze_metadata
 from .provenance import analyze_provenance
+from .text_signals import analyze_text_signals
 
 
 def main():
@@ -20,6 +22,7 @@ def main():
     ap.add_argument("--ensemble-config", default="", help="Optional JSON with learned ensemble weights/threshold")
     ap.add_argument("--image", required=True)
     ap.add_argument("--threshold", type=float, default=None)
+    ap.add_argument("--domain-config", default="", help="Optional JSON with per-domain thresholds")
     ap.add_argument("--unknown-margin", type=float, default=0.08)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
@@ -29,7 +32,8 @@ def main():
     model = EnsembleDetector(loaded.models, weights=loaded.weights).to(device)
     model.eval()
 
-    threshold = float(args.threshold) if args.threshold is not None else float(loaded.threshold)
+    base_threshold = float(args.threshold) if args.threshold is not None else float(loaded.threshold)
+    domain_cfg = load_domain_config(args.domain_config)
 
     tf = transforms.Compose([
         transforms.Resize((loaded.img_size, loaded.img_size)),
@@ -48,10 +52,14 @@ def main():
     meta = analyze_metadata(args.image)
     prov = analyze_provenance(image_bytes)
     ood = image_ood_score(img)
+    text = analyze_text_signals(img)
 
     metadata_score = float(meta["metadata_score"])
     provenance_score = float(prov["provenance_score"])
-    c_risk = combined_risk(prob_ai, metadata_score, provenance_score)
+    text_score = float(text["text_score"])
+    domain = classify_domain(img, text_score=text_score)
+    threshold = resolve_domain_threshold(base_threshold, domain, domain_cfg)
+    c_risk = combined_risk(prob_ai, metadata_score, provenance_score, text_score)
     label = decide_label(prob_ai, threshold, args.unknown_margin, float(ood["ood_score"]))
 
     out = {
@@ -65,6 +73,9 @@ def main():
         "metadata_fields": meta["metadata_fields"],
         "provenance_score": provenance_score,
         "provenance_flags": prov["provenance_flags"],
+        "text_score": text_score,
+        "text_flags": text["text_flags"],
+        "text_regions": int(text.get("text_regions", 0)),
         "ood_score": float(ood["ood_score"]),
         "ood_flags": ood["ood_flags"],
         "model_ids": loaded.model_ids,
@@ -72,6 +83,8 @@ def main():
         "temperature": float(loaded.temperature),
         "ensemble_weights": [float(w) for w in loaded.weights],
         "ensemble_config": args.ensemble_config or None,
+        "domain": domain,
+        "domain_config": args.domain_config or None,
     }
 
     if args.json:

@@ -85,11 +85,17 @@ def main():
     ap.add_argument("--repo-jitter-ms", type=int, default=1800)
     ap.add_argument("--copy-sleep-ms", type=int, default=15)
     ap.add_argument("--retries", type=int, default=5)
-    ap.add_argument("--cache-dir", default=None)
+    ap.add_argument("--cache-dir", default="./.local/hf_hub")
     ap.add_argument("--token-env", default="HF_TOKEN")
     args = ap.parse_args()
 
     os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
+    if args.cache_dir:
+        cache_dir = Path(args.cache_dir)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        os.environ.setdefault("HF_HOME", str(cache_dir))
+        os.environ.setdefault("HF_HUB_CACHE", str(cache_dir / "hub"))
+        print(f"hf_cache_dir={cache_dir}")
 
     token = os.getenv(args.token_env)
     if token:

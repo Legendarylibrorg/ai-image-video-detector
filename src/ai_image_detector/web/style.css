@@ -161,7 +161,7 @@ h1 {
 
 .meter-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
 }
 
@@ -242,7 +242,7 @@ h1 {
 
 @media (max-width: 900px) {
   .upload-panel { grid-template-columns: 1fr; }
-  .meter-grid { grid-template-columns: repeat(2, 1fr); }
+  .meter-grid { grid-template-columns: repeat(3, 1fr); }
   .detail-grid { grid-template-columns: 1fr; }
 }
 

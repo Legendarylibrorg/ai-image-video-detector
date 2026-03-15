@@ -13,6 +13,9 @@ dependencies = [
   "opencv-python-headless>=4.10",
   "fastapi>=0.111",
   "uvicorn>=0.30",
+  "datasets>=2.19",
+  "huggingface_hub>=0.24",
+  "safetensors>=0.4",
 ]
 
 [project.scripts]

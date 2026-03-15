@@ -46,8 +46,9 @@ def combined_risk(
     prob_ai: float,
     metadata_score: float = 0.0,
     provenance_score: float = 0.0,
+    text_score: float = 0.0,
 ) -> float:
-    return float((0.75 * prob_ai) + (0.15 * metadata_score) + (0.10 * provenance_score))
+    return float((0.68 * prob_ai) + (0.12 * metadata_score) + (0.10 * provenance_score) + (0.10 * text_score))
 
 
 def decide_label(
