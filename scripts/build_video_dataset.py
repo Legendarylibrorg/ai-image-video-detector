@@ -75,11 +75,15 @@ def main():
     ap.add_argument("--val-per-class", type=int, default=60)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--mode", choices=["snapshot", "per-file"], default="snapshot")
+    ap.add_argument("--snapshot-max-workers", type=int, default=1)
     ap.add_argument("--chunk-size", type=int, default=20)
     ap.add_argument("--sleep-ms", type=int, default=120)
     ap.add_argument("--jitter-ms", type=int, default=80)
     ap.add_argument("--chunk-pause-ms", type=int, default=1000)
     ap.add_argument("--repo-cooldown-ms", type=int, default=3000)
+    ap.add_argument("--repo-base-pause-ms", type=int, default=2200)
+    ap.add_argument("--repo-jitter-ms", type=int, default=1800)
+    ap.add_argument("--copy-sleep-ms", type=int, default=15)
     ap.add_argument("--retries", type=int, default=5)
     ap.add_argument("--cache-dir", default=None)
     ap.add_argument("--token-env", default="HF_TOKEN")
@@ -110,6 +114,9 @@ def main():
             break
 
         repo = src["repo"]
+        # Stagger repo requests so we don't burst across datasets.
+        repo_pause = args.repo_base_pause_ms + random.randint(0, max(args.repo_jitter_ms, 0))
+        time.sleep(repo_pause / 1000.0)
         print(f"repo={repo} mode={args.mode}")
 
         fake_files: List[str] = []
@@ -125,7 +132,7 @@ def main():
                     token=token,
                     allow_patterns=allow_patterns,
                     resume_download=True,
-                    max_workers=4,
+                    max_workers=max(1, int(args.snapshot_max_workers)),
                     cache_dir=args.cache_dir,
                 )
             except Exception as e:
@@ -150,6 +157,8 @@ def main():
                     if not dst.exists():
                         shutil.copy2(p, dst)
                         have[split][cls] += 1
+                        if args.copy_sleep_ms > 0:
+                            time.sleep(args.copy_sleep_ms / 1000.0)
 
                 if done(have, need):
                     break

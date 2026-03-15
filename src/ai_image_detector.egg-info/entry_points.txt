@@ -6,4 +6,7 @@ aid-metadata = ai_image_detector.metadata:main
 aid-robust-eval = ai_image_detector.robust_eval:main
 aid-serve = ai_image_detector.api:main
 aid-train = ai_image_detector.train:main
+aid-train-advanced = ai_image_detector.train:main
 aid-video-detect = ai_image_detector.video:main
+aid-video-detect-temporal = ai_image_detector.video_temporal:infer_main
+aid-video-train = ai_image_detector.video_temporal:train_main

@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import random
+import shutil
+import subprocess
 from typing import Any
 
 import numpy as np
@@ -14,6 +17,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
 
 from .data import make_loaders
 from .metrics import find_best_threshold, fit_temperature, full_metric_report, sigmoid
@@ -140,6 +145,24 @@ def evaluate(
     )
 
 
+def _git_commit() -> str:
+    try:
+        out = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True)
+        return out.strip()
+    except Exception:
+        return "unknown"
+
+
+def _dataset_counts(root: Path) -> dict[str, dict[str, int]]:
+    out: dict[str, dict[str, int]] = {}
+    for split in ("train", "val", "test"):
+        out[split] = {}
+        for cls in ("ai", "real"):
+            d = root / split / cls
+            out[split][cls] = len(list(d.glob("*"))) if d.exists() else 0
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
@@ -161,16 +184,39 @@ def main():
     ap.add_argument("--compile", action="store_true", default=True)
     ap.add_argument("--no-compile", dest="compile", action="store_false")
     ap.add_argument("--threshold-objective", choices=["f1", "balanced", "youden"], default="balanced")
+    ap.add_argument("--resume", default="", help="Path to training checkpoint (default: <out>/last.pt if present)")
+    ap.add_argument("--save-every", type=int, default=1, help="Save epoch checkpoint every N epochs")
+    ap.add_argument("--patience", type=int, default=0, help="Early stopping patience in epochs (0 disables)")
+    ap.add_argument("--min-delta", type=float, default=0.0, help="Minimum AUC improvement to reset patience")
+    ap.add_argument("--seed", type=int, default=1337)
+    ap.add_argument("--deterministic", action="store_true", help="Enable deterministic behavior (slower)")
+    ap.add_argument("--export-release", action="store_true", default=True)
+    ap.add_argument("--no-export-release", dest="export_release", action="store_false")
     args = ap.parse_args()
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    data_root = Path(args.data)
+
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+    if args.deterministic:
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        try:
+            torch.use_deterministic_algorithms(True, warn_only=True)
+        except Exception:
+            pass
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.type == "cuda":
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
-        torch.backends.cudnn.benchmark = True
+        if not args.deterministic:
+            torch.backends.cudnn.benchmark = True
         torch.set_float32_matmul_precision("high")
 
     if args.num_workers <= 0:
@@ -182,6 +228,14 @@ def main():
         args.batch_size,
         num_workers=args.num_workers,
     )
+
+    run_config = {
+        "args": vars(args),
+        "git_commit": _git_commit(),
+        "dataset_counts": _dataset_counts(data_root),
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    (out / "config.json").write_text(json.dumps(run_config, indent=2), encoding="utf-8")
 
     if set(classes) != {"ai", "real"}:
         raise ValueError(f"Expected classes exactly ai/real, got {classes}")
@@ -208,26 +262,83 @@ def main():
     grad_accum = max(1, int(args.grad_accum))
 
     best_auc = -1.0
+    no_improve = 0
     model_id = f"advanced-ai-detector-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    start_epoch = 1
 
-    for epoch in range(1, args.epochs + 1):
-        model.train()
-        opt.zero_grad(set_to_none=True)
-        step_idx = 0
-        for x, y in train_loader:
-            x = x.to(device, non_blocking=True)
-            y = y.to(device, non_blocking=True)
-            if device.type == "cuda":
-                x = x.to(memory_format=torch.channels_last)
-            target = (y == ai_idx).float()
+    def _save_train_ckpt(path: Path, epoch: int) -> None:
+        torch.save(
+            {
+                "epoch": epoch,
+                "state_dict": model.state_dict(),
+                "ema_state_dict": ema.shadow.state_dict(),
+                "optimizer": opt.state_dict(),
+                "scheduler": sched.state_dict(),
+                "scaler": scaler.state_dict(),
+                "best_auc": float(best_auc),
+                "no_improve": int(no_improve),
+                "model_id": model_id,
+                "args": vars(args),
+                "classes": classes,
+                "class_to_idx": class_to_idx,
+                "backbone": args.backbone,
+                "img_size": args.img_size,
+            },
+            path,
+        )
+        (out / "latest_checkpoint.txt").write_text(path.name, encoding="utf-8")
 
-            with torch.cuda.amp.autocast(enabled=use_amp):
-                logits = model(x)
-                loss = loss_fn(logits, target) / grad_accum
-            scaler.scale(loss).backward()
-            step_idx += 1
+    resume_path = Path(args.resume) if args.resume else (out / "last.pt")
+    if resume_path.exists():
+        ckpt = torch.load(resume_path, map_location=device)
+        model.load_state_dict(ckpt["state_dict"])
+        ema.shadow.load_state_dict(ckpt.get("ema_state_dict", ckpt["state_dict"]))
+        if "optimizer" in ckpt:
+            opt.load_state_dict(ckpt["optimizer"])
+        if "scheduler" in ckpt:
+            sched.load_state_dict(ckpt["scheduler"])
+        if "scaler" in ckpt:
+            scaler.load_state_dict(ckpt["scaler"])
+        best_auc = float(ckpt.get("best_auc", best_auc))
+        no_improve = int(ckpt.get("no_improve", no_improve))
+        model_id = str(ckpt.get("model_id", model_id))
+        start_epoch = int(ckpt.get("epoch", 0)) + 1
+        print(f"resumed_from={resume_path} start_epoch={start_epoch} best_auc={best_auc:.4f}")
 
-            if step_idx % grad_accum == 0:
+    try:
+        for epoch in range(start_epoch, args.epochs + 1):
+            model.train()
+            opt.zero_grad(set_to_none=True)
+            step_idx = 0
+            skipped_batches = 0
+            for x, y in train_loader:
+                x = x.to(device, non_blocking=True)
+                y = y.to(device, non_blocking=True)
+                if device.type == "cuda":
+                    x = x.to(memory_format=torch.channels_last)
+                target = (y == ai_idx).float()
+
+                with torch.cuda.amp.autocast(enabled=use_amp):
+                    logits = model(x)
+                    loss = loss_fn(logits, target) / grad_accum
+                if not torch.isfinite(loss):
+                    skipped_batches += 1
+                    opt.zero_grad(set_to_none=True)
+                    print(f"warn epoch={epoch} skipped_batch=non_finite_loss")
+                    continue
+
+                scaler.scale(loss).backward()
+                step_idx += 1
+
+                if step_idx % grad_accum == 0:
+                    scaler.unscale_(opt)
+                    nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    scaler.step(opt)
+                    scaler.update()
+                    opt.zero_grad(set_to_none=True)
+                    ema.update(model)
+
+            if step_idx % grad_accum != 0:
                 scaler.unscale_(opt)
                 nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 scaler.step(opt)
@@ -235,92 +346,174 @@ def main():
                 opt.zero_grad(set_to_none=True)
                 ema.update(model)
 
-        if step_idx % grad_accum != 0:
-            scaler.unscale_(opt)
-            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            scaler.step(opt)
-            scaler.update()
-            opt.zero_grad(set_to_none=True)
-            ema.update(model)
+            sched.step()
 
-        sched.step()
-
-        val_loss, val_logits, _, val_labels, val_paths = evaluate(
-            ema.shadow,
-            val_loader,
-            device,
-            ai_idx,
-            val_samples,
-            loss_fn,
-        )
-
-        temperature, temp_nll = fit_temperature(val_logits, val_labels)
-        val_probs = sigmoid(val_logits / max(temperature, 1e-6))
-        threshold, score, tuned_metrics = find_best_threshold(
-            val_probs,
-            val_labels,
-            objective=args.threshold_objective,
-        )
-
-        report = full_metric_report(val_probs, val_labels, threshold)
-        report["val_loss"] = float(val_loss)
-        report["temperature"] = float(temperature)
-        report["temperature_nll"] = float(temp_nll)
-        report["threshold_objective"] = args.threshold_objective
-        report["threshold_objective_score"] = float(score)
-        report["tuned_metrics"] = tuned_metrics
-        report["lr"] = float(opt.param_groups[0]["lr"])
-
-        grouped = _group_report(val_probs, val_labels, val_paths, threshold)
-
-        print(
-            "epoch={} val_loss={:.5f} auc={:.4f} f1={:.4f} ece={:.4f} brier={:.4f} th={:.3f} temp={:.3f} lr={:.6f}".format(
-                epoch,
-                report["val_loss"],
-                report["auc"],
-                report["f1"],
-                report["ece"],
-                report["brier"],
-                threshold,
-                temperature,
-                report["lr"],
+            val_loss, val_logits, _, val_labels, val_paths = evaluate(
+                ema.shadow,
+                val_loader,
+                device,
+                ai_idx,
+                val_samples,
+                loss_fn,
             )
-        )
 
-        last = {
-            "epoch": epoch,
-            "metrics": report,
-            "group_metrics": grouped,
-        }
-        (out / "last_metrics.json").write_text(json.dumps(last, indent=2), encoding="utf-8")
+            temperature, temp_nll = fit_temperature(val_logits, val_labels)
+            val_probs = sigmoid(val_logits / max(temperature, 1e-6))
+            threshold, score, tuned_metrics = find_best_threshold(
+                val_probs,
+                val_labels,
+                objective=args.threshold_objective,
+            )
 
-        if report["auc"] > best_auc:
-            best_auc = float(report["auc"])
-            ckpt = {
-                "state_dict": ema.shadow.state_dict(),
-                "img_size": args.img_size,
-                "threshold": float(threshold),
-                "temperature": float(temperature),
-                "model_id": model_id,
+            report = full_metric_report(val_probs, val_labels, threshold)
+            report["val_loss"] = float(val_loss)
+            report["temperature"] = float(temperature)
+            report["temperature_nll"] = float(temp_nll)
+            report["threshold_objective"] = args.threshold_objective
+            report["threshold_objective_score"] = float(score)
+            report["tuned_metrics"] = tuned_metrics
+            report["lr"] = float(opt.param_groups[0]["lr"])
+            report["skipped_batches"] = skipped_batches
+
+            grouped = _group_report(val_probs, val_labels, val_paths, threshold)
+
+            print(
+                "epoch={} val_loss={:.5f} auc={:.4f} f1={:.4f} ece={:.4f} brier={:.4f} th={:.3f} temp={:.3f} lr={:.6f}".format(
+                    epoch,
+                    report["val_loss"],
+                    report["auc"],
+                    report["f1"],
+                    report["ece"],
+                    report["brier"],
+                    threshold,
+                    temperature,
+                    report["lr"],
+                )
+            )
+
+            last = {
+                "epoch": epoch,
                 "metrics": report,
-                "classes": classes,
-                "backbone": args.backbone,
+                "group_metrics": grouped,
             }
-            torch.save(ckpt, out / "best.pt")
-            (out / "best_metrics.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-            (out / "best_group_metrics.json").write_text(json.dumps(grouped, indent=2), encoding="utf-8")
-            (out / "calibration.json").write_text(
-                json.dumps(
-                    {
-                        "threshold": float(threshold),
-                        "temperature": float(temperature),
-                        "objective": args.threshold_objective,
-                        "metrics": report,
-                    },
-                    indent=2,
-                ),
-                encoding="utf-8",
-            )
+            (out / "last_metrics.json").write_text(json.dumps(last, indent=2), encoding="utf-8")
+            with (out / "training_log.jsonl").open("a", encoding="utf-8") as f:
+                f.write(json.dumps({"epoch": epoch, **report}) + "\n")
+
+            _save_train_ckpt(out / "last.pt", epoch)
+            if args.save_every > 0 and (epoch % args.save_every == 0):
+                _save_train_ckpt(out / f"epoch_{epoch:03d}.pt", epoch)
+
+            if report["auc"] > (best_auc + args.min_delta):
+                best_auc = float(report["auc"])
+                no_improve = 0
+                ckpt = {
+                    "state_dict": ema.shadow.state_dict(),
+                    "img_size": args.img_size,
+                    "threshold": float(threshold),
+                    "temperature": float(temperature),
+                    "model_id": model_id,
+                    "metrics": report,
+                    "classes": classes,
+                    "backbone": args.backbone,
+                }
+                torch.save(ckpt, out / "best.pt")
+                (out / "best_metrics.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+                (out / "best_group_metrics.json").write_text(json.dumps(grouped, indent=2), encoding="utf-8")
+                (out / "calibration.json").write_text(
+                    json.dumps(
+                        {
+                            "threshold": float(threshold),
+                            "temperature": float(temperature),
+                            "objective": args.threshold_objective,
+                            "metrics": report,
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+            else:
+                no_improve += 1
+                if args.patience > 0 and no_improve >= args.patience:
+                    print(f"early_stopping epoch={epoch} no_improve={no_improve} patience={args.patience}")
+                    break
+    except KeyboardInterrupt:
+        interrupted_epoch = max(start_epoch, min(args.epochs, locals().get("epoch", start_epoch)))
+        _save_train_ckpt(out / "interrupted.pt", interrupted_epoch)
+        _save_train_ckpt(out / "last.pt", interrupted_epoch)
+        print(f"training_interrupted saved={out / 'interrupted.pt'}")
+        return
+
+    test_dir = data_root / "test"
+    if test_dir.exists() and (out / "best.pt").exists():
+        best = torch.load(out / "best.pt", map_location=device)
+        eval_model = build_model(
+            backbone=best.get("backbone", args.backbone),
+            pretrained_backbone=False,
+        ).to(device)
+        eval_model.load_state_dict(best["state_dict"])
+        if device.type == "cuda":
+            eval_model = eval_model.to(memory_format=torch.channels_last)
+        eval_model.eval()
+
+        test_tf = transforms.Compose([
+            transforms.Resize((args.img_size, args.img_size)),
+            transforms.ToTensor(),
+        ])
+        test_ds = datasets.ImageFolder(test_dir, transform=test_tf)
+        test_loader = DataLoader(
+            test_ds,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            pin_memory=True,
+        )
+        test_ai_idx = int(test_ds.class_to_idx["ai"])
+        test_loss_fn = nn.BCEWithLogitsLoss()
+        test_loss_sum = 0.0
+        test_total = 0
+        test_probs: list[float] = []
+        test_labels: list[float] = []
+        with torch.no_grad():
+            for x, y in test_loader:
+                x = x.to(device, non_blocking=True)
+                y = y.to(device, non_blocking=True)
+                if device.type == "cuda":
+                    x = x.to(memory_format=torch.channels_last)
+                target = (y == test_ai_idx).float()
+                logits = eval_model(x)
+                loss = test_loss_fn(logits, target)
+                probs = torch.sigmoid(logits / max(float(best.get("temperature", 1.0)), 1e-6))
+                test_probs.extend(probs.detach().cpu().tolist())
+                test_labels.extend(target.detach().cpu().tolist())
+                bs = y.shape[0]
+                test_loss_sum += float(loss.item()) * bs
+                test_total += bs
+        test_report = full_metric_report(
+            test_probs,
+            test_labels,
+            threshold=float(best.get("threshold", 0.5)),
+        )
+        test_report["test_loss"] = test_loss_sum / max(test_total, 1)
+        (out / "test_metrics.json").write_text(json.dumps(test_report, indent=2), encoding="utf-8")
+        print(f"saved test metrics to {out / 'test_metrics.json'}")
+
+    if args.export_release and (out / "best.pt").exists():
+        rel = out / "releases" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        rel.mkdir(parents=True, exist_ok=True)
+        for name in (
+            "best.pt",
+            "best_metrics.json",
+            "best_group_metrics.json",
+            "calibration.json",
+            "test_metrics.json",
+            "config.json",
+        ):
+            src = out / name
+            if src.exists():
+                shutil.copy2(src, rel / name)
+        (out / "latest_release.txt").write_text(str(rel), encoding="utf-8")
+        print(f"saved release bundle to {rel}")
 
     print(f"saved best model to {out / 'best.pt'} with best_auc={best_auc:.4f}")
 

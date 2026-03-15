@@ -21,6 +21,26 @@ export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:T
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-8}"
+export DRY_RUN="${DRY_RUN:-0}"
+export RUN_VIDEO_DATA_PULL="${RUN_VIDEO_DATA_PULL:-1}"
+export VIDEO_MODE="${VIDEO_MODE:-snapshot}"
+export VIDEO_SNAPSHOT_MAX_WORKERS="${VIDEO_SNAPSHOT_MAX_WORKERS:-1}"
+export VIDEO_REPO_BASE_PAUSE_MS="${VIDEO_REPO_BASE_PAUSE_MS:-2200}"
+export VIDEO_REPO_JITTER_MS="${VIDEO_REPO_JITTER_MS:-1800}"
+export VIDEO_COPY_SLEEP_MS="${VIDEO_COPY_SLEEP_MS:-15}"
+export VIDEO_SLEEP_MS="${VIDEO_SLEEP_MS:-120}"
+export VIDEO_JITTER_MS="${VIDEO_JITTER_MS:-80}"
+export VIDEO_CHUNK_PAUSE_MS="${VIDEO_CHUNK_PAUSE_MS:-1000}"
+export VIDEO_REPO_COOLDOWN_MS="${VIDEO_REPO_COOLDOWN_MS:-3000}"
+export VIDEO_RETRIES="${VIDEO_RETRIES:-5}"
+
+run_cmd() {
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo "[DRY_RUN] $*"
+  else
+    eval "$*"
+  fi
+}
 
 # 1) Optional system deps for Ubuntu hosts
 if command -v apt-get >/dev/null 2>&1; then
@@ -35,17 +55,17 @@ fi
 
 # 2) Python environment + package deps
 if [[ ! -d .venv ]]; then
-  python3 -m venv .venv
+  run_cmd "python3 -m venv .venv"
 fi
 source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -e . datasets
+run_cmd "python -m pip install --upgrade pip"
+run_cmd "pip install -e . datasets"
 
 # 3) Optimized full training pipeline
-bash scripts/full_pipeline_4090.sh
+run_cmd "bash scripts/full_pipeline_4090.sh"
 
 # 4) Optional serve right after training
 if [[ "$AUTO_SERVE" == "1" ]]; then
   MODEL_GLOB="${MODEL_GLOB:-./artifacts_ens/m*/best.pt}"
-  HOST="$HOST" PORT="$PORT" MODEL_GLOB="$MODEL_GLOB" bash scripts/serve_prod_4090.sh
+  run_cmd "HOST=\"$HOST\" PORT=\"$PORT\" MODEL_GLOB=\"$MODEL_GLOB\" bash scripts/serve_prod_4090.sh"
 fi

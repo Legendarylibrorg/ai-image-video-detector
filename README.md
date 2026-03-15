@@ -15,8 +15,15 @@ A production-oriented, forensics-first detector with:
 
 ## Quick start
 
+Linux (Ubuntu/Debian) prerequisites:
+
 ```bash
-python -m venv .venv
+sudo apt-get update
+sudo apt-get install -y python3 python3-venv python3-pip build-essential
+```
+
+```bash
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 ```
@@ -45,9 +52,31 @@ aid-train --data ./data --epochs 12 --img-size 256 --out ./artifacts
 Outputs include:
 
 - `best.pt` (model + threshold + temperature + model_id)
+- `last.pt` (full training state for resume: model/EMA/optimizer/scheduler/scaler)
+- `epoch_XXX.pt` (periodic full training snapshots)
 - `best_metrics.json` (AUC/F1/FPR/TPR/ECE/Brier)
 - `best_group_metrics.json` (source/camera grouped results)
 - `calibration.json`
+- `last_metrics.json` (latest validation metrics)
+- `test_metrics.json` (written when `data/test/{ai,real}` exists)
+
+Resume or control periodic checkpointing:
+
+```bash
+aid-train --data ./data --out ./artifacts --epochs 12 --resume ./artifacts/last.pt --save-every 1
+```
+
+Recommended stability flags:
+
+```bash
+aid-train --data ./data --out ./artifacts --epochs 30 --patience 5 --min-delta 0.0005 --seed 1337 --deterministic
+```
+
+Extra training artifacts:
+- `config.json` (CLI args + git commit + dataset counts)
+- `training_log.jsonl` (per-epoch append-only logs)
+- `latest_checkpoint.txt` (points to most recent checkpoint)
+- `releases/<timestamp>/...` and `latest_release.txt` (versioned export bundle)
 
 ## Predict (ensemble + unknown mode)
 
@@ -130,6 +159,17 @@ Train:
 aid-video-train --data ./video_data --out ./video_artifacts --epochs 8 --frames 24 --img-size 224
 ```
 
+Video training also writes resumable checkpoints:
+- `last_video.pt` and `epoch_video_XXX.pt`
+- Resume with `--resume ./video_artifacts/last_video.pt`
+- Also supports `--patience`, `--min-delta`, `--seed`, `--deterministic`, and release export.
+
+Export best artifacts into a versioned release bundle:
+
+```bash
+python scripts/export_best_release.py --out ./artifacts --model best.pt
+```
+
 4090-stable video training (VRAM-safe defaults):
 
 ```bash
@@ -152,6 +192,18 @@ Lowest HF API call mode (default): use snapshot pulls per repo:
 
 ```bash
 HF_TOKEN=your_token python scripts/build_video_dataset.py --mode snapshot --out ./video_data
+```
+
+Extra rate-limit-safe mode (slow, gentle request pattern):
+
+```bash
+HF_TOKEN=your_token python scripts/build_video_dataset.py \
+  --mode snapshot \
+  --snapshot-max-workers 1 \
+  --repo-base-pause-ms 2200 \
+  --repo-jitter-ms 1800 \
+  --copy-sleep-ms 15 \
+  --out ./video_data
 ```
 
 Set `HF_TOKEN` safely (do not commit tokens):
@@ -294,6 +346,7 @@ DATA_DIR=./data_best EPOCHS=14 SKIP_SWEEP=1 bash scripts/full_pipeline_4090.sh
 This executes:
 
 - dataset build (multi-split + hard negatives)
+- video dataset pull (rate-limit-friendly, staggered snapshot mode)
 - sweep runs
 - 4-model ensemble training
 - held-out test evaluation
@@ -305,6 +358,12 @@ Advanced toggles:
 
 ```bash
 RUN_HARD_MINING=1 RUN_DISTILL=1 EPOCHS=20 bash scripts/full_pipeline_4090.sh
+```
+
+Disable automatic video pull if needed:
+
+```bash
+RUN_VIDEO_DATA_PULL=0 bash scripts/one_command_4090.sh
 ```
 
 Backbone options in training:
