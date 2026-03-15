@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# Python
+.venv/
+.pycache/
+__pycache__/
+*.pyc
+
+# Data and artifacts
+data/
+data_best/
+video_data/
+artifacts/
+artifacts_ens/
+artifacts_sweep/
+video_artifacts/
+data_refresh/
+data_new/
+
+# Misc
+*.log

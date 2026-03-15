@@ -1,0 +1,10 @@
+.venv
+.pycache
+__pycache__
+*.pyc
+.git
+.gitignore
+data
+data_best
+artifacts
+artifacts_sweep

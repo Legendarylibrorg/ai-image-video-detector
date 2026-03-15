@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SignalScope - AI Image Detector</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/web/style.css" />
+  </head>
+  <body>
+    <div class="bg-orb orb-a"></div>
+    <div class="bg-orb orb-b"></div>
+    <main class="layout">
+      <header class="hero">
+        <p class="tag">FORENSIC CLASSIFIER</p>
+        <h1>SignalScope</h1>
+        <p class="subtitle">Upload an image and get model confidence, anomaly signals, provenance clues, and OOD rejection in one report.</p>
+      </header>
+
+      <section class="panel upload-panel">
+        <label id="dropzone" class="dropzone" for="fileInput">
+          <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden />
+          <div class="drop-copy">
+            <h2>Drop image here</h2>
+            <p>or click to browse</p>
+            <span class="hint">Max size is controlled by backend policy</span>
+          </div>
+        </label>
+
+        <div class="actions">
+          <button id="analyzeBtn" class="btn" disabled>Analyze</button>
+          <p id="status" class="status">Waiting for image</p>
+        </div>
+
+        <div class="preview-wrap">
+          <img id="preview" alt="Selected image preview" />
+        </div>
+      </section>
+
+      <section id="resultPanel" class="panel result-panel hidden">
+        <div class="result-top">
+          <h2 id="resultLabel">Result</h2>
+          <span id="resultBadge" class="badge">-</span>
+        </div>
+
+        <div class="meter-grid">
+          <article class="meter-card">
+            <h3>AI Probability</h3>
+            <p id="probAi" class="value">0.000</p>
+            <div class="meter"><span id="probBar"></span></div>
+          </article>
+          <article class="meter-card">
+            <h3>Combined Risk</h3>
+            <p id="combinedRisk" class="value">0.000</p>
+            <div class="meter"><span id="riskBar"></span></div>
+          </article>
+          <article class="meter-card">
+            <h3>Metadata Score</h3>
+            <p id="metadataScore" class="value">0.000</p>
+            <div class="meter"><span id="metaBar"></span></div>
+          </article>
+          <article class="meter-card">
+            <h3>OOD Score</h3>
+            <p id="oodScore" class="value">0.000</p>
+            <div class="meter"><span id="oodBar"></span></div>
+          </article>
+        </div>
+
+        <div class="detail-grid">
+          <article class="detail-card">
+            <h3>Metadata Flags</h3>
+            <ul id="metadataFlags" class="chip-list"></ul>
+          </article>
+          <article class="detail-card">
+            <h3>Provenance Flags</h3>
+            <ul id="provenanceFlags" class="chip-list"></ul>
+          </article>
+          <article class="detail-card">
+            <h3>OOD Flags</h3>
+            <ul id="oodFlags" class="chip-list"></ul>
+          </article>
+          <article class="detail-card">
+            <h3>Model Context</h3>
+            <dl class="meta-dl">
+              <div><dt>Threshold</dt><dd id="thresholdVal">-</dd></div>
+              <div><dt>Unknown Margin</dt><dd id="unknownVal">-</dd></div>
+              <div><dt>Model Count</dt><dd id="modelCountVal">-</dd></div>
+              <div><dt>Version</dt><dd id="versionVal">-</dd></div>
+            </dl>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <script src="/web/app.js" defer></script>
+  </body>
+</html>

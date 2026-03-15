@@ -1,0 +1,9 @@
+[console_scripts]
+aid-dataset = ai_image_detector.dataset_tools:main
+aid-detect = ai_image_detector.infer:main
+aid-explain = ai_image_detector.explain:main
+aid-metadata = ai_image_detector.metadata:main
+aid-robust-eval = ai_image_detector.robust_eval:main
+aid-serve = ai_image_detector.api:main
+aid-train = ai_image_detector.train:main
+aid-video-detect = ai_image_detector.video:main
