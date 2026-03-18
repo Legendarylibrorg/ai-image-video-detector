@@ -5,7 +5,8 @@ import random
 from pathlib import Path
 
 from PIL import Image, ImageFilter
-from torch.utils.data import DataLoader
+import torch
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import datasets, transforms
 
 
@@ -51,11 +52,7 @@ class RandomBlur:
         return img.filter(ImageFilter.GaussianBlur(radius=radius))
 
 
-def make_loaders(data_root: str, img_size: int, batch_size: int, num_workers: int = 4):
-    root = Path(data_root)
-    train_dir = root / "train"
-    val_dir = root / "val"
-
+def make_transforms(img_size: int):
     train_tf = transforms.Compose([
         transforms.Resize((img_size, img_size)),
         transforms.RandomHorizontalFlip(),
@@ -79,22 +76,55 @@ def make_loaders(data_root: str, img_size: int, batch_size: int, num_workers: in
         transforms.Resize((img_size, img_size)),
         transforms.ToTensor(),
     ])
+    return train_tf, val_tf
 
-    train_ds = datasets.ImageFolder(train_dir, transform=train_tf)
-    val_ds = datasets.ImageFolder(val_dir, transform=val_tf)
 
+def build_loader_kwargs(num_workers: int = 4):
     dl_kwargs = {
         "num_workers": num_workers,
-        "pin_memory": True,
+        "pin_memory": bool(torch.cuda.is_available()),
     }
     if num_workers > 0:
         dl_kwargs["persistent_workers"] = True
         dl_kwargs["prefetch_factor"] = 4
+    return dl_kwargs
+
+
+def build_weighted_sampler(targets: list[int], classes: list[str]):
+    class_counts = [0 for _ in classes]
+    for t in targets:
+        class_counts[int(t)] += 1
+    if any(c == 0 for c in class_counts):
+        raise ValueError(f"Empty class detected in train split: counts={class_counts}")
+    class_weights = [1.0 / float(c) for c in class_counts]
+    sample_weights = [class_weights[int(t)] for t in targets]
+    sampler = WeightedRandomSampler(
+        weights=torch.as_tensor(sample_weights, dtype=torch.double),
+        num_samples=len(sample_weights),
+        replacement=True,
+    )
+    return sampler, class_counts, class_weights
+
+
+def make_loaders(data_root: str, img_size: int, batch_size: int, num_workers: int = 4):
+    root = Path(data_root)
+    train_dir = root / "train"
+    val_dir = root / "val"
+
+    train_tf, val_tf = make_transforms(img_size)
+
+    train_ds = datasets.ImageFolder(train_dir, transform=train_tf)
+    val_ds = datasets.ImageFolder(val_dir, transform=val_tf)
+
+    train_targets = list(train_ds.targets)
+    sampler, class_counts, class_weights = build_weighted_sampler(train_targets, train_ds.classes)
+    dl_kwargs = build_loader_kwargs(num_workers=num_workers)
 
     train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
-        shuffle=True,
+        shuffle=False,
+        sampler=sampler,
         **dl_kwargs,
     )
     val_loader = DataLoader(
@@ -103,4 +133,16 @@ def make_loaders(data_root: str, img_size: int, batch_size: int, num_workers: in
         shuffle=False,
         **dl_kwargs,
     )
-    return train_loader, val_loader, train_ds.classes, train_ds.class_to_idx, val_ds.samples
+    train_distribution = {name: int(class_counts[idx]) for idx, name in enumerate(train_ds.classes)}
+    val_distribution = {name: int(sum(1 for t in val_ds.targets if int(t) == idx)) for idx, name in enumerate(val_ds.classes)}
+    class_weight_map = {name: float(class_weights[idx]) for idx, name in enumerate(train_ds.classes)}
+    return (
+        train_loader,
+        val_loader,
+        train_ds.classes,
+        train_ds.class_to_idx,
+        val_ds.samples,
+        train_distribution,
+        val_distribution,
+        class_weight_map,
+    )

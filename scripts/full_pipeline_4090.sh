@@ -134,10 +134,16 @@ if [[ "$SKIP_DATA" != "1" ]]; then
   fi
 
   run_cmd "$dataset_cmd"
+  if [[ "${MALWARE_SCAN:-1}" == "1" ]]; then
+    run_cmd "bash scripts/malware_scan.sh \"$DATA_DIR\""
+  fi
 fi
 
 if [[ "$RUN_VIDEO_DATA_PULL" == "1" ]]; then
   run_cmd "python scripts/build_video_dataset.py --out \"$VIDEO_OUT\" --train-per-class \"$VIDEO_TRAIN_PER_CLASS\" --val-per-class \"$VIDEO_VAL_PER_CLASS\" --mode \"$VIDEO_MODE\" --cache-dir \"$VIDEO_CACHE_DIR\" --snapshot-max-workers \"$VIDEO_SNAPSHOT_MAX_WORKERS\" --repo-base-pause-ms \"$VIDEO_REPO_BASE_PAUSE_MS\" --repo-jitter-ms \"$VIDEO_REPO_JITTER_MS\" --copy-sleep-ms \"$VIDEO_COPY_SLEEP_MS\" --sleep-ms \"$VIDEO_SLEEP_MS\" --jitter-ms \"$VIDEO_JITTER_MS\" --chunk-pause-ms \"$VIDEO_CHUNK_PAUSE_MS\" --repo-cooldown-ms \"$VIDEO_REPO_COOLDOWN_MS\" --retries \"$VIDEO_RETRIES\""
+  if [[ "${MALWARE_SCAN:-1}" == "1" ]]; then
+    run_cmd "bash scripts/malware_scan.sh \"$VIDEO_OUT\""
+  fi
 fi
 
 if [[ "$RUN_VIDEO_TRAIN" == "1" ]]; then

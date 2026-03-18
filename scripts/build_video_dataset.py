@@ -68,6 +68,18 @@ def _download_with_retry(repo: str, filename: str, token: str | None, retries: i
     return None
 
 
+def _passes_video_quality(path: Path, min_bytes: int, max_bytes: int) -> bool:
+    try:
+        n = path.stat().st_size
+    except Exception:
+        return False
+    if n < int(min_bytes):
+        return False
+    if int(max_bytes) > 0 and n > int(max_bytes):
+        return False
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser(description="Build video deepfake train/val dataset from HF")
     ap.add_argument("--out", default="video_data")
@@ -85,6 +97,8 @@ def main():
     ap.add_argument("--repo-jitter-ms", type=int, default=1800)
     ap.add_argument("--copy-sleep-ms", type=int, default=15)
     ap.add_argument("--retries", type=int, default=5)
+    ap.add_argument("--min-video-bytes", type=int, default=100000)
+    ap.add_argument("--max-video-bytes", type=int, default=0)
     ap.add_argument("--cache-dir", default="./.local/hf_hub")
     ap.add_argument("--token-env", default="HF_TOKEN")
     args = ap.parse_args()
@@ -102,6 +116,7 @@ def main():
         print(f"using_token_env={args.token_env}")
     else:
         print(f"warning_no_token env={args.token_env} (works, but lower rate limits)")
+    print(f"video_quality_filters min_bytes={args.min_video_bytes} max_bytes={args.max_video_bytes}")
 
     random.seed(args.seed)
     out = Path(args.out)
@@ -161,10 +176,11 @@ def main():
                     n = have[split][cls]
                     dst = out / split / cls / f"src={repo.split('/')[-1]}__{n:05d}{p.suffix.lower()}"
                     if not dst.exists():
-                        shutil.copy2(p, dst)
-                        have[split][cls] += 1
-                        if args.copy_sleep_ms > 0:
-                            time.sleep(args.copy_sleep_ms / 1000.0)
+                        if _passes_video_quality(p, args.min_video_bytes, args.max_video_bytes):
+                            shutil.copy2(p, dst)
+                            have[split][cls] += 1
+                            if args.copy_sleep_ms > 0:
+                                time.sleep(args.copy_sleep_ms / 1000.0)
 
                 if done(have, need):
                     break
@@ -209,9 +225,11 @@ def main():
                         n = have[split][cls]
                         dst = out / split / cls / f"src={repo.split('/')[-1]}__{n:05d}{Path(f).suffix.lower()}"
                         if not dst.exists():
-                            shutil.copy2(local, dst)
-                            have[split][cls] += 1
-                            pulled += 1
+                            local_path = Path(local)
+                            if _passes_video_quality(local_path, args.min_video_bytes, args.max_video_bytes):
+                                shutil.copy2(local_path, dst)
+                                have[split][cls] += 1
+                                pulled += 1
 
                         jitter = random.randint(0, max(args.jitter_ms, 0))
                         time.sleep((args.sleep_ms + jitter) / 1000.0)

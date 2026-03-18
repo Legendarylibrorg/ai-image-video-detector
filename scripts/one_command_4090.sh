@@ -46,10 +46,12 @@ run_cmd() {
 if command -v apt-get >/dev/null 2>&1; then
   if command -v sudo >/dev/null 2>&1; then
     sudo apt-get update
-    sudo apt-get install -y python3 python3-venv python3-pip build-essential
+    sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
+    sudo freshclam || true
   else
     apt-get update
-    apt-get install -y python3 python3-venv python3-pip build-essential
+    apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
+    freshclam || true
   fi
 fi
 

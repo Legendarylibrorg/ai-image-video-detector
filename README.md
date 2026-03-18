@@ -428,6 +428,7 @@ bash scripts/do.sh collect-diverse # super-diverse collection preset (recommende
 bash scripts/do.sh collect-image  # image dataset only
 bash scripts/do.sh collect-video  # video dataset only
 bash scripts/do.sh ingest         # ingest incoming model outputs only
+bash scripts/do.sh scan           # malware scan now
 bash scripts/do.sh train          # image training pipeline only
 bash scripts/do.sh train-all      # image + video training (no new data pull)
 bash scripts/do.sh train-all-types # collect-diverse + full image/video training + artifact validation
@@ -450,6 +451,7 @@ Training/collection safety:
 - collection auto-skips while a training lock is active
 - continuous collection waits and retries after training completes
 - fresh model outputs are ingested from `./incoming_model_outputs/{ai,real}` into `./data_new/train/{ai,real}`
+- malware scanning is automatic during collection/ingest (set `MALWARE_SCAN=0` to disable)
 
 Diverse dataset preset:
 - `bash scripts/do.sh collect-diverse` expands toward memes/captions, screenshots/UI, posters/infographics, scanned docs/receipts/IDs, anime/illustration/3D/CGI, watermark/recompression styles, and newer generator outputs.

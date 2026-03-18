@@ -18,11 +18,12 @@ import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
+from sklearn.metrics import average_precision_score, balanced_accuracy_score, confusion_matrix, precision_recall_fscore_support, roc_auc_score
 from torchvision import datasets, transforms
 
 from .checkpoints import load_checkpoint, resolve_checkpoint_path, save_safetensors_checkpoint
 from .data import make_loaders
-from .metrics import find_best_threshold, fit_temperature, full_metric_report, sigmoid
+from .metrics import fit_temperature, full_metric_report, sigmoid
 from .model import build_model
 
 
@@ -94,6 +95,52 @@ class EMA:
                 v.copy_(v * self.decay + msd[k] * (1.0 - self.decay))
 
 
+def _binary_logits_to_two_class(logits: torch.Tensor) -> torch.Tensor:
+    return torch.stack((-logits, logits), dim=1)
+
+
+def _eval_metrics_from_probs(probs: np.ndarray, labels: np.ndarray, threshold: float) -> dict[str, Any]:
+    y_true = labels.astype(np.int64)
+    y_pred = (probs >= threshold).astype(np.int64)
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+    prec, rec, f1, support = precision_recall_fscore_support(y_true, y_pred, labels=[0, 1], zero_division=0)
+    try:
+        auc = float(roc_auc_score(y_true, probs))
+    except Exception:
+        auc = 0.5
+    try:
+        pr_auc = float(average_precision_score(y_true, probs))
+    except Exception:
+        pr_auc = 0.5
+    try:
+        bal_acc = float(balanced_accuracy_score(y_true, y_pred))
+    except Exception:
+        bal_acc = 0.0
+    tn, fp, fn, tp = cm.ravel()
+    pred_unique = np.unique(y_pred)
+    return {
+        "threshold": float(threshold),
+        "auc": auc,
+        "pr_auc": pr_auc,
+        "balanced_accuracy": bal_acc,
+        "confusion_matrix": cm.tolist(),
+        "tn": int(tn),
+        "fp": int(fp),
+        "fn": int(fn),
+        "tp": int(tp),
+        "precision_real": float(prec[0]),
+        "recall_real": float(rec[0]),
+        "f1_real": float(f1[0]),
+        "support_real": int(support[0]),
+        "precision_ai": float(prec[1]),
+        "recall_ai": float(rec[1]),
+        "f1_ai": float(f1[1]),
+        "support_ai": int(support[1]),
+        "predicts_single_class": bool(len(pred_unique) == 1),
+        "predicted_classes": pred_unique.astype(int).tolist(),
+    }
+
+
 def evaluate(
     model: nn.Module,
     loader,
@@ -118,10 +165,9 @@ def evaluate(
             y = y.to(device, non_blocking=True)
             if device.type == "cuda":
                 x = x.to(memory_format=torch.channels_last)
-            target = (y == ai_idx).float()
-
             logits = model(x)
-            loss = loss_fn(logits, target)
+            logits_2c = _binary_logits_to_two_class(logits)
+            loss = loss_fn(logits_2c, y.long())
             probs = torch.sigmoid(logits)
 
             bs = y.shape[0]
@@ -129,7 +175,7 @@ def evaluate(
             offset += bs
 
             probs_all.extend(probs.detach().cpu().tolist())
-            labels_all.extend(target.detach().cpu().tolist())
+            labels_all.extend((y == ai_idx).float().detach().cpu().tolist())
             logits_all.extend(logits.detach().cpu().tolist())
             paths_all.extend(batch_paths)
 
@@ -175,7 +221,7 @@ def main():
     ap.add_argument("--num-workers", type=int, default=4)
     ap.add_argument("--weight-decay", type=float, default=1e-4)
     ap.add_argument("--ema-decay", type=float, default=0.999)
-    ap.add_argument("--loss", choices=["bce", "focal"], default="focal")
+    ap.add_argument("--loss", choices=["ce", "bce", "focal"], default="ce")
     ap.add_argument("--focal-gamma", type=float, default=2.0)
     ap.add_argument("--backbone", choices=["tiny", "effb0", "effb2"], default="tiny")
     ap.add_argument("--no-pretrained-backbone", action="store_true")
@@ -185,6 +231,8 @@ def main():
     ap.add_argument("--compile", action="store_true", default=True)
     ap.add_argument("--no-compile", dest="compile", action="store_false")
     ap.add_argument("--threshold-objective", choices=["f1", "balanced", "youden"], default="balanced")
+    ap.add_argument("--decision-threshold", type=float, default=0.5, help="Binary decision threshold for class=ai")
+    ap.add_argument("--degenerate-patience", type=int, default=2, help="Fail training after N consecutive degenerate val epochs")
     ap.add_argument("--resume", default="", help="Path to training checkpoint (default: <out>/last.pt if present)")
     ap.add_argument("--save-every", type=int, default=1, help="Save epoch checkpoint every N epochs")
     ap.add_argument("--patience", type=int, default=0, help="Early stopping patience in epochs (0 disables)")
@@ -222,15 +270,17 @@ def main():
             torch.backends.cudnn.benchmark = True
         torch.set_float32_matmul_precision("high")
 
-    if args.num_workers <= 0:
+    if args.num_workers < 0:
         cpu = os.cpu_count() or 8
         args.num_workers = min(12, max(4, cpu // 2))
-    train_loader, val_loader, classes, class_to_idx, val_samples = make_loaders(
+    train_loader, val_loader, classes, class_to_idx, val_samples, train_distribution, val_distribution, class_weight_map = make_loaders(
         args.data,
         args.img_size,
         args.batch_size,
         num_workers=args.num_workers,
     )
+    print(f"class_distribution train={train_distribution} val={val_distribution}")
+    print(f"class_weights_inverse_freq={class_weight_map}")
 
     run_config = {
         "args": vars(args),
@@ -243,6 +293,7 @@ def main():
     if set(classes) != {"ai", "real"}:
         raise ValueError(f"Expected classes exactly ai/real, got {classes}")
     ai_idx = int(class_to_idx["ai"])
+    class_weights_tensor = torch.tensor([class_weight_map[classes[0]], class_weight_map[classes[1]]], dtype=torch.float32, device=device)
 
     model = build_model(
         backbone=args.backbone,
@@ -257,15 +308,18 @@ def main():
             print(f"compile_disabled reason={exc}")
     opt = AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     sched = CosineAnnealingLR(opt, T_max=max(args.epochs, 1), eta_min=args.lr * 0.05)
-    loss_fn: nn.Module = nn.BCEWithLogitsLoss() if args.loss == "bce" else FocalBCE(gamma=args.focal_gamma)
+    if args.loss != "ce":
+        print(f"loss_override requested={args.loss} active=ce")
+    loss_fn: nn.Module = nn.CrossEntropyLoss(weight=class_weights_tensor)
 
     ema = EMA(model, decay=args.ema_decay)
     use_amp = bool(args.amp and device.type == "cuda")
-    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     grad_accum = max(1, int(args.grad_accum))
 
     best_auc = -1.0
     no_improve = 0
+    degenerate_epochs = 0
     model_id = f"advanced-ai-detector-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
     start_epoch = 1
 
@@ -280,6 +334,7 @@ def main():
                 "scaler": scaler.state_dict(),
                 "best_auc": float(best_auc),
                 "no_improve": int(no_improve),
+                "degenerate_epochs": int(degenerate_epochs),
                 "model_id": model_id,
                 "args": vars(args),
                 "classes": classes,
@@ -304,6 +359,7 @@ def main():
             scaler.load_state_dict(ckpt["scaler"])
         best_auc = float(ckpt.get("best_auc", best_auc))
         no_improve = int(ckpt.get("no_improve", no_improve))
+        degenerate_epochs = int(ckpt.get("degenerate_epochs", degenerate_epochs))
         model_id = str(ckpt.get("model_id", model_id))
         start_epoch = int(ckpt.get("epoch", 0)) + 1
         print(f"resumed_from={resume_path} start_epoch={start_epoch} best_auc={best_auc:.4f}")
@@ -319,11 +375,10 @@ def main():
                 y = y.to(device, non_blocking=True)
                 if device.type == "cuda":
                     x = x.to(memory_format=torch.channels_last)
-                target = (y == ai_idx).float()
-
-                with torch.cuda.amp.autocast(enabled=use_amp):
+                with torch.amp.autocast("cuda", enabled=use_amp):
                     logits = model(x)
-                    loss = loss_fn(logits, target) / grad_accum
+                    logits_2c = _binary_logits_to_two_class(logits)
+                    loss = loss_fn(logits_2c, y.long()) / grad_accum
                 if not torch.isfinite(loss):
                     skipped_batches += 1
                     opt.zero_grad(set_to_none=True)
@@ -362,37 +417,45 @@ def main():
 
             temperature, temp_nll = fit_temperature(val_logits, val_labels)
             val_probs = sigmoid(val_logits / max(temperature, 1e-6))
-            threshold, score, tuned_metrics = find_best_threshold(
-                val_probs,
-                val_labels,
-                objective=args.threshold_objective,
-            )
-
-            report = full_metric_report(val_probs, val_labels, threshold)
+            threshold = float(args.decision_threshold)
+            report = _eval_metrics_from_probs(val_probs, val_labels, threshold)
             report["val_loss"] = float(val_loss)
             report["temperature"] = float(temperature)
             report["temperature_nll"] = float(temp_nll)
-            report["threshold_objective"] = args.threshold_objective
-            report["threshold_objective_score"] = float(score)
-            report["tuned_metrics"] = tuned_metrics
+            report["composite_metrics"] = full_metric_report(val_probs, val_labels, threshold)
             report["lr"] = float(opt.param_groups[0]["lr"])
             report["skipped_batches"] = skipped_batches
 
             grouped = _group_report(val_probs, val_labels, val_paths, threshold)
+            if report["predicts_single_class"]:
+                print(f"warning_single_class_predictions classes={report['predicted_classes']}")
 
             print(
-                "epoch={} val_loss={:.5f} auc={:.4f} f1={:.4f} ece={:.4f} brier={:.4f} th={:.3f} temp={:.3f} lr={:.6f}".format(
+                "epoch={} val_loss={:.5f} auc={:.4f} pr_auc={:.4f} bal_acc={:.4f} th={:.3f} temp={:.3f} precision_ai={:.4f} recall_ai={:.4f} f1_ai={:.4f} precision_real={:.4f} recall_real={:.4f} f1_real={:.4f} lr={:.6f}".format(
                     epoch,
                     report["val_loss"],
                     report["auc"],
-                    report["f1"],
-                    report["ece"],
-                    report["brier"],
+                    report["pr_auc"],
+                    report["balanced_accuracy"],
                     threshold,
                     temperature,
+                    report["precision_ai"],
+                    report["recall_ai"],
+                    report["f1_ai"],
+                    report["precision_real"],
+                    report["recall_real"],
+                    report["f1_real"],
                     report["lr"],
                 )
             )
+            degenerate = report["predicts_single_class"] or report["recall_ai"] <= 0.0 or report["recall_real"] <= 0.0
+            if degenerate:
+                degenerate_epochs += 1
+                print(f"degenerate_validation epoch={epoch} streak={degenerate_epochs} limit={args.degenerate_patience}")
+                if args.degenerate_patience > 0 and degenerate_epochs >= args.degenerate_patience:
+                    raise RuntimeError("degenerate_validation_fail")
+            else:
+                degenerate_epochs = 0
 
             last = {
                 "epoch": epoch,
@@ -471,10 +534,10 @@ def main():
             batch_size=args.batch_size,
             shuffle=False,
             num_workers=args.num_workers,
-            pin_memory=True,
+            pin_memory=bool(torch.cuda.is_available()),
         )
         test_ai_idx = int(test_ds.class_to_idx["ai"])
-        test_loss_fn = nn.BCEWithLogitsLoss()
+        test_loss_fn = nn.CrossEntropyLoss(weight=class_weights_tensor)
         test_loss_sum = 0.0
         test_total = 0
         test_probs: list[float] = []
@@ -485,19 +548,19 @@ def main():
                 y = y.to(device, non_blocking=True)
                 if device.type == "cuda":
                     x = x.to(memory_format=torch.channels_last)
-                target = (y == test_ai_idx).float()
                 logits = eval_model(x)
-                loss = test_loss_fn(logits, target)
+                logits_2c = _binary_logits_to_two_class(logits)
+                loss = test_loss_fn(logits_2c, y.long())
                 probs = torch.sigmoid(logits / max(float(best.get("temperature", 1.0)), 1e-6))
                 test_probs.extend(probs.detach().cpu().tolist())
-                test_labels.extend(target.detach().cpu().tolist())
+                test_labels.extend((y == test_ai_idx).float().detach().cpu().tolist())
                 bs = y.shape[0]
                 test_loss_sum += float(loss.item()) * bs
                 test_total += bs
-        test_report = full_metric_report(
-            test_probs,
-            test_labels,
-            threshold=float(best.get("threshold", 0.5)),
+        test_report = _eval_metrics_from_probs(
+            np.asarray(test_probs, dtype=np.float64),
+            np.asarray(test_labels, dtype=np.float64),
+            threshold=float(best.get("threshold", args.decision_threshold)),
         )
         test_report["test_loss"] = test_loss_sum / max(test_total, 1)
         (out / "test_metrics.json").write_text(json.dumps(test_report, indent=2), encoding="utf-8")

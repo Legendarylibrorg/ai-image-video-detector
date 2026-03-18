@@ -10,6 +10,7 @@ set -euo pipefail
 #   bash scripts/do.sh collect-image
 #   bash scripts/do.sh collect-video
 #   bash scripts/do.sh ingest
+#   bash scripts/do.sh scan
 #   bash scripts/do.sh train
 #   bash scripts/do.sh train-all-types
 #   bash scripts/do.sh serve
@@ -57,6 +58,18 @@ skip_collection_if_training() {
   return 1
 }
 
+run_malware_scan() {
+  if [[ "${MALWARE_SCAN:-1}" != "1" ]]; then
+    echo "malware_scan=disabled"
+    return 0
+  fi
+  local -a targets=("$@")
+  if [[ "${#targets[@]}" -eq 0 ]]; then
+    targets=("${DATA_DIR:-./data_best}" "${NEW_DATA_DST:-./data_new/train}" "${VIDEO_OUT:-./video_data}" "${MODEL_OUTPUTS_SRC:-./incoming_model_outputs}")
+  fi
+  bash scripts/malware_scan.sh "${targets[@]}"
+}
+
 collect_image_data() {
   ensure_env
   python scripts/build_best_dataset.py \
@@ -67,12 +80,18 @@ collect_image_data() {
     --discover-hf \
     --hf-discovery-limit "${BEST_DS_HF_DISCOVERY_LIMIT:-90}" \
     --hf-max-sources "${BEST_DS_HF_MAX_SOURCES:-180}" \
+    --hf-min-downloads "${BEST_DS_HF_MIN_DOWNLOADS:-80}" \
+    --hf-min-likes "${BEST_DS_HF_MIN_LIKES:-2}" \
+    --hf-min-quality-score "${BEST_DS_HF_MIN_QUALITY_SCORE:-1.7}" \
+    --hf-print-top "${BEST_DS_HF_PRINT_TOP:-15}" \
     --hf-cache-file "${BEST_DS_HF_CACHE_FILE:-./.local/hf_discovered_sources.txt}" \
     --hf-cache-only-if-present \
     --cache-dir "${BEST_DS_CACHE_DIR:-./.local/hf}" \
     --streaming \
     --stream-buffer-size "${BEST_DS_STREAM_BUFFER_SIZE:-12000}" \
     --max-samples-per-source "${BEST_DS_MAX_SAMPLES_PER_SOURCE:-45000}" \
+    --acceptance-warmup-samples "${BEST_DS_ACCEPTANCE_WARMUP_SAMPLES:-400}" \
+    --min-acceptance-rate "${BEST_DS_MIN_ACCEPTANCE_RATE:-0.01}" \
     --repo-base-pause-ms "${BEST_DS_REPO_BASE_PAUSE_MS:-1100}" \
     --repo-jitter-ms "${BEST_DS_REPO_JITTER_MS:-900}" \
     --repo-cooldown-ms "${BEST_DS_REPO_COOLDOWN_MS:-45000}" \
@@ -82,6 +101,7 @@ collect_image_data() {
     --min-entropy "${BEST_DS_MIN_ENTROPY:-3.4}" \
     --hardneg-fraction "${BEST_DS_HARDNEG_FRACTION:-0.8}" \
     --local-source "${BEST_DS_LOCAL_SOURCES:-./data}"
+  run_malware_scan "${DATA_DIR:-./data_best}"
 }
 
 ingest_outputs() {
@@ -90,6 +110,7 @@ ingest_outputs() {
     --src "${MODEL_OUTPUTS_SRC:-./incoming_model_outputs}" \
     --dst "${NEW_DATA_DST:-./data_new/train}" \
     --archive "${MODEL_OUTPUTS_ARCHIVE:-./incoming_model_outputs/_processed}"
+  run_malware_scan "${NEW_DATA_DST:-./data_new/train}" "${MODEL_OUTPUTS_SRC:-./incoming_model_outputs}"
 }
 
 collect_diverse_image_data() {
@@ -108,6 +129,8 @@ collect_diverse_image_data() {
     --streaming
     --stream-buffer-size "${DIVERSE_STREAM_BUFFER_SIZE:-16000}"
     --max-samples-per-source "${DIVERSE_MAX_SAMPLES_PER_SOURCE:-80000}"
+    --acceptance-warmup-samples "${DIVERSE_ACCEPTANCE_WARMUP_SAMPLES:-450}"
+    --min-acceptance-rate "${DIVERSE_MIN_ACCEPTANCE_RATE:-0.012}"
     --repo-base-pause-ms "${DIVERSE_REPO_BASE_PAUSE_MS:-1400}"
     --repo-jitter-ms "${DIVERSE_REPO_JITTER_MS:-1200}"
     --repo-cooldown-ms "${DIVERSE_REPO_COOLDOWN_MS:-45000}"
@@ -123,6 +146,10 @@ collect_diverse_image_data() {
     --discover-hf
     --hf-discovery-limit "${DIVERSE_HF_DISCOVERY_LIMIT:-140}"
     --hf-max-sources "${DIVERSE_HF_MAX_SOURCES:-320}"
+    --hf-min-downloads "${DIVERSE_HF_MIN_DOWNLOADS:-100}"
+    --hf-min-likes "${DIVERSE_HF_MIN_LIKES:-2}"
+    --hf-min-quality-score "${DIVERSE_HF_MIN_QUALITY_SCORE:-1.85}"
+    --hf-print-top "${DIVERSE_HF_PRINT_TOP:-20}"
   )
   local -a cache_args=(--no-discover-hf --sources-file "$hf_cache")
   local -a full_args=("${common_args[@]}")
@@ -147,6 +174,7 @@ collect_diverse_image_data() {
     echo "collect_diverse_sources=local_only reason=hf_cache_missing"
   fi
   python scripts/build_best_dataset.py "${full_args[@]}" "${diverse_query_args[@]}"
+  run_malware_scan "${DATA_DIR:-./data_best}"
 
   python scripts/audit_diversity.py \
     --data "${DATA_DIR:-./data_best}" \
@@ -183,7 +211,10 @@ collect_video_data() {
     --jitter-ms "${VIDEO_JITTER_MS:-80}" \
     --chunk-pause-ms "${VIDEO_CHUNK_PAUSE_MS:-1000}" \
     --repo-cooldown-ms "${VIDEO_REPO_COOLDOWN_MS:-3000}" \
-    --retries "${VIDEO_RETRIES:-5}"
+    --retries "${VIDEO_RETRIES:-5}" \
+    --min-video-bytes "${VIDEO_MIN_BYTES:-100000}" \
+    --max-video-bytes "${VIDEO_MAX_BYTES:-0}"
+  run_malware_scan "${VIDEO_OUT:-./video_data}"
 }
 
 train_image_pipeline() {
@@ -304,6 +335,10 @@ case "$cmd" in
     ingest_outputs
     ;;
 
+  scan)
+    run_malware_scan "$@"
+    ;;
+
   train|train-image)
     # Image pipeline only, assumes data already collected.
     with_training_lock train_image_pipeline
@@ -370,7 +405,7 @@ case "$cmd" in
     ;;
 
   *)
-    echo "usage: bash scripts/do.sh [start|start-v2|collect|collect-diverse|collect-image|collect-video|ingest|train|train-video|train-all|train-all-types|autocollect|serve|detect <image>|status]"
+    echo "usage: bash scripts/do.sh [start|start-v2|collect|collect-diverse|collect-image|collect-video|ingest|scan [paths...]|train|train-video|train-all|train-all-types|autocollect|serve|detect <image>|status]"
     exit 2
     ;;
 esac

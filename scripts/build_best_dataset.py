@@ -39,6 +39,7 @@ DEFAULT_DISCOVERY_QUERIES = [
 ]
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+LOW_QUALITY_NAME_RE = re.compile(r"(^|[^a-z0-9])(toy|dummy|sample|mini|tiny|test)([^a-z0-9]|$)")
 
 
 def normalize_label(v) -> Optional[str]:
@@ -227,15 +228,19 @@ def discover_hf_sources(
     queries: Sequence[str],
     per_query_limit: int,
     max_sources: int,
+    min_downloads: int,
+    min_likes: int,
+    min_quality_score: float,
+    print_top_n: int,
 ) -> List[str]:
     if HfApi is None:
         print("warning_hf_discovery_unavailable reason=huggingface_hub_missing")
         return []
     api = HfApi()
-    found: List[str] = []
+    found: List[Tuple[str, float, int, int]] = []
     for q in queries:
         try:
-            matches = api.list_datasets(search=q, limit=per_query_limit)
+            matches = api.list_datasets(search=q, limit=per_query_limit, sort="downloads", direction=-1)
         except Exception as e:
             print(f"warning_hf_discovery_query_failed query={q!r} reason={e}")
             continue
@@ -247,13 +252,22 @@ def discover_hf_sources(
             tags = [str(t).lower() for t in (getattr(ds, "tags", None) or [])]
             looks_image = any("image" in t for t in tags) or any(k in low for k in ["image", "img", "cifake"])
             looks_detection = any(k in low for k in ["fake", "deepfake", "generated", "synthetic", "real"])
-            if looks_image and looks_detection:
-                found.append(ds_id)
-            if len(found) >= max_sources:
-                break
-        if len(found) >= max_sources:
-            break
-    return unique_preserve(found)[:max_sources]
+            if not (looks_image and looks_detection):
+                continue
+            downloads = int(getattr(ds, "downloads", 0) or 0)
+            likes = int(getattr(ds, "likes", 0) or 0)
+            if downloads < min_downloads or likes < min_likes:
+                continue
+            score = min(3.0, math.log10(max(1, downloads) + 1.0)) + min(2.0, math.log10(max(1, likes) + 1.0))
+            if LOW_QUALITY_NAME_RE.search(ds_id.lower()):
+                score -= 0.8
+            if score < min_quality_score:
+                continue
+            found.append((ds_id, score, downloads, likes))
+    found_sorted = sorted(found, key=lambda x: x[1], reverse=True)
+    for ds_id, score, dl, lk in found_sorted[: max(0, int(print_top_n))]:
+        print(f"hf_candidate id={ds_id} score={score:.3f} downloads={dl} likes={lk}")
+    return unique_preserve([x[0] for x in found_sorted])[:max_sources]
 
 
 def likely_rate_limited(msg: str) -> bool:
@@ -315,6 +329,10 @@ def build_source_list(args) -> List[str]:
                 queries=args.hf_query or DEFAULT_DISCOVERY_QUERIES,
                 per_query_limit=args.hf_discovery_limit,
                 max_sources=args.hf_max_sources,
+                min_downloads=args.hf_min_downloads,
+                min_likes=args.hf_min_likes,
+                min_quality_score=args.hf_min_quality_score,
+                print_top_n=args.hf_print_top,
             )
             if cache_path:
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -349,6 +367,10 @@ def main():
     ap.add_argument("--hf-query", action="append", default=[])
     ap.add_argument("--hf-discovery-limit", type=int, default=120, help="Per-query max datasets to scan in discovery")
     ap.add_argument("--hf-max-sources", type=int, default=260, help="Global cap on discovered dataset ids")
+    ap.add_argument("--hf-min-downloads", type=int, default=80)
+    ap.add_argument("--hf-min-likes", type=int, default=2)
+    ap.add_argument("--hf-min-quality-score", type=float, default=1.7)
+    ap.add_argument("--hf-print-top", type=int, default=15)
     ap.add_argument("--hf-cache-file", default="", help="Optional file path to cache discovered HF source ids")
     ap.add_argument("--hf-cache-only-if-present", action="store_true", default=True, help="If cache file exists, use it and skip live HF discovery calls")
     ap.add_argument("--no-hf-cache-only-if-present", dest="hf_cache_only_if_present", action="store_false")
@@ -357,6 +379,8 @@ def main():
     ap.add_argument("--cache-dir", default="", help="HF datasets cache directory (improves resume and avoids repeated downloads)")
     ap.add_argument("--stream-buffer-size", type=int, default=12000, help="Shuffle buffer for streaming datasets")
     ap.add_argument("--max-samples-per-source", type=int, default=60000, help="Max examples to inspect per source before moving on")
+    ap.add_argument("--acceptance-warmup-samples", type=int, default=400)
+    ap.add_argument("--min-acceptance-rate", type=float, default=0.01)
     ap.add_argument("--repo-base-pause-ms", type=int, default=900, help="Base pause between HF repositories")
     ap.add_argument("--repo-jitter-ms", type=int, default=900, help="Extra random pause between HF repositories")
     ap.add_argument("--repo-cooldown-ms", type=int, default=45000, help="Cooldown after rate-limit or repeated source failures")
@@ -373,6 +397,7 @@ def main():
         print(f"using_token_env={args.token_env}")
     else:
         print(f"warning_no_token env={args.token_env} (public datasets still work, but with lower limits)")
+    print(f"hf_quality_filters min_downloads={args.hf_min_downloads} min_likes={args.hf_min_likes} min_score={args.hf_min_quality_score} min_acceptance_rate={args.min_acceptance_rate}")
 
     if args.discover_only:
         hf_sources = build_source_list(args)
@@ -506,6 +531,12 @@ def main():
             if done(counts, targets):
                 break
             processed_total += 1
+            if processed_total >= int(args.acceptance_warmup_samples):
+                acceptance_rate = accepted_total / float(max(1, processed_total))
+                if acceptance_rate < float(args.min_acceptance_rate):
+                    source_rejects["low_acceptance_rate"] += 1
+                    print(f"early_stop_source={src} reason=low_acceptance_rate accepted={accepted_total} processed={processed_total} rate={acceptance_rate:.5f}")
+                    break
             if accepted_total >= args.max_unique_per_source:
                 source_rejects["source_total_cap"] += 1
                 break
@@ -538,7 +569,7 @@ def main():
         source_reports.append(report)
         print(
             f"loaded_source={src} accepted_ai={source_counts['ai']} accepted_real={source_counts['real']} "
-            f"processed={processed_total} rejected={sum(source_rejects.values())}"
+            f"processed={processed_total} rejected={sum(source_rejects.values())} acceptance_rate={(accepted_total / float(max(1, processed_total))):.5f}"
         )
 
     for local_root in args.local_source:
