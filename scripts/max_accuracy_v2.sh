@@ -37,7 +37,7 @@ for ((i=1; i<=REFINE_LOOPS; i++)); do
     --out "$ENS_OUT/hard_mined_v2_loop$i" \
     --top-k "$HARD_TOPK"
 
-  BEST_DS_LOCAL_SOURCES="./data,./data_new/train,$ENS_OUT/hard_mined_v2_loop$i" bash scripts/do.sh collect-image
+  BEST_DS_HF_ONLY=1 bash scripts/do.sh collect-image
   bash scripts/do.sh train-all
 
   python scripts/fit_domain_thresholds.py \

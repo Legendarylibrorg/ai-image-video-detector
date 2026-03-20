@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 
 from .checkpoints import load_checkpoint
 from .model import AdvancedAIDetector, build_model
@@ -14,6 +15,7 @@ from .model import AdvancedAIDetector, build_model
 class LoadedModels:
     models: list[AdvancedAIDetector]
     img_size: int
+    img_sizes: list[int]
     threshold: float
     temperature: float
     model_ids: list[str]
@@ -22,22 +24,65 @@ class LoadedModels:
     weights: list[float]
 
 
+def _resize_for_model(x: torch.Tensor, img_size: int) -> torch.Tensor:
+    if x.shape[-2:] == (img_size, img_size):
+        return x
+    return F.interpolate(
+        x,
+        size=(img_size, img_size),
+        mode="bilinear",
+        align_corners=False,
+        antialias=True,
+    )
+
+
+def stack_model_logits(
+    models: list[torch.nn.Module],
+    img_sizes: list[int],
+    x: torch.Tensor,
+) -> torch.Tensor:
+    if len(models) != len(img_sizes):
+        raise ValueError(f"img_sizes count {len(img_sizes)} != models count {len(models)}")
+
+    logits: list[torch.Tensor] = []
+    for model, img_size in zip(models, img_sizes):
+        model_x = _resize_for_model(x, img_size)
+        if model_x.device.type == "cuda":
+            model_x = model_x.contiguous(memory_format=torch.channels_last)
+        logits.append(model(model_x))
+    return torch.stack(logits, dim=0)
+
+
 class EnsembleDetector(torch.nn.Module):
-    def __init__(self, models: list[torch.nn.Module], weights: list[float] | None = None):
+    def __init__(
+        self,
+        models: list[torch.nn.Module],
+        weights: list[float] | None = None,
+        img_sizes: list[int] | None = None,
+    ):
         super().__init__()
         if not models:
             raise ValueError("EnsembleDetector requires at least one model")
         self.models = torch.nn.ModuleList(models)
         if weights is None:
             weights = [1.0 / len(models)] * len(models)
+        if img_sizes is None:
+            img_sizes = [0] * len(models)
         if len(weights) != len(models):
             raise ValueError(f"weights count {len(weights)} != models count {len(models)}")
+        if len(img_sizes) != len(models):
+            raise ValueError(f"img_sizes count {len(img_sizes)} != models count {len(models)}")
         w = torch.tensor(weights, dtype=torch.float32)
         w = w / torch.clamp(w.sum(), min=1e-8)
         self.register_buffer("weights", w)
+        self.img_sizes = [int(s) for s in img_sizes]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        logits = torch.stack([m(x) for m in self.models], dim=0)
+        effective_sizes = [
+            int(size) if int(size) > 0 else int(x.shape[-1])
+            for size in self.img_sizes
+        ]
+        logits = stack_model_logits(list(self.models), effective_sizes, x)
         w = self.weights.view(-1, 1)
         return (logits * w).sum(dim=0)
 
@@ -100,9 +145,6 @@ def load_models(model_paths: list[str], device: torch.device, ensemble_config: s
     threshold = float(sum(thresholds) / len(thresholds))
     temperature = float(sum(temps) / len(temps))
 
-    if len(set(img_sizes)) != 1:
-        raise ValueError(f"All models must use same img_size, got {img_sizes}")
-
     if ensemble_config:
         cfg = json.loads(Path(ensemble_config).read_text(encoding="utf-8"))
         weights = _resolve_model_weights(model_paths, cfg)
@@ -113,7 +155,8 @@ def load_models(model_paths: list[str], device: torch.device, ensemble_config: s
 
     return LoadedModels(
         models=models,
-        img_size=img_sizes[0],
+        img_size=max(img_sizes),
+        img_sizes=[int(s) for s in img_sizes],
         threshold=threshold,
         temperature=temperature,
         model_ids=model_ids,

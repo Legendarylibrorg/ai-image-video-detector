@@ -38,7 +38,7 @@ def apply_risk_tools(
     txt = set(text_flags or [])
 
     # Rule overrides.
-    if "embedded_software_tag" in meta and "oversharpened_or_noisy" in ood:
+    if {"edited_with_software_tag", "embedded_software_tag"} & meta and "oversharpened_or_noisy" in ood:
         out_risk = min(1.0, out_risk + 0.08)
         reasons.append("rule_meta_plus_ood")
     if "heavy_text_overlay" in txt and "extreme_aspect_ratio" in ood:

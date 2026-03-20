@@ -30,7 +30,7 @@ def _dhash(path: Path) -> str:
     except Exception:
         return ""
     img = Image.open(path).convert("L").resize((9, 8))
-    px = list(img.getdata())
+    px = list(img.tobytes())
     bits = []
     for y in range(8):
         row = px[y * 9 : (y + 1) * 9]

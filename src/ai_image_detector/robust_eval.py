@@ -55,7 +55,7 @@ def main() -> None:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     loaded = load_models(args.model, device, ensemble_config=args.ensemble_config)
-    model = EnsembleDetector(loaded.models, weights=loaded.weights).to(device)
+    model = EnsembleDetector(loaded.models, weights=loaded.weights, img_sizes=loaded.img_sizes).to(device)
     model.eval()
 
     tf = transforms.Compose([
@@ -73,7 +73,7 @@ def main() -> None:
         for name, vimg in _variants(img).items():
             x = tf(vimg).unsqueeze(0).to(device)
             with torch.no_grad():
-                prob = torch.sigmoid(model(x)).item()
+                prob = torch.sigmoid(model(x) / max(loaded.temperature, 1e-6)).item()
             buckets.setdefault(name, []).append((prob, int(y_ai)))
 
     report = {}

@@ -67,7 +67,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     loaded = load_models(args.teacher, device, ensemble_config=args.ensemble_config)
-    teacher = EnsembleDetector(loaded.models, weights=loaded.weights).to(device)
+    teacher = EnsembleDetector(loaded.models, weights=loaded.weights, img_sizes=loaded.img_sizes).to(device)
     teacher.eval()
 
     student = build_model(backbone=args.student_backbone, pretrained_backbone=True).to(device)

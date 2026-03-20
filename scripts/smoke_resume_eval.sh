@@ -35,6 +35,7 @@ python3 -m ai_image_detector.train \
   --no-compile \
   --no-amp \
   --num-workers 0 \
+  --degenerate-patience 0 \
   --save-every 1
 
 python3 -m ai_image_detector.train \
@@ -48,6 +49,7 @@ python3 -m ai_image_detector.train \
   --no-compile \
   --no-amp \
   --num-workers 0 \
+  --degenerate-patience 0 \
   --save-every 1
 
 for f in \

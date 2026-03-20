@@ -12,7 +12,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
 
-from ai_image_detector.ensemble import load_models
+from ai_image_detector.ensemble import load_models, stack_model_logits
 from ai_image_detector.metrics import find_best_threshold, full_metric_report, roc_auc
 
 
@@ -79,8 +79,8 @@ def main() -> None:
         for x, y in dl:
             x = x.to(device, non_blocking=True)
             y_ai = (y == ai_idx).float().to(device, non_blocking=True)
-            model_logits = [m(x).reshape(-1) for m in loaded.models]
-            logits_all.append(torch.stack(model_logits, dim=1).detach().cpu())
+            model_logits = stack_model_logits(loaded.models, loaded.img_sizes, x).transpose(0, 1)
+            logits_all.append(model_logits.detach().cpu())
             labels_all.append(y_ai.detach().cpu())
 
     if not logits_all:

@@ -104,9 +104,10 @@ class VideoDataset(Dataset):
 
 
 class TemporalVideoDetector(nn.Module):
-    def __init__(self, hidden: int = 384):
+    def __init__(self, hidden: int = 384, pretrained_backbone: bool = False):
         super().__init__()
-        base = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
+        weights = models.EfficientNet_B0_Weights.IMAGENET1K_V1 if pretrained_backbone else None
+        base = models.efficientnet_b0(weights=weights)
         self.frame_encoder = base.features
         self.pool = nn.AdaptiveAvgPool2d(1)
         feat_dim = 1280
@@ -190,6 +191,7 @@ def train_main() -> None:
     ap.add_argument("--min-delta", type=float, default=0.0, help="Minimum accuracy improvement to reset patience")
     ap.add_argument("--seed", type=int, default=1337)
     ap.add_argument("--deterministic", action="store_true")
+    ap.add_argument("--pretrained-backbone", action="store_true", default=False)
     ap.add_argument("--export-release", action="store_true", default=True)
     ap.add_argument("--no-export-release", dest="export_release", action="store_false")
     args = ap.parse_args()
@@ -246,7 +248,7 @@ def train_main() -> None:
         if not args.deterministic:
             torch.backends.cudnn.benchmark = True
         torch.set_float32_matmul_precision("high")
-    model = TemporalVideoDetector().to(device)
+    model = TemporalVideoDetector(pretrained_backbone=args.pretrained_backbone).to(device)
     if device.type == "cuda":
         model = model.to(memory_format=torch.channels_last)
     if args.compile:
@@ -277,6 +279,7 @@ def train_main() -> None:
                 "no_improve": int(no_improve),
                 "img_size": args.img_size,
                 "frames": args.frames,
+                "pretrained_backbone": bool(args.pretrained_backbone),
             },
             path,
         )
@@ -349,6 +352,7 @@ def train_main() -> None:
                         "frames": args.frames,
                         "threshold": 0.5,
                         "model_id": "temporal-video-detector",
+                        "pretrained_backbone": bool(args.pretrained_backbone),
                     },
                     out / "best_video.pt",
                 )
@@ -360,6 +364,7 @@ def train_main() -> None:
                         "frames": args.frames,
                         "threshold": 0.5,
                         "model_id": "temporal-video-detector",
+                        "pretrained_backbone": bool(args.pretrained_backbone),
                     },
                 )
             else:
@@ -398,7 +403,7 @@ def infer_main() -> None:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt = load_checkpoint(args.model, map_location=device)
-    model = TemporalVideoDetector().to(device)
+    model = TemporalVideoDetector(pretrained_backbone=False).to(device)
     model.load_state_dict(ckpt["state_dict"])
     model.eval()
 

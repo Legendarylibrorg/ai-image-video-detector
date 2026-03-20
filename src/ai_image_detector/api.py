@@ -284,7 +284,7 @@ def load(
         torch.backends.cudnn.benchmark = True
         torch.set_float32_matmul_precision("high")
     loaded = load_models(model_paths, device, ensemble_config=ensemble_config)
-    model = EnsembleDetector(loaded.models, weights=loaded.weights).to(device)
+    model = EnsembleDetector(loaded.models, weights=loaded.weights, img_sizes=loaded.img_sizes).to(device)
     model.eval()
 
     _state["device"] = device

@@ -37,6 +37,16 @@ emit_fail() {
   echo "doctor_fail: $*"
 }
 
+normalize_path() {
+  local path="$1"
+  if [[ "$path" == /* ]]; then
+    printf "%s\n" "$path"
+    return
+  fi
+  path="${path#./}"
+  printf "%s/%s\n" "$ROOT_DIR" "$path"
+}
+
 check_disk_space() {
   local avail_kb
   avail_kb="$(df -Pk "$ROOT_DIR" | awk 'NR==2 {print $4}')"
@@ -71,13 +81,24 @@ check_cache_paths() {
   local cache1="${BEST_DS_CACHE_DIR:-$ROOT_DIR/.local/hf}"
   local cache2="${VIDEO_CACHE_DIR:-$ROOT_DIR/.local/hf}"
   local cache3="$ROOT_DIR/.local"
-  local prev=""
+  local -a seen=()
   local d
   for d in "$cache1" "$cache2" "$cache3"; do
-    if [[ "$d" == "$prev" ]]; then
+    d="$(normalize_path "$d")"
+    local already_seen=0
+    local seen_path
+    if (( ${#seen[@]} > 0 )); then
+      for seen_path in "${seen[@]}"; do
+        if [[ "$seen_path" == "$d" ]]; then
+          already_seen=1
+          break
+        fi
+      done
+    fi
+    if [[ "$already_seen" == "1" ]]; then
       continue
     fi
-    prev="$d"
+    seen+=("$d")
     mkdir -p "$d" 2>/dev/null || true
     if [[ ! -d "$d" ]]; then
       emit_fail "cache_dir_missing path=$d"
