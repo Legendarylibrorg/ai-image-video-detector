@@ -82,12 +82,8 @@ run_cmd() {
   fi
 }
 
-if [[ ! -d .venv ]]; then
-  run_cmd "python3 -m venv .venv"
-fi
+run_cmd "bash scripts/install_deps.sh"
 source .venv/bin/activate
-run_cmd "python -m pip install --upgrade pip"
-run_cmd "pip install -e . datasets huggingface_hub safetensors"
 
 if [[ "$SKIP_DATA" != "1" ]]; then
   dataset_cmd="python scripts/build_best_dataset.py --out \"$DATA_DIR\" --train-per-class \"$TRAIN_PER_CLASS\" --val-per-class \"$VAL_PER_CLASS\" --test-per-class \"$TEST_PER_CLASS\" --near-hamming \"$BEST_DS_NEAR_HAMMING\" --near-window \"$BEST_DS_NEAR_WINDOW\" --min-side \"$BEST_DS_MIN_SIDE\" --max-aspect-ratio \"$BEST_DS_MAX_ASPECT_RATIO\" --min-entropy \"$BEST_DS_MIN_ENTROPY\" --max-unique-per-source \"$BEST_DS_MAX_UNIQUE_PER_SOURCE\" --max-per-source-class \"$BEST_DS_MAX_PER_SOURCE_CLASS\" --jpeg-quality \"$BEST_DS_JPEG_QUALITY\" --hardneg-fraction \"$BEST_DS_HARDNEG_FRACTION\" --cache-dir \"$BEST_DS_CACHE_DIR\" --hf-cache-only-if-present --stream-buffer-size \"$BEST_DS_STREAM_BUFFER_SIZE\" --max-samples-per-source \"$BEST_DS_MAX_SAMPLES_PER_SOURCE\" --repo-base-pause-ms \"$BEST_DS_REPO_BASE_PAUSE_MS\" --repo-jitter-ms \"$BEST_DS_REPO_JITTER_MS\" --repo-cooldown-ms \"$BEST_DS_REPO_COOLDOWN_MS\" --max-consecutive-failures \"$BEST_DS_MAX_CONSECUTIVE_FAILURES\""

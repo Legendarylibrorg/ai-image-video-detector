@@ -56,12 +56,8 @@ if command -v apt-get >/dev/null 2>&1; then
 fi
 
 # 2) Python environment + package deps
-if [[ ! -d .venv ]]; then
-  run_cmd "python3 -m venv .venv"
-fi
+run_cmd "bash scripts/install_deps.sh"
 source .venv/bin/activate
-run_cmd "python -m pip install --upgrade pip"
-run_cmd "pip install -e . datasets huggingface_hub safetensors"
 
 # 3) Optimized full training pipeline
 run_cmd "bash scripts/full_pipeline_4090.sh"

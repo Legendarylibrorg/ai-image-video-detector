@@ -19,6 +19,9 @@ case "$cmd" in
   scan)
     bash scripts/do.sh scan "$@"
     ;;
+  deps-update)
+    bash scripts/do.sh deps-update
+    ;;
   serve)
     exec bash scripts/linux_service.sh start
     ;;
@@ -29,6 +32,6 @@ case "$cmd" in
     exec bash scripts/linux_service.sh "$cmd"
     ;;
   help|*)
-    echo "usage: ./local.sh [setup|collect|train|scan|serve|full|status|logs|pause|resume|stop|restart]"
+    echo "usage: ./local.sh [setup|collect|train|scan|deps-update|serve|full|status|logs|pause|resume|stop|restart]"
     ;;
 esac

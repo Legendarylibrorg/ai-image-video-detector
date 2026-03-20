@@ -20,7 +20,7 @@ A production-oriented, forensics-first detector with:
 Linux local-only (recommended):
 
 ```bash
-cd "/Users/devcomputer/Downloads/spam filter/image spam"
+cd /path/to/image-spam
 ./local.sh setup      # installs deps + runs full optimized local pipeline
 ./local.sh serve      # starts local supervisor on Linux
 ./local.sh status
@@ -31,6 +31,7 @@ Minimal local command surface:
 - `./local.sh setup`
 - `./local.sh collect`
 - `./local.sh train`
+- `./local.sh deps-update`
 - `./local.sh serve`
 - `./local.sh full`
 - `./local.sh status|logs|pause|resume|stop|restart`
@@ -45,8 +46,12 @@ sudo apt-get install -y python3 python3-venv python3-pip build-essential
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+bash scripts/install_deps.sh
 ```
+
+Dependency lock workflow:
+- Install pinned deps: `bash scripts/install_deps.sh`
+- Refresh lock to latest resolved set: `./local.sh deps-update`
 
 ## Dataset format
 
@@ -155,7 +160,7 @@ aid-serve --model ./artifacts_ens/m1/best.pt ./artifacts_ens/m2/best.pt ./artifa
 Endpoints:
 
 - `GET /health`
-- `GET /` (web UI)
+- `GET /` (API info)
 - `POST /detect` (multipart file field `image`)
 - `POST /analyze/text` (JSON: `{ "text": "..." }`)
 - `POST /analyze/conversation` (JSON: `{ "text": "..." }`)
@@ -632,7 +637,7 @@ docker compose -f docker-compose.gpu.yml up -d --build
 
 ### Option C: systemd service
 
-Use [ai-detector.service](/Users/devcomputer/Downloads/spam%20filter/image%20spam/deploy/ai-detector.service) on your Linux host:
+Use [ai-detector.service](deploy/ai-detector.service) on your Linux host:
 
 ```bash
 sudo cp deploy/ai-detector.service /etc/systemd/system/ai-detector.service
@@ -640,4 +645,4 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now ai-detector
 ```
 
-The frontend and API will be available on `http://<server-ip>:8000/`.
+The API will be available on `http://<server-ip>:8000/`.

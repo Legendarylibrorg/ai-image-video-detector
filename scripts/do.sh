@@ -13,6 +13,7 @@ set -euo pipefail
 #   bash scripts/do.sh scan
 #   bash scripts/do.sh train
 #   bash scripts/do.sh train-all-types
+#   bash scripts/do.sh deps-update
 #   bash scripts/do.sh serve
 #   bash scripts/do.sh detect ./example.jpg
 
@@ -25,13 +26,9 @@ ensure_env() {
   if [[ "$ENV_READY" == "1" ]]; then
     return
   fi
-  if [[ ! -d .venv ]]; then
-    python3 -m venv .venv
-  fi
+  bash scripts/install_deps.sh
   # shellcheck disable=SC1091
   source .venv/bin/activate
-  python -m pip install --upgrade pip
-  pip install -e . datasets huggingface_hub safetensors
   ENV_READY=1
 }
 
@@ -348,6 +345,10 @@ case "$cmd" in
     with_training_lock train_video_only
     ;;
 
+  deps-update)
+    bash scripts/update_deps_lock.sh
+    ;;
+
   train-all)
     # Image + video training, assumes data already collected.
     with_training_lock train_all_pipeline
@@ -405,7 +406,7 @@ case "$cmd" in
     ;;
 
   *)
-    echo "usage: bash scripts/do.sh [start|start-v2|collect|collect-diverse|collect-image|collect-video|ingest|scan [paths...]|train|train-video|train-all|train-all-types|autocollect|serve|detect <image>|status]"
+    echo "usage: bash scripts/do.sh [start|start-v2|collect|collect-diverse|collect-image|collect-video|ingest|scan [paths...]|train|train-video|train-all|train-all-types|deps-update|autocollect|serve|detect <image>|status]"
     exit 2
     ;;
 esac

@@ -13,8 +13,6 @@ import hashlib
 
 import torch
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from PIL import Image
 from torchvision import transforms
@@ -42,10 +40,6 @@ from .text_signals import analyze_text_signals
 app = FastAPI(title="Advanced AI Image Detector")
 _state = {}
 logger = logging.getLogger("ai_image_detector.api")
-WEB_DIR = Path(__file__).resolve().parent / "web"
-
-if WEB_DIR.exists():
-    app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
 
 
 class TextRequest(BaseModel):
@@ -75,9 +69,11 @@ def health():
 
 @app.get("/")
 def index():
-    if not WEB_DIR.exists():
-        raise HTTPException(status_code=404, detail="frontend not found")
-    return FileResponse(str(WEB_DIR / "index.html"))
+    return {
+        "ok": True,
+        "service": "ai-image-detector-api",
+        "docs_hint": "Use /health and /detect endpoints.",
+    }
 
 
 def _enforce_rate_limit(ip: str) -> None:

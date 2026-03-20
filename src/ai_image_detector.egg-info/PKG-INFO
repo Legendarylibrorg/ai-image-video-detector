@@ -107,7 +107,7 @@ aid-serve --model ./artifacts/best.pt --max-bytes 10485760 --rate-limit-per-min 
 Endpoints:
 
 - `GET /health`
-- `GET /` (web UI)
+- `GET /` (API info)
 - `POST /detect` (multipart file field `image`)
 
 ## Explainability
@@ -376,7 +376,7 @@ docker compose -f docker-compose.gpu.yml up -d --build
 
 ### Option C: systemd service
 
-Use [ai-detector.service](/Users/devcomputer/Downloads/spam%20filter/image%20spam/deploy/ai-detector.service) on your Linux host:
+Use [ai-detector.service](deploy/ai-detector.service) on your Linux host:
 
 ```bash
 sudo cp deploy/ai-detector.service /etc/systemd/system/ai-detector.service
@@ -384,4 +384,4 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now ai-detector
 ```
 
-The frontend and API will be available on `http://<server-ip>:8000/`.
+The API will be available on `http://<server-ip>:8000/`.
