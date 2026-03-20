@@ -6,6 +6,8 @@
 .pycache/
 __pycache__/
 *.pyc
+.env
+.env.*
 
 # Data and artifacts
 data/
@@ -17,6 +19,9 @@ artifacts_sweep/
 video_artifacts/
 data_refresh/
 data_new/
+incoming_review_queue/
+incoming_model_outputs/
+.local/
 
 # Misc
 *.log

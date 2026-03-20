@@ -15,6 +15,14 @@ A production-oriented, forensics-first detector with:
 - API hardening (type/size limits, rate limiting, structured logs)
 - Dataset hygiene tooling (manifest, dedupe, near-dupes, balance report)
 
+## Open Source Notes
+
+- License: MIT (see `LICENSE`).
+- Security reporting: see `SECURITY.md`.
+- Do not commit secrets (tokens, keys) or private datasets.
+- Dataset/model licenses vary by source; verify each source license before commercial or production use.
+- Detection outputs are probabilistic and can be wrong; review high-risk decisions with human oversight.
+
 ## Quick start
 
 Linux local-only (recommended):
