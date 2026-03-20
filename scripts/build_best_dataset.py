@@ -309,10 +309,13 @@ def count_existing(out: Path) -> Dict[str, Dict[str, int]]:
 
 
 def build_source_list(args) -> List[str]:
-    sources: List[str] = list(DEFAULT_SOURCES)
-    if args.sources_file:
+    sources: List[str] = []
+    if not args.no_default_sources and not args.hf_only:
+        sources.extend(DEFAULT_SOURCES)
+    if args.sources_file and not args.hf_only:
         sources.extend(read_sources_file(Path(args.sources_file)))
-    sources.extend(args.extra_source)
+    if args.extra_source and not args.hf_only:
+        sources.extend(args.extra_source)
     if args.discover_hf:
         discovered: List[str] = []
         cache_path = Path(args.hf_cache_file) if args.hf_cache_file else None
@@ -362,6 +365,8 @@ def main():
     ap.add_argument("--sources-file", default="")
     ap.add_argument("--extra-source", action="append", default=[])
     ap.add_argument("--local-source", action="append", default=[])
+    ap.add_argument("--hf-only", action="store_true", default=False, help="Only use Hugging Face sources (disable local/default additions)")
+    ap.add_argument("--no-default-sources", action="store_true", default=False, help="Disable built-in static source list")
     ap.add_argument("--discover-hf", action="store_true", default=False)
     ap.add_argument("--no-discover-hf", dest="discover_hf", action="store_false")
     ap.add_argument("--hf-query", action="append", default=[])
@@ -387,6 +392,7 @@ def main():
     ap.add_argument("--max-consecutive-failures", type=int, default=2, help="Cooldown trigger for consecutive source failures")
     ap.add_argument("--token-env", default="HF_TOKEN")
     ap.add_argument("--discover-only", action="store_true", default=False, help="Only run HF discovery/cache update and exit")
+    ap.add_argument("--require-full-targets", action="store_true", default=False, help="Exit non-zero if final dataset is below requested class/split targets")
     args = ap.parse_args()
 
     random.seed(args.seed)
@@ -479,6 +485,10 @@ def main():
         return True
 
     hf_sources = build_source_list(args)
+    if args.hf_only and args.local_source:
+        print("warning_hf_only_ignores_local_sources=1")
+    if not hf_sources:
+        raise SystemExit("no_hf_sources_resolved: enable --discover-hf or provide HF sources cache/file")
     print(f"hf_source_candidates={len(hf_sources)}")
 
     consecutive_source_failures = 0
@@ -572,7 +582,7 @@ def main():
             f"processed={processed_total} rejected={sum(source_rejects.values())} acceptance_rate={(accepted_total / float(max(1, processed_total))):.5f}"
         )
 
-    for local_root in args.local_source:
+    for local_root in ([] if args.hf_only else args.local_source):
         if done(counts, targets):
             break
         root = Path(local_root)
@@ -654,6 +664,16 @@ def main():
     (out / "dataset_build_report.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print("dataset_ready", out)
     print(f"report={out / 'dataset_build_report.json'}")
+    if args.require_full_targets:
+        shortfalls = []
+        for split in ["train", "val", "test"]:
+            for cls in ["ai", "real"]:
+                have_n = summary["final_counts"][split][cls]
+                need_n = targets[split][cls]
+                if have_n < need_n:
+                    shortfalls.append(f"{split}/{cls}:{have_n}<{need_n}")
+        if shortfalls:
+            raise SystemExit("dataset_incomplete: " + ",".join(shortfalls))
 
 
 if __name__ == "__main__":

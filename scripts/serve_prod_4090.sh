@@ -7,6 +7,7 @@ set -euo pipefail
 
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
+ALLOW_REMOTE_BIND="${ALLOW_REMOTE_BIND:-0}"
 UNKNOWN_MARGIN="${UNKNOWN_MARGIN:-0.05}"
 MAX_BYTES="${MAX_BYTES:-10485760}"
 RATE_LIMIT="${RATE_LIMIT:-300}"
@@ -24,6 +25,11 @@ IP_LOG_MODE="${IP_LOG_MODE:-masked}"
 IP_LOG_SALT="${IP_LOG_SALT:-}"
 
 source .venv/bin/activate
+
+if [[ "$ALLOW_REMOTE_BIND" != "1" && "$HOST" != "127.0.0.1" && "$HOST" != "localhost" ]]; then
+  echo "Refusing non-local bind HOST=$HOST (set ALLOW_REMOTE_BIND=1 to override)"
+  exit 2
+fi
 
 mapfile -t MODELS < <(ls $MODEL_GLOB)
 if [[ "${#MODELS[@]}" -eq 0 ]]; then

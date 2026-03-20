@@ -5,13 +5,14 @@ set -euo pipefail
 # Usage:
 #   bash scripts/one_command_start.sh
 # Optional:
-#   HF_TOKEN=... HOST=0.0.0.0 PORT=8000 bash scripts/one_command_start.sh
+#   HF_TOKEN=... PORT=8000 bash scripts/one_command_start.sh
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
+ALLOW_REMOTE_BIND="${ALLOW_REMOTE_BIND:-0}"
 
 if command -v apt-get >/dev/null 2>&1; then
   if command -v sudo >/dev/null 2>&1; then
@@ -24,4 +25,4 @@ if command -v apt-get >/dev/null 2>&1; then
 fi
 
 bash scripts/do.sh train-all-types
-HOST="$HOST" PORT="$PORT" bash scripts/do.sh serve
+HOST="$HOST" PORT="$PORT" ALLOW_REMOTE_BIND="$ALLOW_REMOTE_BIND" bash scripts/do.sh serve

@@ -14,6 +14,7 @@ TRAIN_LOCK="${TRAIN_LOCK:-$ROOT_DIR/.local/training.lock}"
 
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
+ALLOW_REMOTE_BIND="${ALLOW_REMOTE_BIND:-0}"
 RETRY_SLEEP_SEC="${RETRY_SLEEP_SEC:-15}"
 WORKER_MODE="${WORKER_MODE:-serve}"   # serve|full
 
@@ -84,7 +85,7 @@ while true; do
   fi
 
   log "phase=serve start"
-  if run_child env HOST="$HOST" PORT="$PORT" bash scripts/do.sh serve; then
+  if run_child env HOST="$HOST" PORT="$PORT" ALLOW_REMOTE_BIND="$ALLOW_REMOTE_BIND" bash scripts/do.sh serve; then
     log "phase=serve exited_cleanly restart_in=${RETRY_SLEEP_SEC}s"
   else
     log "phase=serve crashed restart_in=${RETRY_SLEEP_SEC}s"

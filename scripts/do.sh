@@ -68,6 +68,7 @@ run_malware_scan() {
 }
 
 collect_image_data() {
+  mapfile -t diverse_query_args < <(add_diverse_queries)
   ensure_env
   python scripts/build_best_dataset.py \
     --out "${DATA_DIR:-./data_best}" \
@@ -97,7 +98,9 @@ collect_image_data() {
     --max-aspect-ratio "${BEST_DS_MAX_ASPECT_RATIO:-2.5}" \
     --min-entropy "${BEST_DS_MIN_ENTROPY:-3.4}" \
     --hardneg-fraction "${BEST_DS_HARDNEG_FRACTION:-0.8}" \
-    --local-source "${BEST_DS_LOCAL_SOURCES:-./data}"
+    --hf-only \
+    --require-full-targets \
+    "${diverse_query_args[@]}"
   run_malware_scan "${DATA_DIR:-./data_best}"
 }
 
@@ -136,8 +139,8 @@ collect_diverse_image_data() {
     --max-aspect-ratio "${DIVERSE_MAX_ASPECT_RATIO:-3.2}"
     --min-entropy "${DIVERSE_MIN_ENTROPY:-3.1}"
     --hardneg-fraction "${DIVERSE_HARDNEG_FRACTION:-1.0}"
-    --local-source "${DIVERSE_LOCAL_SOURCES:-./data}"
-    --local-source "${DIVERSE_LOCAL_NEW_SOURCES:-./data_new/train}"
+    --hf-only
+    --require-full-targets
   )
   local -a discover_args=(
     --discover-hf
@@ -297,7 +300,7 @@ case "$cmd" in
     if skip_collection_if_training; then
       exit 0
     fi
-    collect_image_data
+    collect_diverse_image_data
     ingest_outputs
     collect_video_data
     ;;

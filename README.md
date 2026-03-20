@@ -52,6 +52,7 @@ bash scripts/install_deps.sh
 Dependency lock workflow:
 - Install pinned deps: `bash scripts/install_deps.sh`
 - Refresh lock to latest resolved set: `./local.sh deps-update`
+- `deps-update` resolves in an isolated temporary venv, then writes a fully pinned `requirements.lock`.
 
 ## Dataset format
 
@@ -138,7 +139,7 @@ Returns:
 ## API (hardened)
 
 ```bash
-aid-serve --model ./artifacts/best.pt --host 0.0.0.0 --port 8000
+aid-serve --model ./artifacts/best.pt --host 127.0.0.1 --port 8000
 ```
 
 Optional hardening knobs:
@@ -438,10 +439,12 @@ bash scripts/do.sh train          # image training pipeline only
 bash scripts/do.sh train-all      # image + video training (no new data pull)
 bash scripts/do.sh train-all-types # collect-diverse + full image/video training + artifact validation
 bash scripts/do.sh autocollect    # continuous collection loop
-bash scripts/do.sh serve          # serve API/UI
+bash scripts/do.sh serve          # serve API
 bash scripts/do.sh detect ./img.jpg
 bash scripts/do.sh status         # lock + artifact paths
 ```
+
+Collection defaults are HF-only and diverse-first, and dataset build is fail-fast when targets are not met.
 
 Linux shortcut launchers:
 
@@ -560,7 +563,7 @@ By default this now binds to localhost (`127.0.0.1`) for private access.
 To expose intentionally, override:
 
 ```bash
-HOST=0.0.0.0 AUTO_SERVE=1 bash scripts/one_command_4090.sh
+AUTO_SERVE=1 bash scripts/one_command_4090.sh
 ```
 
 4090 stability notes:
@@ -645,4 +648,4 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now ai-detector
 ```
 
-The API will be available on `http://<server-ip>:8000/`.
+The API will be available locally on `http://127.0.0.1:8000/`.
