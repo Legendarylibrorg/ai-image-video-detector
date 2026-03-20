@@ -32,7 +32,7 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     loaded = load_models(args.model, device, ensemble_config=args.ensemble_config)
-    model = EnsembleDetector(loaded.models, weights=loaded.weights).to(device)
+    model = EnsembleDetector(loaded.models, weights=loaded.weights, img_sizes=loaded.img_sizes).to(device)
     model.eval()
 
     base_threshold = float(args.threshold) if args.threshold is not None else float(loaded.threshold)

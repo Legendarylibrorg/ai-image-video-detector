@@ -10,11 +10,11 @@ from pathlib import Path
 import random
 import re
 import time
-from typing import DefaultDict, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, DefaultDict, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from datasets import load_dataset
 from PIL import Image, ImageFilter
-from dataset_builder_common import configure_hf_cache_env, count_existing_split_classes, targets_met
+from dataset_builder_common import configure_hf_cache_env, targets_met
 
 try:
     from huggingface_hub import HfApi
@@ -48,10 +48,18 @@ def normalize_label(v) -> Optional[str]:
     if isinstance(v, bool):
         return "ai" if v else "real"
     if isinstance(v, int):
-        return "ai" if int(v) == 1 else "real"
+        if int(v) == 1:
+            return "ai"
+        if int(v) == 0:
+            return "real"
+        return None
     s = str(v).strip().lower()
     if s.isdigit():
-        return "ai" if int(s) == 1 else "real"
+        if int(s) == 1:
+            return "ai"
+        if int(s) == 0:
+            return "real"
+        return None
     if any(k in s for k in ["ai", "fake", "generated", "synthetic", "deepfake"]):
         return "ai"
     if any(k in s for k in ["real", "human", "natural", "authentic"]):
@@ -66,7 +74,7 @@ def hash_img_bytes(img: Image.Image) -> str:
 
 def dhash_hex(img: Image.Image) -> str:
     g = img.convert("L").resize((9, 8), Image.BILINEAR)
-    px = list(g.getdata())
+    px = list(g.tobytes())
     bits: List[str] = []
     for y in range(8):
         row = px[y * 9 : (y + 1) * 9]
@@ -136,6 +144,32 @@ def find_fields(ds_split) -> Tuple[str, str]:
     if image_field is None or label_field is None:
         raise RuntimeError(f"Unable to infer fields from columns: {cols}")
     return image_field, label_field
+
+
+def build_label_resolver(ds_split, label_field: str) -> Callable[[object], Optional[str]]:
+    features = getattr(ds_split, "features", None) or {}
+    feature = features.get(label_field) if hasattr(features, "get") else None
+    names = getattr(feature, "names", None)
+    class_map: dict[int, str] = {}
+    if isinstance(names, (list, tuple)):
+        for idx, name in enumerate(names):
+            cls = normalize_label(name)
+            if cls is not None:
+                class_map[int(idx)] = cls
+
+    def resolve(value: object) -> Optional[str]:
+        if class_map:
+            if isinstance(value, bool):
+                return normalize_label(value)
+            if isinstance(value, int) and int(value) in class_map:
+                return class_map[int(value)]
+            if isinstance(value, str):
+                stripped = value.strip()
+                if stripped.isdigit() and int(stripped) in class_map:
+                    return class_map[int(stripped)]
+        return normalize_label(value)
+
+    return resolve
 
 
 def augment_hard_negative(img: Image.Image, mode: str) -> Image.Image:
@@ -309,8 +343,124 @@ def next_split_for_class(
     return choices[-1]
 
 
+def next_split_for_source_class(
+    have: Dict[str, Dict[str, int]],
+    need: Dict[str, Dict[str, int]],
+    source_split_counts: Dict[str, Dict[str, int]],
+    cls: str,
+    rng: random.Random,
+    max_per_source_split_class: int,
+) -> Optional[str]:
+    choices: list[str] = []
+    weighted_remaining: dict[str, int] = {}
+    for split in SPLITS:
+        remaining = max(0, need[split][cls] - have[split][cls])
+        if remaining <= 0:
+            continue
+        if source_split_counts[split][cls] >= max_per_source_split_class:
+            continue
+        choices.append(split)
+        weighted_remaining[split] = remaining
+
+    if not choices:
+        return None
+    if len(choices) == 1:
+        return choices[0]
+
+    # Prefer the split with the largest global remaining need, but add a small
+    # inverse-count nudge so each source spreads across train/val/test.
+    best_split = choices[0]
+    best_score = float("-inf")
+    for split in choices:
+        score = float(weighted_remaining[split]) - (0.75 * float(source_split_counts[split][cls]))
+        score += rng.random() * 1e-3
+        if score > best_score:
+            best_split = split
+            best_score = score
+    return best_split
+
+
+def count_output_files(out: Path, include_hardneg: bool = True) -> Dict[str, Dict[str, int]]:
+    counts: Dict[str, Dict[str, int]] = {split: {cls: 0 for cls in CLASSES} for split in SPLITS}
+    for split in SPLITS:
+        for cls in CLASSES:
+            split_dir = out / split / cls
+            if not split_dir.exists():
+                continue
+            total = 0
+            for path in split_dir.glob("*.jpg"):
+                if not include_hardneg and path.name.startswith("hardneg="):
+                    continue
+                total += 1
+            counts[split][cls] = total
+    return counts
+
+
 def count_existing(out: Path) -> Dict[str, Dict[str, int]]:
-    return count_existing_split_classes(out, SPLITS, CLASSES, "*.jpg")
+    return count_output_files(out, include_hardneg=False)
+
+
+def build_existing_dedupe_state(out: Path) -> tuple[set[str], Dict[str, List[str]]]:
+    seen_exact: set[str] = set()
+    seen_dhash_by_cls: Dict[str, List[str]] = defaultdict(list)
+    for split in SPLITS:
+        for cls in CLASSES:
+            split_dir = out / split / cls
+            if not split_dir.exists():
+                continue
+            for path in split_dir.glob("*.jpg"):
+                if path.name.startswith("hardneg="):
+                    continue
+                img = open_local_image(path)
+                if img is None:
+                    continue
+                seen_exact.add(hash_img_bytes(img))
+                seen_dhash_by_cls[cls].append(dhash_hex(img))
+    return seen_exact, seen_dhash_by_cls
+
+
+def reset_hard_negative_outputs(out: Path) -> None:
+    for cls in CLASSES:
+        train_dir = out / "train" / cls
+        if not train_dir.exists():
+            continue
+        for path in train_dir.glob("hardneg=*.jpg"):
+            path.unlink(missing_ok=True)
+
+
+def generate_hard_negatives(
+    out: Path,
+    targets: Dict[str, Dict[str, int]],
+    hardneg_fraction: float,
+    jpeg_quality: int,
+    seed: int,
+) -> Dict[str, int]:
+    reset_hard_negative_outputs(out)
+    hard_modes = ["jpeg35", "blur", "resize60", "sharpen", "screenshot"]
+    generated: Dict[str, int] = {}
+    for cls in CLASSES:
+        base_files = [p for p in (out / "train" / cls).glob("*.jpg") if not p.name.startswith("hardneg=")]
+        shuffle_rng = random.Random(seed + (1 if cls == "ai" else 2))
+        mode_rng = random.Random(seed + (101 if cls == "ai" else 202))
+        shuffle_rng.shuffle(base_files)
+        hard_target = int(targets["train"][cls] * max(hardneg_fraction, 0.0))
+        if hard_target <= 0:
+            generated[cls] = 0
+            continue
+        hn_count = 0
+        for path in base_files[: min(hard_target, len(base_files))]:
+            try:
+                with Image.open(path) as pil:
+                    img = pil.convert("RGB")
+            except Exception:
+                continue
+            mode = mode_rng.choice(hard_modes)
+            aug = augment_hard_negative(img, mode)
+            dst = out / "train" / cls / f"hardneg={mode}__{path.stem}__hn{hn_count:07d}.jpg"
+            save_img(aug, dst, quality=max(70, min(95, jpeg_quality - 2)))
+            hn_count += 1
+        generated[cls] = hn_count
+    return generated
 
 
 def build_source_list(args) -> List[str]:
@@ -381,6 +531,7 @@ def main():
     ap.add_argument("--min-entropy", type=float, default=3.2)
     ap.add_argument("--max-unique-per-source", type=int, default=220000)
     ap.add_argument("--max-per-source-class", type=int, default=120000)
+    ap.add_argument("--max-per-source-split-class", type=int, default=0, help="0 = derive from max-per-source-class / split count")
     ap.add_argument("--jpeg-quality", type=int, default=92)
     ap.add_argument("--hardneg-fraction", type=float, default=0.6)
     ap.add_argument("--sources-file", default="")
@@ -416,6 +567,7 @@ def main():
     ap.add_argument("--require-full-targets", action="store_true", default=False, help="Exit non-zero if final dataset is below requested class/split targets")
     ap.add_argument("--min-hf-sources-with-accepted", type=int, default=0, help="Require at least this many HF sources to contribute accepted samples")
     ap.add_argument("--min-hf-sources-per-class", type=int, default=0, help="Require at least this many HF sources with accepted samples for each class")
+    ap.add_argument("--min-hf-sources-per-split-class", type=int, default=0, help="Require at least this many HF sources to contribute to each split/class bucket")
     args = ap.parse_args()
     start_time = time.time()
 
@@ -448,19 +600,27 @@ def main():
         "test": {"ai": args.test_per_class, "real": args.test_per_class},
     }
     counts: Dict[str, Dict[str, int]] = count_existing(out)
+    max_per_source_split_class = int(args.max_per_source_split_class)
+    if max_per_source_split_class <= 0:
+        max_per_source_split_class = max(1, int(math.ceil(float(args.max_per_source_class) / float(len(SPLITS)))))
     print(
         "existing_counts "
         + " ".join([f"{s}/{c}={counts[s][c]}" for s in ["train", "val", "test"] for c in ["ai", "real"]])
     )
 
     # Global dedupe to prevent leakage across splits.
-    seen_exact = set()
-    seen_dhash_by_cls: Dict[str, List[str]] = defaultdict(list)
+    seen_exact, seen_dhash_by_cls = build_existing_dedupe_state(out)
 
     global_rejects: DefaultDict[str, int] = defaultdict(int)
     source_reports: List[Dict[str, object]] = []
 
-    def try_accept_and_save(img: Image.Image, cls: str, src: str, source_counts: Dict[str, int]) -> bool:
+    def try_accept_and_save(
+        img: Image.Image,
+        cls: str,
+        src: str,
+        source_counts: Dict[str, int],
+        source_split_counts: Dict[str, Dict[str, int]],
+    ) -> bool:
         if done(counts, targets):
             return False
         if source_counts[cls] >= args.max_per_source_class:
@@ -495,7 +655,16 @@ def main():
             global_rejects["dup_near"] += 1
             return False
 
-        split = next_split_for_class(counts, targets, cls, rng)
+        split = next_split_for_source_class(
+            counts,
+            targets,
+            source_split_counts,
+            cls,
+            rng,
+            max_per_source_split_class=max_per_source_split_class,
+        )
+        if split is None:
+            split = next_split_for_class(counts, targets, cls, rng)
         if split is None:
             global_rejects["no_split_needed"] += 1
             return False
@@ -509,12 +678,13 @@ def main():
         save_img(img, dst, quality=args.jpeg_quality)
         counts[split][cls] += 1
         source_counts[cls] += 1
+        source_split_counts[split][cls] += 1
         return True
 
     hf_sources = build_source_list(args)
     if args.hf_only and args.local_source:
         print("warning_hf_only_ignores_local_sources=1")
-    if not hf_sources:
+    if not hf_sources and (args.hf_only or not args.local_source):
         raise SystemExit("no_hf_sources_resolved: enable --discover-hf or provide HF sources cache/file")
     print(f"hf_source_candidates={len(hf_sources)}")
 
@@ -526,6 +696,7 @@ def main():
         if repo_pause > 0:
             time.sleep(repo_pause / 1000.0)
         source_counts = {"ai": 0, "real": 0}
+        source_split_counts = {split: {cls: 0 for cls in CLASSES} for split in SPLITS}
         source_rejects: DefaultDict[str, int] = defaultdict(int)
         try:
             try:
@@ -550,6 +721,7 @@ def main():
         except Exception as e:
             print(f"skip_source={src} reason={e}")
             continue
+        resolve_label = build_label_resolver(split, label_field)
 
         accepted_total = 0
         processed_total = 0
@@ -577,7 +749,7 @@ def main():
             if accepted_total >= args.max_unique_per_source:
                 source_rejects["source_total_cap"] += 1
                 break
-            cls = normalize_label(ex[label_field])
+            cls = resolve_label(ex[label_field])
             if cls not in {"ai", "real"}:
                 source_rejects["unknown_label"] += 1
                 continue
@@ -586,7 +758,7 @@ def main():
                 source_rejects["decode_fail"] += 1
                 continue
             before = dict(global_rejects)
-            if try_accept_and_save(img, cls, src, source_counts):
+            if try_accept_and_save(img, cls, src, source_counts, source_split_counts):
                 accepted_total += 1
             else:
                 after = global_rejects
@@ -601,6 +773,7 @@ def main():
             "type": "hf",
             "accepted_ai": source_counts["ai"],
             "accepted_real": source_counts["real"],
+            "accepted_by_split": source_split_counts,
             "rejections": dict(source_rejects),
         }
         source_reports.append(report)
@@ -615,6 +788,7 @@ def main():
         root = Path(local_root)
         src_name = f"local::{root.resolve()}"
         source_counts = {"ai": 0, "real": 0}
+        source_split_counts = {split: {cls: 0 for cls in CLASSES} for split in SPLITS}
         source_rejects: DefaultDict[str, int] = defaultdict(int)
         local_paths = collect_local_paths(root, seed=args.seed + 333)
         accepted_total = 0
@@ -629,7 +803,7 @@ def main():
                 source_rejects["decode_fail"] += 1
                 continue
             before = dict(global_rejects)
-            if try_accept_and_save(img, cls, src_name, source_counts):
+            if try_accept_and_save(img, cls, src_name, source_counts, source_split_counts):
                 accepted_total += 1
             else:
                 after = global_rejects
@@ -644,6 +818,7 @@ def main():
             "type": "local",
             "accepted_ai": source_counts["ai"],
             "accepted_real": source_counts["real"],
+            "accepted_by_split": source_split_counts,
             "rejections": dict(source_rejects),
         }
         source_reports.append(report)
@@ -652,39 +827,17 @@ def main():
             f"rejected={sum(source_rejects.values())}"
         )
 
-    # Add hard negatives to train split only.
-    hard_modes = ["jpeg35", "blur", "resize60", "sharpen", "screenshot"]
-    for cls in ["ai", "real"]:
-        base_files = [p for p in (out / "train" / cls).glob("*.jpg") if "hardneg=" not in p.name]
-        random.Random(args.seed + (1 if cls == "ai" else 2)).shuffle(base_files)
-        hard_target = max(1, int(targets["train"][cls] * max(args.hardneg_fraction, 0.0)))
-        hn_count = 0
-        for p in base_files[: min(hard_target, len(base_files))]:
-            try:
-                with Image.open(p) as pil:
-                    img = pil.convert("RGB")
-            except Exception:
-                continue
-            mode = random.choice(hard_modes)
-            aug = augment_hard_negative(img, mode)
-            dst = out / "train" / cls / f"hardneg={mode}__{p.stem}__hn{hn_count:07d}.jpg"
-            save_img(aug, dst, quality=max(70, min(95, args.jpeg_quality - 2)))
-            hn_count += 1
-        print(f"hard_negatives_{cls}={hn_count}")
-
+    raw_counts = count_output_files(out, include_hardneg=False)
     for split in ["train", "val", "test"]:
         for cls in ["ai", "real"]:
-            n = len(list((out / split / cls).glob("*.jpg")))
+            n = raw_counts[split][cls]
             print(f"{split}/{cls}={n}")
             if n < targets[split][cls]:
                 print(f"warning_shortfall split={split} cls={cls} have={n} need={targets[split][cls]}")
 
     summary = {
         "targets": targets,
-        "final_counts": {
-            split: {cls: len(list((out / split / cls).glob("*.jpg"))) for cls in ["ai", "real"]}
-            for split in ["train", "val", "test"]
-        },
+        "final_counts": raw_counts,
         "global_rejections": dict(global_rejects),
         "source_reports": source_reports,
     }
@@ -692,9 +845,21 @@ def main():
     hf_sources_with_accepted = sum(1 for r in hf_reports if int(r.get("accepted_ai", 0)) + int(r.get("accepted_real", 0)) > 0)
     hf_sources_ai = sum(1 for r in hf_reports if int(r.get("accepted_ai", 0)) > 0)
     hf_sources_real = sum(1 for r in hf_reports if int(r.get("accepted_real", 0)) > 0)
+    hf_sources_per_split_class = {
+        split: {
+            cls: sum(
+                1
+                for r in hf_reports
+                if int((((r.get("accepted_by_split") or {}).get(split) or {}).get(cls, 0))) > 0
+            )
+            for cls in CLASSES
+        }
+        for split in SPLITS
+    }
     summary["hf_sources_with_accepted"] = int(hf_sources_with_accepted)
     summary["hf_sources_ai"] = int(hf_sources_ai)
     summary["hf_sources_real"] = int(hf_sources_real)
+    summary["hf_sources_per_split_class"] = hf_sources_per_split_class
 
     if args.min_hf_sources_with_accepted > 0 and hf_sources_with_accepted < int(args.min_hf_sources_with_accepted):
         raise SystemExit(
@@ -706,6 +871,15 @@ def main():
                 "hf_source_class_diversity_too_low "
                 f"ai_sources={hf_sources_ai} real_sources={hf_sources_real} required={args.min_hf_sources_per_class}"
             )
+    if args.min_hf_sources_per_split_class > 0:
+        missing_buckets = []
+        for split in SPLITS:
+            for cls in CLASSES:
+                have_sources = int(hf_sources_per_split_class[split][cls])
+                if have_sources < int(args.min_hf_sources_per_split_class):
+                    missing_buckets.append(f"{split}/{cls}:{have_sources}<{args.min_hf_sources_per_split_class}")
+        if missing_buckets:
+            raise SystemExit("hf_source_split_diversity_too_low " + ",".join(missing_buckets))
 
     shortfalls = []
     for split in ["train", "val", "test"]:
@@ -720,6 +894,26 @@ def main():
     elapsed_sec = float(time.time() - start_time)
     accepted_ai_total = int(sum(summary["final_counts"][s]["ai"] for s in ["train", "val", "test"]))
     accepted_real_total = int(sum(summary["final_counts"][s]["real"] for s in ["train", "val", "test"]))
+
+    hardneg_counts = generate_hard_negatives(
+        out=out,
+        targets=targets,
+        hardneg_fraction=args.hardneg_fraction,
+        jpeg_quality=args.jpeg_quality,
+        seed=args.seed,
+    )
+    for cls in CLASSES:
+        print(f"hard_negatives_{cls}={hardneg_counts.get(cls, 0)}")
+    summary["hardneg_counts"] = {cls: int(hardneg_counts.get(cls, 0)) for cls in CLASSES}
+    summary["output_counts_with_hardneg"] = count_output_files(out, include_hardneg=True)
+    summary["builder_policy"] = {
+        "max_per_source_class": int(args.max_per_source_class),
+        "max_per_source_split_class": int(max_per_source_split_class),
+        "min_hf_sources_with_accepted": int(args.min_hf_sources_with_accepted),
+        "min_hf_sources_per_class": int(args.min_hf_sources_per_class),
+        "min_hf_sources_per_split_class": int(args.min_hf_sources_per_split_class),
+    }
+
     run_summary = {
         "elapsed_sec": round(elapsed_sec, 2),
         "hf_sources_used": int(hf_sources_with_accepted),

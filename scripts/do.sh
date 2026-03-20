@@ -117,6 +117,20 @@ print_cli_flag_value_from_env() {
   print_cli_flag_value "$flag" "${!env_name:-$default}"
 }
 
+print_cli_flag_values_from_csv() {
+  local flag="$1"
+  local csv="${2:-}"
+  local -a values=()
+  local value=""
+  [[ -z "$csv" ]] && return 0
+  IFS=',' read -r -a values <<< "$csv"
+  for value in "${values[@]}"; do
+    value="$(echo "$value" | xargs)"
+    [[ -z "$value" ]] && continue
+    print_cli_flag_value "$flag" "$value"
+  done
+}
+
 run_image_dataset_builder() {
   local out="$1"
   local query_csv="$2"
@@ -176,6 +190,8 @@ print_image_collection_args() {
   local cache_file_default=""
   local stream_buffer_default=""
   local max_samples_default=""
+  local max_per_source_class_default=""
+  local max_per_source_split_class_default=""
   local warmup_default=""
   local min_sources_with_accepted_default=""
   local min_sources_per_class_default=""
@@ -184,6 +200,12 @@ print_image_collection_args() {
   local cooldown_default=""
   local min_side_default=""
   local hardneg_fraction_default=""
+  local min_sources_per_split_class_default=""
+  local hf_only_env=""
+  local no_default_sources_env=""
+  local sources_file_env=""
+  local extra_sources_env=""
+  local local_sources_env=""
 
   case "$profile" in
     best)
@@ -194,20 +216,28 @@ print_image_collection_args() {
       test_env="TEST_PER_CLASS"
       test_default="20000"
       prefix="BEST_DS"
-      discovery_limit_default="90"
-      max_sources_default="180"
+      discovery_limit_default="220"
+      max_sources_default="320"
       print_top_default="15"
       cache_file_default="./.local/hf_discovered_sources.txt"
       stream_buffer_default="12000"
-      max_samples_default="45000"
+      max_samples_default="30000"
+      max_per_source_class_default="12000"
+      max_per_source_split_class_default="4000"
       warmup_default="400"
-      min_sources_with_accepted_default="16"
-      min_sources_per_class_default="10"
+      min_sources_with_accepted_default="28"
+      min_sources_per_class_default="16"
       base_pause_default="1100"
       jitter_default="900"
       cooldown_default="45000"
       min_side_default="224"
-      hardneg_fraction_default="0.8"
+      hardneg_fraction_default="0.35"
+      min_sources_per_split_class_default="10"
+      hf_only_env="BEST_DS_HF_ONLY"
+      no_default_sources_env="BEST_DS_NO_DEFAULT_SOURCES"
+      sources_file_env="BEST_DS_SOURCES_FILE"
+      extra_sources_env="BEST_DS_EXTRA_SOURCES"
+      local_sources_env="BEST_DS_LOCAL_SOURCES"
       ;;
     fast)
       train_env="FAST_TRAIN_PER_CLASS"
@@ -217,20 +247,28 @@ print_image_collection_args() {
       test_env="FAST_TEST_PER_CLASS"
       test_default="1000"
       prefix="FAST"
-      discovery_limit_default="60"
-      max_sources_default="100"
+      discovery_limit_default="120"
+      max_sources_default="180"
       print_top_default="10"
       cache_file_default="./.local/hf_fast_sources.txt"
       stream_buffer_default="6000"
-      max_samples_default="12000"
+      max_samples_default="8000"
+      max_per_source_class_default="3000"
+      max_per_source_split_class_default="1000"
       warmup_default="250"
-      min_sources_with_accepted_default="10"
-      min_sources_per_class_default="6"
+      min_sources_with_accepted_default="16"
+      min_sources_per_class_default="10"
       base_pause_default="900"
       jitter_default="700"
       cooldown_default="30000"
       min_side_default="224"
-      hardneg_fraction_default="0.8"
+      hardneg_fraction_default="0.25"
+      min_sources_per_split_class_default="6"
+      hf_only_env="FAST_HF_ONLY"
+      no_default_sources_env="FAST_NO_DEFAULT_SOURCES"
+      sources_file_env="FAST_SOURCES_FILE"
+      extra_sources_env="FAST_EXTRA_SOURCES"
+      local_sources_env="FAST_LOCAL_SOURCES"
       ;;
     *)
       echo "unknown_image_collection_profile=$profile" >&2
@@ -254,10 +292,13 @@ print_image_collection_args() {
   print_cli_flag --streaming
   print_cli_flag_value_from_env --stream-buffer-size "${prefix}_STREAM_BUFFER_SIZE" "$stream_buffer_default"
   print_cli_flag_value_from_env --max-samples-per-source "${prefix}_MAX_SAMPLES_PER_SOURCE" "$max_samples_default"
+  print_cli_flag_value_from_env --max-per-source-class "${prefix}_MAX_PER_SOURCE_CLASS" "$max_per_source_class_default"
+  print_cli_flag_value_from_env --max-per-source-split-class "${prefix}_MAX_PER_SOURCE_SPLIT_CLASS" "$max_per_source_split_class_default"
   print_cli_flag_value_from_env --acceptance-warmup-samples "${prefix}_ACCEPTANCE_WARMUP_SAMPLES" "$warmup_default"
   print_cli_flag_value_from_env --min-acceptance-rate "${prefix}_MIN_ACCEPTANCE_RATE" "0.01"
   print_cli_flag_value_from_env --min-hf-sources-with-accepted "${prefix}_MIN_HF_SOURCES_WITH_ACCEPTED" "$min_sources_with_accepted_default"
   print_cli_flag_value_from_env --min-hf-sources-per-class "${prefix}_MIN_HF_SOURCES_PER_CLASS" "$min_sources_per_class_default"
+  print_cli_flag_value_from_env --min-hf-sources-per-split-class "${prefix}_MIN_HF_SOURCES_PER_SPLIT_CLASS" "$min_sources_per_split_class_default"
   print_cli_flag_value_from_env --repo-base-pause-ms "${prefix}_REPO_BASE_PAUSE_MS" "$base_pause_default"
   print_cli_flag_value_from_env --repo-jitter-ms "${prefix}_REPO_JITTER_MS" "$jitter_default"
   print_cli_flag_value_from_env --repo-cooldown-ms "${prefix}_REPO_COOLDOWN_MS" "$cooldown_default"
@@ -266,7 +307,18 @@ print_image_collection_args() {
   print_cli_flag_value_from_env --max-aspect-ratio "${prefix}_MAX_ASPECT_RATIO" "2.5"
   print_cli_flag_value_from_env --min-entropy "${prefix}_MIN_ENTROPY" "3.4"
   print_cli_flag_value_from_env --hardneg-fraction "${prefix}_HARDNEG_FRACTION" "$hardneg_fraction_default"
-  print_cli_flag --hf-only
+  if [[ -n "${!sources_file_env:-}" ]]; then
+    print_cli_flag_value --sources-file "${!sources_file_env}"
+  fi
+  print_cli_flag_values_from_csv --extra-source "${!extra_sources_env:-}"
+  if [[ "${!hf_only_env:-1}" != "1" ]]; then
+    print_cli_flag_values_from_csv --local-source "${!local_sources_env:-}"
+  else
+    print_cli_flag --hf-only
+  fi
+  if [[ "${!no_default_sources_env:-1}" == "1" ]]; then
+    print_cli_flag --no-default-sources
+  fi
   print_cli_flag --require-full-targets
 }
 
@@ -305,10 +357,13 @@ print_diverse_common_args() {
   print_cli_flag --streaming
   print_cli_flag_value_from_env --stream-buffer-size "DIVERSE_STREAM_BUFFER_SIZE" "16000"
   print_cli_flag_value_from_env --max-samples-per-source "DIVERSE_MAX_SAMPLES_PER_SOURCE" "80000"
+  print_cli_flag_value_from_env --max-per-source-class "DIVERSE_MAX_PER_SOURCE_CLASS" "16000"
+  print_cli_flag_value_from_env --max-per-source-split-class "DIVERSE_MAX_PER_SOURCE_SPLIT_CLASS" "5500"
   print_cli_flag_value_from_env --acceptance-warmup-samples "DIVERSE_ACCEPTANCE_WARMUP_SAMPLES" "450"
   print_cli_flag_value_from_env --min-acceptance-rate "DIVERSE_MIN_ACCEPTANCE_RATE" "0.012"
   print_cli_flag_value_from_env --min-hf-sources-with-accepted "DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED" "24"
   print_cli_flag_value_from_env --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "14"
+  print_cli_flag_value_from_env --min-hf-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "8"
   print_cli_flag_value_from_env --repo-base-pause-ms "DIVERSE_REPO_BASE_PAUSE_MS" "1400"
   print_cli_flag_value_from_env --repo-jitter-ms "DIVERSE_REPO_JITTER_MS" "1200"
   print_cli_flag_value_from_env --repo-cooldown-ms "DIVERSE_REPO_COOLDOWN_MS" "45000"
@@ -316,7 +371,7 @@ print_diverse_common_args() {
   print_cli_flag_value_from_env --min-side "DIVERSE_MIN_SIDE" "192"
   print_cli_flag_value_from_env --max-aspect-ratio "DIVERSE_MAX_ASPECT_RATIO" "3.2"
   print_cli_flag_value_from_env --min-entropy "DIVERSE_MIN_ENTROPY" "3.1"
-  print_cli_flag_value_from_env --hardneg-fraction "DIVERSE_HARDNEG_FRACTION" "1.0"
+  print_cli_flag_value_from_env --hardneg-fraction "DIVERSE_HARDNEG_FRACTION" "0.5"
   print_cli_flag --hf-only
   print_cli_flag --require-full-targets
 }
@@ -335,6 +390,21 @@ print_diverse_audit_args() {
   print_cli_flag_value_from_env --min-unique-sources "DIVERSE_MIN_UNIQUE_SOURCES" "20"
   print_cli_flag_value_from_env --min-hardneg-modes "DIVERSE_MIN_HARDNEG_MODES" "4"
   print_cli_flag_value_from_env --max-class-imbalance "DIVERSE_MAX_CLASS_IMBALANCE" "0.08"
+  print_cli_flag_value_from_env --max-source-share-per-split "DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT" "0.22"
+  print_cli_flag_value_from_env --max-source-share-per-split-class "DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT_CLASS" "0.3"
+}
+
+audit_image_dataset() {
+  local out="${1:-${DATA_DIR:-./data_best}}"
+  ensure_env
+  python scripts/audit_diversity.py \
+    --data "$out" \
+    --min-unique-sources "${DIVERSE_MIN_UNIQUE_SOURCES:-20}" \
+    --min-hardneg-modes "${DIVERSE_MIN_HARDNEG_MODES:-4}" \
+    --min-sources-per-split-class "${DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS:-8}" \
+    --max-class-imbalance "${DIVERSE_MAX_CLASS_IMBALANCE:-0.08}" \
+    --max-source-share-per-split "${DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT:-0.22}" \
+    --max-source-share-per-split-class "${DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT_CLASS:-0.3}"
 }
 
 collect_diverse_image_data() {
@@ -412,10 +482,12 @@ collect_diverse_cycle() {
 }
 
 train_image_pipeline() {
+  audit_image_dataset "${DATA_DIR:-./data_best}"
   env SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 RUN_VIDEO_TRAIN=0 bash scripts/max_quality_4090.sh
 }
 
 train_all_pipeline() {
+  audit_image_dataset "${DATA_DIR:-./data_best}"
   env SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 bash scripts/max_quality_4090.sh
 }
 
@@ -522,6 +594,10 @@ run_detect() {
     --image "$image_path" \
     --json
 }
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
 
 load_env_file
 cmd="${1:-start}"

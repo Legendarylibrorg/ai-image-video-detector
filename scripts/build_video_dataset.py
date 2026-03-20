@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 from pathlib import Path
 import random
@@ -78,6 +79,31 @@ def _passes_video_quality(path: Path, min_bytes: int, max_bytes: int) -> bool:
     return True
 
 
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while True:
+            chunk = f.read(1 << 20)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def load_existing_video_hashes(out: Path) -> set[str]:
+    seen: set[str] = set()
+    for split in ("train", "val"):
+        for cls in ("ai", "real"):
+            split_dir = out / split / cls
+            if not split_dir.exists():
+                continue
+            for path in split_dir.glob("*"):
+                if not path.is_file():
+                    continue
+                seen.add(_sha256(path))
+    return seen
+
+
 def main():
     ap = argparse.ArgumentParser(description="Build video deepfake train/val dataset from HF")
     ap.add_argument("--out", default="video_data")
@@ -124,6 +150,7 @@ def main():
         "val": {"ai": args.val_per_class, "real": args.val_per_class},
     }
     have = count_existing(out)
+    seen_hashes = load_existing_video_hashes(out)
 
     for src in SOURCES:
         if done(have, need):
@@ -169,7 +196,11 @@ def main():
                     dst = out / split / cls / f"src={repo.split('/')[-1]}__{n:05d}{p.suffix.lower()}"
                     if not dst.exists():
                         if _passes_video_quality(p, args.min_video_bytes, args.max_video_bytes):
+                            src_hash = _sha256(p)
+                            if src_hash in seen_hashes:
+                                continue
                             shutil.copy2(p, dst)
+                            seen_hashes.add(src_hash)
                             have[split][cls] += 1
                             if args.copy_sleep_ms > 0:
                                 time.sleep(args.copy_sleep_ms / 1000.0)
@@ -219,7 +250,11 @@ def main():
                         if not dst.exists():
                             local_path = Path(local)
                             if _passes_video_quality(local_path, args.min_video_bytes, args.max_video_bytes):
+                                src_hash = _sha256(local_path)
+                                if src_hash in seen_hashes:
+                                    continue
                                 shutil.copy2(local_path, dst)
+                                seen_hashes.add(src_hash)
                                 have[split][cls] += 1
                                 pulled += 1
 
