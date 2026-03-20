@@ -20,41 +20,27 @@ It is not a production serving repo in the current mode.
 This repository is in pipeline-only mode:
 - It collects data from Hugging Face and trains models locally.
 - It does not run production serving in the current setup.
-- The intended host is Linux.
+- Linux is the best-supported host, but the lightweight bootstrap works anywhere `python3` is available.
 
-If you only want the normal workflow, follow the steps below in order.
-
-### Before you start
-
-You need:
-- Linux
-- Python 3
-- enough disk space for datasets and artifacts
-- a Hugging Face token
-
-Normal first run:
+The easiest first run is:
 
 ```bash
 cd /path/to/image-spam
-cp .env.example .env
-./local.sh doctor
 ./local.sh setup
-./local.sh status
 ```
 
-If `doctor` says `HF_TOKEN` is missing, add it to `.env` and run `doctor` again before `setup`.
+What `setup` does:
+- copies `.env.example` to `.env` if needed
+- installs Linux packages when `apt-get` is available
+- creates or reuses `.venv`
+- installs pinned Python dependencies
+- prepares local cache directories
+- runs `doctor` in non-strict mode so a missing `HF_TOKEN` is a warning instead of a hard failure
 
-### Step 1: Open the project on Linux
-
-```bash
-cd /path/to/image-spam
-```
-
-### Step 2: Create your env file
-
-```bash
-cp .env.example .env
-```
+What you still need before collection or training:
+- `python3`
+- enough disk space for datasets and artifacts
+- a Hugging Face token in `.env`
 
 What `.env` is for:
 - `HF_TOKEN` for reliable Hugging Face collection
@@ -62,9 +48,7 @@ What `.env` is for:
 - diversity and quality gates
 - setup and doctor defaults
 
-### Step 3: Add your Hugging Face token
-
-Open `.env` and set:
+After `setup`, open `.env` and set:
 
 ```bash
 HF_TOKEN='your_token_here'
@@ -75,34 +59,38 @@ If you do not have a token yet:
 - Create an access token
 - Paste it into `.env`
 
-### Step 4: Run the preflight check
+### Normal workflow
 
-```bash
-./local.sh doctor
-```
-
-What `doctor` checks:
-- free disk space
-- GPU visibility
-- cache directories
-- Python environment and core packages
-- whether `HF_TOKEN` is present
-
-If `doctor` shows a failure, fix that first before running the full pipeline.
-
-Common fixes:
-- missing `HF_TOKEN`: add it to `.env`
-- missing Python or venv support: install your distro Python packages first
-- GPU not visible: training can still run, but likely slower
-- low disk space: free space before collection starts
-
-### Step 5: Run the full setup
+1. Bootstrap the environment:
 
 ```bash
 ./local.sh setup
 ```
 
-What `setup` does:
+2. Add `HF_TOKEN` to `.env`.
+
+3. Run a quick smoke test:
+
+```bash
+./local.sh collect-fast
+```
+
+4. Run the normal pipeline when you are ready:
+
+```bash
+./local.sh collect
+./local.sh train
+```
+
+### One-command full pipeline
+
+If you want the old install + collect + train flow in one command, use:
+
+```bash
+HF_TOKEN='your_token_here' ./local.sh setup-full
+```
+
+What `setup-full` does:
 - installs Linux packages when `apt-get` is available
 - creates or reuses `.venv`
 - installs pinned Python dependencies
@@ -112,16 +100,11 @@ What `setup` does:
 - writes resumable setup markers in `./.local/stages/*.done`
 
 Important:
-- If setup stops, you can run `./local.sh setup` again.
-- Completed setup stages are skipped automatically.
-- To force every setup stage to rerun, use `SETUP_FORCE_STAGES=1 ./local.sh setup`.
+- If `setup-full` stops, you can run `./local.sh setup-full` again.
+- Completed stages are skipped automatically.
+- To force every stage to rerun, use `SETUP_FORCE_STAGES=1 ./local.sh setup-full`.
 
-What to expect:
-- first runs can take a while because they install deps, discover sources, collect data, and train
-- reruns are usually much faster because the venv, cache, and completed stages are reused
-- collection is Hugging Face-only and uses cache-first behavior to reduce rate-limit pressure
-
-### Step 6: Check the current state
+### Check the current state
 
 ```bash
 ./local.sh status
@@ -133,9 +116,16 @@ This shows:
 - where video data is stored
 - where trained artifacts are written
 
-### Step 7: Run only the part you need later
+### Command reference
 
-Use these after the initial setup:
+- `./local.sh setup`
+  Bootstrap the local environment only.
+
+- `./local.sh setup-full`
+  End-to-end setup, collection, and training.
+
+- `./local.sh doctor`
+  Run the preflight check directly.
 
 - `./local.sh collect`
   Runs collection only.
@@ -154,6 +144,7 @@ Use these after the initial setup:
 
 If you are unsure which command to use:
 - first time: `./local.sh setup`
+- one command for everything: `./local.sh setup-full`
 - check health: `./local.sh doctor`
 - collect more data only: `./local.sh collect`
 - quick pipeline check: `./local.sh collect-fast`
@@ -162,8 +153,9 @@ If you are unsure which command to use:
 ### Minimal command reference
 
 ```bash
-./local.sh doctor
 ./local.sh setup
+./local.sh doctor
+./local.sh setup-full
 ./local.sh status
 ./local.sh collect
 ./local.sh collect-fast
@@ -180,10 +172,15 @@ python3 -m venv .venv
 source .venv/bin/activate
 bash scripts/install_deps.sh
 ./local.sh doctor
-bash scripts/do.sh train-all-types
 ```
 
 ### Setup options
+
+- `SETUP_INSTALL_SYSTEM_DEPS`
+  Set to `0` to skip `apt-get` during `./local.sh setup`.
+
+- `SETUP_SKIP_DOCTOR`
+  Set to `1` to skip the post-setup health check during `./local.sh setup`.
 
 - `SETUP_MAX_ATTEMPTS`
   Default `4`.
@@ -192,16 +189,16 @@ bash scripts/do.sh train-all-types
   Default `45`.
 
 - `SETUP_FORCE_STAGES`
-  Set to `1` to rerun completed setup stages.
+  Set to `1` to rerun completed `setup-full` stages.
 
 - `SETUP_STAGE_DIR`
   Custom stage marker directory. Default `./.local/stages`.
 
 - `HF_SETUP_REQUIRE_TOKEN`
-  Set to `0` to allow setup without a token.
+  Set to `0` to allow `./local.sh setup-full` without a token.
 
 - `HF_SETUP_SAVE_ENV`
-  Set to `0` to avoid writing the token into `.env`.
+  Set to `0` to avoid writing the token into `.env` during `./local.sh setup-full`.
 
 Dependency lock workflow:
 - Install pinned deps with `bash scripts/install_deps.sh`
@@ -212,15 +209,15 @@ You can ignore the remaining sections unless you want manual control, advanced t
 
 ## Troubleshooting
 
-### Setup stopped
+### Full setup stopped
 
 Run:
 
 ```bash
-./local.sh setup
+./local.sh setup-full
 ```
 
-Setup resumes from completed stages automatically.
+`setup-full` resumes from completed stages automatically.
 
 ### Collection seems slow
 

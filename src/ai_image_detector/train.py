@@ -23,7 +23,7 @@ from torchvision import datasets, transforms
 
 from .checkpoints import load_checkpoint, resolve_checkpoint_path, save_safetensors_checkpoint
 from .data import make_loaders
-from .metrics import fit_temperature, full_metric_report, sigmoid
+from .metrics import find_best_threshold, fit_temperature, full_metric_report, sigmoid
 from .model import build_model
 
 
@@ -67,17 +67,44 @@ def _group_report(
     return out
 
 
-class FocalBCE(nn.Module):
-    def __init__(self, gamma: float = 2.0):
+class BinaryClassificationLoss(nn.Module):
+    def __init__(
+        self,
+        kind: str = "ce",
+        gamma: float = 2.0,
+        real_weight: float = 1.0,
+        ai_weight: float = 1.0,
+    ):
         super().__init__()
+        self.kind = kind
         self.gamma = gamma
+        self.register_buffer("real_weight", torch.tensor(float(real_weight), dtype=torch.float32))
+        self.register_buffer("ai_weight", torch.tensor(float(ai_weight), dtype=torch.float32))
+        self.register_buffer(
+            "class_weights",
+            torch.tensor([float(real_weight), float(ai_weight)], dtype=torch.float32),
+        )
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        targets = targets.float()
+        if self.kind == "ce":
+            logits_2c = torch.stack((torch.zeros_like(logits), logits), dim=1)
+            return F.cross_entropy(logits_2c, targets.long(), weight=self.class_weights)
+
+        sample_weights = torch.where(targets > 0.5, self.ai_weight, self.real_weight)
         bce = F.binary_cross_entropy_with_logits(logits, targets, reduction="none")
+        if self.kind == "bce":
+            return (bce * sample_weights).sum() / sample_weights.sum().clamp(min=1e-6)
+
         probs = torch.sigmoid(logits)
         pt = torch.where(targets > 0.5, probs, 1.0 - probs)
         focal = (1.0 - pt).pow(self.gamma)
-        return (focal * bce).mean()
+        weighted = focal * bce * sample_weights
+        return weighted.sum() / sample_weights.sum().clamp(min=1e-6)
+
+
+def _binary_targets(y: torch.Tensor, ai_idx: int) -> torch.Tensor:
+    return (y == ai_idx).float()
 
 
 class EMA:
@@ -93,10 +120,6 @@ class EMA:
         for k, v in self.shadow.state_dict().items():
             if k in msd and torch.is_floating_point(v):
                 v.copy_(v * self.decay + msd[k] * (1.0 - self.decay))
-
-
-def _binary_logits_to_two_class(logits: torch.Tensor) -> torch.Tensor:
-    return torch.stack((-logits, logits), dim=1)
 
 
 def _eval_metrics_from_probs(probs: np.ndarray, labels: np.ndarray, threshold: float) -> dict[str, Any]:
@@ -163,11 +186,11 @@ def evaluate(
         for x, y in loader:
             x = x.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
+            y_bin = _binary_targets(y, ai_idx)
             if device.type == "cuda":
                 x = x.to(memory_format=torch.channels_last)
             logits = model(x)
-            logits_2c = _binary_logits_to_two_class(logits)
-            loss = loss_fn(logits_2c, y.long())
+            loss = loss_fn(logits, y_bin)
             probs = torch.sigmoid(logits)
 
             bs = y.shape[0]
@@ -175,7 +198,7 @@ def evaluate(
             offset += bs
 
             probs_all.extend(probs.detach().cpu().tolist())
-            labels_all.extend((y == ai_idx).float().detach().cpu().tolist())
+            labels_all.extend(y_bin.detach().cpu().tolist())
             logits_all.extend(logits.detach().cpu().tolist())
             paths_all.extend(batch_paths)
 
@@ -231,7 +254,12 @@ def main():
     ap.add_argument("--compile", action="store_true", default=True)
     ap.add_argument("--no-compile", dest="compile", action="store_false")
     ap.add_argument("--threshold-objective", choices=["f1", "balanced", "youden"], default="balanced")
-    ap.add_argument("--decision-threshold", type=float, default=0.5, help="Binary decision threshold for class=ai")
+    ap.add_argument(
+        "--decision-threshold",
+        type=float,
+        default=None,
+        help="Optional fixed threshold for class=ai; otherwise tuned on validation using --threshold-objective",
+    )
     ap.add_argument("--degenerate-patience", type=int, default=2, help="Fail training after N consecutive degenerate val epochs")
     ap.add_argument("--resume", default="", help="Path to training checkpoint (default: <out>/last.pt if present)")
     ap.add_argument("--save-every", type=int, default=1, help="Save epoch checkpoint every N epochs")
@@ -293,7 +321,8 @@ def main():
     if set(classes) != {"ai", "real"}:
         raise ValueError(f"Expected classes exactly ai/real, got {classes}")
     ai_idx = int(class_to_idx["ai"])
-    class_weights_tensor = torch.tensor([class_weight_map[classes[0]], class_weight_map[classes[1]]], dtype=torch.float32, device=device)
+    real_weight = float(class_weight_map["real"])
+    ai_weight = float(class_weight_map["ai"])
 
     model = build_model(
         backbone=args.backbone,
@@ -308,9 +337,12 @@ def main():
             print(f"compile_disabled reason={exc}")
     opt = AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     sched = CosineAnnealingLR(opt, T_max=max(args.epochs, 1), eta_min=args.lr * 0.05)
-    if args.loss != "ce":
-        print(f"loss_override requested={args.loss} active=ce")
-    loss_fn: nn.Module = nn.CrossEntropyLoss(weight=class_weights_tensor)
+    loss_fn: nn.Module = BinaryClassificationLoss(
+        kind=args.loss,
+        gamma=args.focal_gamma,
+        real_weight=real_weight,
+        ai_weight=ai_weight,
+    ).to(device)
 
     ema = EMA(model, decay=args.ema_decay)
     use_amp = bool(args.amp and device.type == "cuda")
@@ -373,12 +405,12 @@ def main():
             for x, y in train_loader:
                 x = x.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
+                y_bin = _binary_targets(y, ai_idx)
                 if device.type == "cuda":
                     x = x.to(memory_format=torch.channels_last)
                 with torch.amp.autocast("cuda", enabled=use_amp):
                     logits = model(x)
-                    logits_2c = _binary_logits_to_two_class(logits)
-                    loss = loss_fn(logits_2c, y.long()) / grad_accum
+                    loss = loss_fn(logits, y_bin) / grad_accum
                 if not torch.isfinite(loss):
                     skipped_batches += 1
                     opt.zero_grad(set_to_none=True)
@@ -417,12 +449,26 @@ def main():
 
             temperature, temp_nll = fit_temperature(val_logits, val_labels)
             val_probs = sigmoid(val_logits / max(temperature, 1e-6))
-            threshold = float(args.decision_threshold)
+            threshold_source = "fixed"
+            threshold_score = None
+            if args.decision_threshold is None:
+                threshold, threshold_score, _ = find_best_threshold(
+                    val_probs,
+                    val_labels,
+                    objective=args.threshold_objective,
+                )
+                threshold_source = "tuned"
+            else:
+                threshold = float(args.decision_threshold)
             report = _eval_metrics_from_probs(val_probs, val_labels, threshold)
             report["val_loss"] = float(val_loss)
             report["temperature"] = float(temperature)
             report["temperature_nll"] = float(temp_nll)
             report["composite_metrics"] = full_metric_report(val_probs, val_labels, threshold)
+            report["threshold_source"] = threshold_source
+            report["threshold_objective"] = args.threshold_objective
+            if threshold_score is not None:
+                report["threshold_objective_score"] = float(threshold_score)
             report["lr"] = float(opt.param_groups[0]["lr"])
             report["skipped_batches"] = skipped_batches
 
@@ -537,7 +583,12 @@ def main():
             pin_memory=bool(torch.cuda.is_available()),
         )
         test_ai_idx = int(test_ds.class_to_idx["ai"])
-        test_loss_fn = nn.CrossEntropyLoss(weight=class_weights_tensor)
+        test_loss_fn = BinaryClassificationLoss(
+            kind=args.loss,
+            gamma=args.focal_gamma,
+            real_weight=real_weight,
+            ai_weight=ai_weight,
+        ).to(device)
         test_loss_sum = 0.0
         test_total = 0
         test_probs: list[float] = []
@@ -546,14 +597,14 @@ def main():
             for x, y in test_loader:
                 x = x.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
+                y_bin = _binary_targets(y, test_ai_idx)
                 if device.type == "cuda":
                     x = x.to(memory_format=torch.channels_last)
                 logits = eval_model(x)
-                logits_2c = _binary_logits_to_two_class(logits)
-                loss = test_loss_fn(logits_2c, y.long())
+                loss = test_loss_fn(logits, y_bin)
                 probs = torch.sigmoid(logits / max(float(best.get("temperature", 1.0)), 1e-6))
                 test_probs.extend(probs.detach().cpu().tolist())
-                test_labels.extend((y == test_ai_idx).float().detach().cpu().tolist())
+                test_labels.extend(y_bin.detach().cpu().tolist())
                 bs = y.shape[0]
                 test_loss_sum += float(loss.item()) * bs
                 test_total += bs

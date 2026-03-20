@@ -7,6 +7,7 @@ cd "$ROOT_DIR"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 MIN_FREE_GB="${DOCTOR_MIN_FREE_GB:-40}"
 TOKEN_CHECK_TIMEOUT_SEC="${DOCTOR_TOKEN_CHECK_TIMEOUT_SEC:-12}"
+DOCTOR_REQUIRE_TOKEN="${DOCTOR_REQUIRE_TOKEN:-0}"
 
 ok_count=0
 warn_count=0
@@ -92,7 +93,7 @@ check_cache_paths() {
 
 check_venv_and_deps() {
   if [[ ! -x "$ROOT_DIR/.venv/bin/python" ]]; then
-    emit_fail "venv_missing path=$ROOT_DIR/.venv"
+    emit_warn "venv_missing path=$ROOT_DIR/.venv run=./local.sh setup"
     return
   fi
   emit_ok "venv_present path=$ROOT_DIR/.venv"
@@ -112,7 +113,11 @@ PY
 check_hf_token() {
   local token="${HF_TOKEN:-${HUGGINGFACE_HUB_TOKEN:-}}"
   if [[ -z "$token" ]]; then
-    emit_fail "hf_token_missing set HF_TOKEN in environment or .env"
+    if [[ "$DOCTOR_REQUIRE_TOKEN" == "1" ]]; then
+      emit_fail "hf_token_missing set HF_TOKEN in environment or .env"
+    else
+      emit_warn "hf_token_missing add HF_TOKEN before collection or training"
+    fi
     return
   fi
   emit_ok "hf_token_present=1"

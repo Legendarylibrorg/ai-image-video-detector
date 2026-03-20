@@ -102,7 +102,22 @@ print_hf_query_args() {
   done
 }
 
-run_image_dataset_build() {
+print_cli_flag() {
+  printf "%s\n" "$1"
+}
+
+print_cli_flag_value() {
+  printf "%s\n%s\n" "$1" "$2"
+}
+
+print_cli_flag_value_from_env() {
+  local flag="$1"
+  local env_name="$2"
+  local default="$3"
+  print_cli_flag_value "$flag" "${!env_name:-$default}"
+}
+
+run_image_dataset_builder() {
   local out="$1"
   local query_csv="$2"
   shift 2
@@ -113,79 +128,162 @@ run_image_dataset_build() {
     --out "$out" \
     "$@" \
     "${query_args[@]}"
+}
+
+run_image_dataset_discovery() {
+  local timeout_sec="$1"
+  local out="$2"
+  local query_csv="$3"
+  shift 3
+  local -a query_args=()
+  mapfile -t query_args < <(print_hf_query_args "$query_csv")
+  ensure_env
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "${timeout_sec}s" python scripts/build_best_dataset.py \
+      --out "$out" \
+      "$@" \
+      "${query_args[@]}" \
+      --discover-only
+  else
+    python scripts/build_best_dataset.py \
+      --out "$out" \
+      "$@" \
+      "${query_args[@]}" \
+      --discover-only
+  fi
+}
+
+run_image_dataset_build() {
+  local out="$1"
+  local query_csv="$2"
+  shift 2
+  run_image_dataset_builder "$out" "$query_csv" "$@"
   run_malware_scan "$out"
+}
+
+print_image_collection_args() {
+  local profile="$1"
+  local train_env=""
+  local train_default=""
+  local val_env=""
+  local val_default=""
+  local test_env=""
+  local test_default=""
+  local prefix=""
+  local discovery_limit_default=""
+  local max_sources_default=""
+  local print_top_default=""
+  local cache_file_default=""
+  local stream_buffer_default=""
+  local max_samples_default=""
+  local warmup_default=""
+  local min_sources_with_accepted_default=""
+  local min_sources_per_class_default=""
+  local base_pause_default=""
+  local jitter_default=""
+  local cooldown_default=""
+  local min_side_default=""
+  local hardneg_fraction_default=""
+
+  case "$profile" in
+    best)
+      train_env="TRAIN_PER_CLASS"
+      train_default="80000"
+      val_env="VAL_PER_CLASS"
+      val_default="20000"
+      test_env="TEST_PER_CLASS"
+      test_default="20000"
+      prefix="BEST_DS"
+      discovery_limit_default="90"
+      max_sources_default="180"
+      print_top_default="15"
+      cache_file_default="./.local/hf_discovered_sources.txt"
+      stream_buffer_default="12000"
+      max_samples_default="45000"
+      warmup_default="400"
+      min_sources_with_accepted_default="16"
+      min_sources_per_class_default="10"
+      base_pause_default="1100"
+      jitter_default="900"
+      cooldown_default="45000"
+      min_side_default="224"
+      hardneg_fraction_default="0.8"
+      ;;
+    fast)
+      train_env="FAST_TRAIN_PER_CLASS"
+      train_default="4000"
+      val_env="FAST_VAL_PER_CLASS"
+      val_default="1000"
+      test_env="FAST_TEST_PER_CLASS"
+      test_default="1000"
+      prefix="FAST"
+      discovery_limit_default="60"
+      max_sources_default="100"
+      print_top_default="10"
+      cache_file_default="./.local/hf_fast_sources.txt"
+      stream_buffer_default="6000"
+      max_samples_default="12000"
+      warmup_default="250"
+      min_sources_with_accepted_default="10"
+      min_sources_per_class_default="6"
+      base_pause_default="900"
+      jitter_default="700"
+      cooldown_default="30000"
+      min_side_default="224"
+      hardneg_fraction_default="0.8"
+      ;;
+    *)
+      echo "unknown_image_collection_profile=$profile" >&2
+      return 1
+      ;;
+  esac
+
+  print_cli_flag_value_from_env --train-per-class "$train_env" "$train_default"
+  print_cli_flag_value_from_env --val-per-class "$val_env" "$val_default"
+  print_cli_flag_value_from_env --test-per-class "$test_env" "$test_default"
+  print_cli_flag --discover-hf
+  print_cli_flag_value_from_env --hf-discovery-limit "${prefix}_HF_DISCOVERY_LIMIT" "$discovery_limit_default"
+  print_cli_flag_value_from_env --hf-max-sources "${prefix}_HF_MAX_SOURCES" "$max_sources_default"
+  print_cli_flag_value_from_env --hf-min-downloads "${prefix}_HF_MIN_DOWNLOADS" "80"
+  print_cli_flag_value_from_env --hf-min-likes "${prefix}_HF_MIN_LIKES" "2"
+  print_cli_flag_value_from_env --hf-min-quality-score "${prefix}_HF_MIN_QUALITY_SCORE" "1.7"
+  print_cli_flag_value_from_env --hf-print-top "${prefix}_HF_PRINT_TOP" "$print_top_default"
+  print_cli_flag_value_from_env --hf-cache-file "${prefix}_HF_CACHE_FILE" "$cache_file_default"
+  print_cli_flag --hf-cache-only-if-present
+  print_cli_flag_value_from_env --cache-dir "${prefix}_CACHE_DIR" "./.local/hf"
+  print_cli_flag --streaming
+  print_cli_flag_value_from_env --stream-buffer-size "${prefix}_STREAM_BUFFER_SIZE" "$stream_buffer_default"
+  print_cli_flag_value_from_env --max-samples-per-source "${prefix}_MAX_SAMPLES_PER_SOURCE" "$max_samples_default"
+  print_cli_flag_value_from_env --acceptance-warmup-samples "${prefix}_ACCEPTANCE_WARMUP_SAMPLES" "$warmup_default"
+  print_cli_flag_value_from_env --min-acceptance-rate "${prefix}_MIN_ACCEPTANCE_RATE" "0.01"
+  print_cli_flag_value_from_env --min-hf-sources-with-accepted "${prefix}_MIN_HF_SOURCES_WITH_ACCEPTED" "$min_sources_with_accepted_default"
+  print_cli_flag_value_from_env --min-hf-sources-per-class "${prefix}_MIN_HF_SOURCES_PER_CLASS" "$min_sources_per_class_default"
+  print_cli_flag_value_from_env --repo-base-pause-ms "${prefix}_REPO_BASE_PAUSE_MS" "$base_pause_default"
+  print_cli_flag_value_from_env --repo-jitter-ms "${prefix}_REPO_JITTER_MS" "$jitter_default"
+  print_cli_flag_value_from_env --repo-cooldown-ms "${prefix}_REPO_COOLDOWN_MS" "$cooldown_default"
+  print_cli_flag_value_from_env --max-consecutive-failures "${prefix}_MAX_CONSECUTIVE_FAILURES" "2"
+  print_cli_flag_value_from_env --min-side "${prefix}_MIN_SIDE" "$min_side_default"
+  print_cli_flag_value_from_env --max-aspect-ratio "${prefix}_MAX_ASPECT_RATIO" "2.5"
+  print_cli_flag_value_from_env --min-entropy "${prefix}_MIN_ENTROPY" "3.4"
+  print_cli_flag_value_from_env --hardneg-fraction "${prefix}_HARDNEG_FRACTION" "$hardneg_fraction_default"
+  print_cli_flag --hf-only
+  print_cli_flag --require-full-targets
 }
 
 collect_image_data() {
   local out="${DATA_DIR:-./data_best}"
   local query_csv="${BEST_DS_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}"
-  run_image_dataset_build "$out" "$query_csv" \
-    --train-per-class "${TRAIN_PER_CLASS:-80000}" \
-    --val-per-class "${VAL_PER_CLASS:-20000}" \
-    --test-per-class "${TEST_PER_CLASS:-20000}" \
-    --discover-hf \
-    --hf-discovery-limit "${BEST_DS_HF_DISCOVERY_LIMIT:-90}" \
-    --hf-max-sources "${BEST_DS_HF_MAX_SOURCES:-180}" \
-    --hf-min-downloads "${BEST_DS_HF_MIN_DOWNLOADS:-80}" \
-    --hf-min-likes "${BEST_DS_HF_MIN_LIKES:-2}" \
-    --hf-min-quality-score "${BEST_DS_HF_MIN_QUALITY_SCORE:-1.7}" \
-    --hf-print-top "${BEST_DS_HF_PRINT_TOP:-15}" \
-    --hf-cache-file "${BEST_DS_HF_CACHE_FILE:-./.local/hf_discovered_sources.txt}" \
-    --hf-cache-only-if-present \
-    --cache-dir "${BEST_DS_CACHE_DIR:-./.local/hf}" \
-    --streaming \
-    --stream-buffer-size "${BEST_DS_STREAM_BUFFER_SIZE:-12000}" \
-    --max-samples-per-source "${BEST_DS_MAX_SAMPLES_PER_SOURCE:-45000}" \
-    --acceptance-warmup-samples "${BEST_DS_ACCEPTANCE_WARMUP_SAMPLES:-400}" \
-    --min-acceptance-rate "${BEST_DS_MIN_ACCEPTANCE_RATE:-0.01}" \
-    --min-hf-sources-with-accepted "${BEST_DS_MIN_HF_SOURCES_WITH_ACCEPTED:-16}" \
-    --min-hf-sources-per-class "${BEST_DS_MIN_HF_SOURCES_PER_CLASS:-10}" \
-    --repo-base-pause-ms "${BEST_DS_REPO_BASE_PAUSE_MS:-1100}" \
-    --repo-jitter-ms "${BEST_DS_REPO_JITTER_MS:-900}" \
-    --repo-cooldown-ms "${BEST_DS_REPO_COOLDOWN_MS:-45000}" \
-    --max-consecutive-failures "${BEST_DS_MAX_CONSECUTIVE_FAILURES:-2}" \
-    --min-side "${BEST_DS_MIN_SIDE:-224}" \
-    --max-aspect-ratio "${BEST_DS_MAX_ASPECT_RATIO:-2.5}" \
-    --min-entropy "${BEST_DS_MIN_ENTROPY:-3.4}" \
-    --hardneg-fraction "${BEST_DS_HARDNEG_FRACTION:-0.8}" \
-    --hf-only \
-    --require-full-targets
+  local -a build_args=()
+  mapfile -t build_args < <(print_image_collection_args best)
+  run_image_dataset_build "$out" "$query_csv" "${build_args[@]}"
 }
 
 collect_fast_data() {
   local out="${DATA_DIR:-./data_best_fast}"
   local query_csv="${FAST_HF_QUERIES:-${BEST_DS_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}}"
-  run_image_dataset_build "$out" "$query_csv" \
-    --train-per-class "${FAST_TRAIN_PER_CLASS:-4000}" \
-    --val-per-class "${FAST_VAL_PER_CLASS:-1000}" \
-    --test-per-class "${FAST_TEST_PER_CLASS:-1000}" \
-    --discover-hf \
-    --hf-discovery-limit "${FAST_HF_DISCOVERY_LIMIT:-60}" \
-    --hf-max-sources "${FAST_HF_MAX_SOURCES:-100}" \
-    --hf-min-downloads "${FAST_HF_MIN_DOWNLOADS:-80}" \
-    --hf-min-likes "${FAST_HF_MIN_LIKES:-2}" \
-    --hf-min-quality-score "${FAST_HF_MIN_QUALITY_SCORE:-1.7}" \
-    --hf-print-top "${FAST_HF_PRINT_TOP:-10}" \
-    --hf-cache-file "${FAST_HF_CACHE_FILE:-./.local/hf_fast_sources.txt}" \
-    --hf-cache-only-if-present \
-    --cache-dir "${FAST_CACHE_DIR:-./.local/hf}" \
-    --streaming \
-    --stream-buffer-size "${FAST_STREAM_BUFFER_SIZE:-6000}" \
-    --max-samples-per-source "${FAST_MAX_SAMPLES_PER_SOURCE:-12000}" \
-    --acceptance-warmup-samples "${FAST_ACCEPTANCE_WARMUP_SAMPLES:-250}" \
-    --min-acceptance-rate "${FAST_MIN_ACCEPTANCE_RATE:-0.01}" \
-    --min-hf-sources-with-accepted "${FAST_MIN_HF_SOURCES_WITH_ACCEPTED:-10}" \
-    --min-hf-sources-per-class "${FAST_MIN_HF_SOURCES_PER_CLASS:-6}" \
-    --repo-base-pause-ms "${FAST_REPO_BASE_PAUSE_MS:-900}" \
-    --repo-jitter-ms "${FAST_REPO_JITTER_MS:-700}" \
-    --repo-cooldown-ms "${FAST_REPO_COOLDOWN_MS:-30000}" \
-    --max-consecutive-failures "${FAST_MAX_CONSECUTIVE_FAILURES:-2}" \
-    --min-side "${FAST_MIN_SIDE:-224}" \
-    --max-aspect-ratio "${FAST_MAX_ASPECT_RATIO:-2.5}" \
-    --min-entropy "${FAST_MIN_ENTROPY:-3.4}" \
-    --hardneg-fraction "${FAST_HARDNEG_FRACTION:-0.8}" \
-    --hf-only \
-    --require-full-targets
+  local -a build_args=()
+  mapfile -t build_args < <(print_image_collection_args fast)
+  run_image_dataset_build "$out" "$query_csv" "${build_args[@]}"
 }
 
 ingest_outputs() {
@@ -197,78 +295,86 @@ ingest_outputs() {
   run_malware_scan "${NEW_DATA_DST:-./data_new/train}" "${MODEL_OUTPUTS_SRC:-./incoming_model_outputs}"
 }
 
+print_diverse_common_args() {
+  print_cli_flag_value_from_env --train-per-class "DIVERSE_TRAIN_PER_CLASS" "100000"
+  print_cli_flag_value_from_env --val-per-class "DIVERSE_VAL_PER_CLASS" "25000"
+  print_cli_flag_value_from_env --test-per-class "DIVERSE_TEST_PER_CLASS" "25000"
+  print_cli_flag_value_from_env --hf-cache-file "DIVERSE_HF_CACHE_FILE" "./.local/hf_diverse_sources.txt"
+  print_cli_flag --hf-cache-only-if-present
+  print_cli_flag_value_from_env --cache-dir "DIVERSE_CACHE_DIR" "./.local/hf"
+  print_cli_flag --streaming
+  print_cli_flag_value_from_env --stream-buffer-size "DIVERSE_STREAM_BUFFER_SIZE" "16000"
+  print_cli_flag_value_from_env --max-samples-per-source "DIVERSE_MAX_SAMPLES_PER_SOURCE" "80000"
+  print_cli_flag_value_from_env --acceptance-warmup-samples "DIVERSE_ACCEPTANCE_WARMUP_SAMPLES" "450"
+  print_cli_flag_value_from_env --min-acceptance-rate "DIVERSE_MIN_ACCEPTANCE_RATE" "0.012"
+  print_cli_flag_value_from_env --min-hf-sources-with-accepted "DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED" "24"
+  print_cli_flag_value_from_env --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "14"
+  print_cli_flag_value_from_env --repo-base-pause-ms "DIVERSE_REPO_BASE_PAUSE_MS" "1400"
+  print_cli_flag_value_from_env --repo-jitter-ms "DIVERSE_REPO_JITTER_MS" "1200"
+  print_cli_flag_value_from_env --repo-cooldown-ms "DIVERSE_REPO_COOLDOWN_MS" "45000"
+  print_cli_flag_value_from_env --max-consecutive-failures "DIVERSE_MAX_CONSECUTIVE_FAILURES" "2"
+  print_cli_flag_value_from_env --min-side "DIVERSE_MIN_SIDE" "192"
+  print_cli_flag_value_from_env --max-aspect-ratio "DIVERSE_MAX_ASPECT_RATIO" "3.2"
+  print_cli_flag_value_from_env --min-entropy "DIVERSE_MIN_ENTROPY" "3.1"
+  print_cli_flag_value_from_env --hardneg-fraction "DIVERSE_HARDNEG_FRACTION" "1.0"
+  print_cli_flag --hf-only
+  print_cli_flag --require-full-targets
+}
+
+print_diverse_discovery_args() {
+  print_cli_flag --discover-hf
+  print_cli_flag_value_from_env --hf-discovery-limit "DIVERSE_HF_DISCOVERY_LIMIT" "140"
+  print_cli_flag_value_from_env --hf-max-sources "DIVERSE_HF_MAX_SOURCES" "320"
+  print_cli_flag_value_from_env --hf-min-downloads "DIVERSE_HF_MIN_DOWNLOADS" "100"
+  print_cli_flag_value_from_env --hf-min-likes "DIVERSE_HF_MIN_LIKES" "2"
+  print_cli_flag_value_from_env --hf-min-quality-score "DIVERSE_HF_MIN_QUALITY_SCORE" "1.85"
+  print_cli_flag_value_from_env --hf-print-top "DIVERSE_HF_PRINT_TOP" "20"
+}
+
+print_diverse_audit_args() {
+  print_cli_flag_value_from_env --min-unique-sources "DIVERSE_MIN_UNIQUE_SOURCES" "20"
+  print_cli_flag_value_from_env --min-hardneg-modes "DIVERSE_MIN_HARDNEG_MODES" "4"
+  print_cli_flag_value_from_env --max-class-imbalance "DIVERSE_MAX_CLASS_IMBALANCE" "0.08"
+}
+
 collect_diverse_image_data() {
+  local out="${DATA_DIR:-./data_best}"
   local query_csv="${DIVERSE_HF_QUERIES:-$DIVERSE_HF_QUERY_CSV_DEFAULT}"
-  local -a diverse_query_args=()
-  mapfile -t diverse_query_args < <(print_hf_query_args "$query_csv")
-  ensure_env
   local hf_cache="${DIVERSE_HF_CACHE_FILE:-./.local/hf_diverse_sources.txt}"
   local timeout_sec="${DIVERSE_DISCOVERY_TIMEOUT_SEC:-900}"
-  local -a common_args=(
-    --out "${DATA_DIR:-./data_best}"
-    --train-per-class "${DIVERSE_TRAIN_PER_CLASS:-100000}"
-    --val-per-class "${DIVERSE_VAL_PER_CLASS:-25000}"
-    --test-per-class "${DIVERSE_TEST_PER_CLASS:-25000}"
-    --hf-cache-file "$hf_cache"
-    --hf-cache-only-if-present
-    --cache-dir "${DIVERSE_CACHE_DIR:-./.local/hf}"
-    --streaming
-    --stream-buffer-size "${DIVERSE_STREAM_BUFFER_SIZE:-16000}"
-    --max-samples-per-source "${DIVERSE_MAX_SAMPLES_PER_SOURCE:-80000}"
-    --acceptance-warmup-samples "${DIVERSE_ACCEPTANCE_WARMUP_SAMPLES:-450}"
-    --min-acceptance-rate "${DIVERSE_MIN_ACCEPTANCE_RATE:-0.012}"
-    --min-hf-sources-with-accepted "${DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED:-24}"
-    --min-hf-sources-per-class "${DIVERSE_MIN_HF_SOURCES_PER_CLASS:-14}"
-    --repo-base-pause-ms "${DIVERSE_REPO_BASE_PAUSE_MS:-1400}"
-    --repo-jitter-ms "${DIVERSE_REPO_JITTER_MS:-1200}"
-    --repo-cooldown-ms "${DIVERSE_REPO_COOLDOWN_MS:-45000}"
-    --max-consecutive-failures "${DIVERSE_MAX_CONSECUTIVE_FAILURES:-2}"
-    --min-side "${DIVERSE_MIN_SIDE:-192}"
-    --max-aspect-ratio "${DIVERSE_MAX_ASPECT_RATIO:-3.2}"
-    --min-entropy "${DIVERSE_MIN_ENTROPY:-3.1}"
-    --hardneg-fraction "${DIVERSE_HARDNEG_FRACTION:-1.0}"
-    --hf-only
-    --require-full-targets
-  )
-  local -a discover_args=(
-    --discover-hf
-    --hf-discovery-limit "${DIVERSE_HF_DISCOVERY_LIMIT:-140}"
-    --hf-max-sources "${DIVERSE_HF_MAX_SOURCES:-320}"
-    --hf-min-downloads "${DIVERSE_HF_MIN_DOWNLOADS:-100}"
-    --hf-min-likes "${DIVERSE_HF_MIN_LIKES:-2}"
-    --hf-min-quality-score "${DIVERSE_HF_MIN_QUALITY_SCORE:-1.85}"
-    --hf-print-top "${DIVERSE_HF_PRINT_TOP:-20}"
-  )
+  local -a common_args=()
+  local -a discover_args=()
   local -a cache_args=(--no-discover-hf --sources-file "$hf_cache")
-  local -a full_args=("${common_args[@]}")
+  local -a full_args=()
+  local -a audit_args=()
+
+  mapfile -t common_args < <(print_diverse_common_args)
+  full_args=("${common_args[@]}")
+  mapfile -t discover_args < <(print_diverse_discovery_args)
+  mapfile -t audit_args < <(print_diverse_audit_args)
 
   # Run discovery as a bounded pre-pass, then build from cached HF ids or live HF discovery.
   if [[ "${DIVERSE_SKIP_DISCOVERY:-0}" != "1" ]]; then
-    if command -v timeout >/dev/null 2>&1; then
-      if ! timeout "${timeout_sec}s" python scripts/build_best_dataset.py "${common_args[@]}" "${discover_args[@]}" "${diverse_query_args[@]}" --discover-only; then
-        echo "collect_diverse_discovery=failed_or_timed_out fallback=cache_or_live_hf"
-      fi
-    else
-      if ! python scripts/build_best_dataset.py "${common_args[@]}" "${discover_args[@]}" "${diverse_query_args[@]}" --discover-only; then
-        echo "collect_diverse_discovery=failed fallback=cache_or_live_hf"
-      fi
+    if ! run_image_dataset_discovery "$timeout_sec" "$out" "$query_csv" "${common_args[@]}" "${discover_args[@]}"; then
+      echo "collect_diverse_discovery=failed_or_timed_out fallback=cache_or_live_hf"
     fi
   fi
 
   if [[ -s "$hf_cache" ]]; then
     full_args+=("${cache_args[@]}")
+  elif [[ "${DIVERSE_SKIP_DISCOVERY:-0}" == "1" ]]; then
+    echo "collect_diverse_sources=cache_only_missing reason=hf_cache_missing"
+    return 1
   else
     full_args+=("${discover_args[@]}")
     echo "collect_diverse_sources=live_discovery reason=hf_cache_missing"
   fi
-  python scripts/build_best_dataset.py "${full_args[@]}" "${diverse_query_args[@]}"
-  run_malware_scan "${DATA_DIR:-./data_best}"
+  run_image_dataset_builder "$out" "$query_csv" "${full_args[@]}"
+  run_malware_scan "$out"
 
   python scripts/audit_diversity.py \
-    --data "${DATA_DIR:-./data_best}" \
-    --min-unique-sources "${DIVERSE_MIN_UNIQUE_SOURCES:-20}" \
-    --min-hardneg-modes "${DIVERSE_MIN_HARDNEG_MODES:-4}" \
-    --max-class-imbalance "${DIVERSE_MAX_CLASS_IMBALANCE:-0.08}"
+    --data "$out" \
+    "${audit_args[@]}"
 }
 
 collect_video_data() {

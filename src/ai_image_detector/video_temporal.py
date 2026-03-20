@@ -127,7 +127,9 @@ class TemporalVideoDetector(nn.Module):
 
     def encode_frames(self, x: torch.Tensor) -> torch.Tensor:
         b, t, c, h, w = x.shape
-        flat = x.view(b * t, c, h, w)
+        flat = x.reshape(b * t, c, h, w)
+        if flat.device.type == "cuda":
+            flat = flat.contiguous(memory_format=torch.channels_last)
         f = self.frame_encoder(flat)
         f = self.pool(f).flatten(1)
         return f.view(b, t, -1)
@@ -149,8 +151,6 @@ def _evaluate(model, loader, device):
         for x, y in loader:
             x = x.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
-            if device.type == "cuda":
-                x = x.to(memory_format=torch.channels_last)
             logit = model(x)
             loss = loss_fn(logit, y)
             p = torch.sigmoid(logit)
@@ -306,8 +306,6 @@ def train_main() -> None:
             for x, y in train_loader:
                 x = x.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
-                if device.type == "cuda":
-                    x = x.to(memory_format=torch.channels_last)
                 with torch.cuda.amp.autocast(enabled=use_amp):
                     logit = model(x)
                     loss = loss_fn(logit, y) / grad_accum

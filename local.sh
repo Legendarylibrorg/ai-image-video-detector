@@ -8,6 +8,9 @@ shift || true
 
 case "$cmd" in
   setup)
+    bash scripts/setup_local.sh
+    ;;
+  setup-full)
     bash scripts/setup_linux.sh
     ;;
   start)
@@ -35,6 +38,6 @@ case "$cmd" in
     bash scripts/do.sh status
     ;;
   help|*)
-    echo "usage: ./local.sh [setup|doctor|start|collect|collect-fast|train|scan|deps-update|status]"
+    echo "usage: ./local.sh [setup|setup-full|doctor|start|collect|collect-fast|train|scan|deps-update|status]"
     ;;
 esac

@@ -2,6 +2,8 @@
 set -euo pipefail
 
 # One-command Linux setup + broad data collection + full training (pipeline-only).
+# For environment bootstrap only, use:
+#   ./local.sh setup
 # Usage:
 #   bash scripts/one_command_start.sh
 # Optional:
