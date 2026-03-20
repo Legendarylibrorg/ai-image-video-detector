@@ -1,19 +1,11 @@
-# Extremely Advanced AI Image Detector
+# Local AI Image And Video Training Pipeline
 
-A production-oriented, forensics-first detector with:
+This repository is for one job:
+- collect Hugging Face image and video data locally
+- train detectors locally
+- rerun safely if a long setup stops partway through
 
-- Multi-branch model (RGB + FFT + noise residual)
-- Calibration (temperature scaling), threshold tuning, and full eval metrics
-- OOD rejection (`Unknown` mode)
-- Metadata anomaly and provenance signal scoring
-- Text overlay detection signal (text score + flags)
-- Ensemble inference (multiple checkpoints)
-- Explainability heatmaps + patch-level ranking
-- Robustness benchmarking under perturbations
-- Video scoring from sampled frames
-- Multimodal risk modules beyond photo/video (text, PDF, audio, URL, account/behavior/transaction)
-- API hardening (type/size limits, rate limiting, structured logs)
-- Dataset hygiene tooling (manifest, dedupe, near-dupes, balance report)
+It is not a production serving repo in the current mode.
 
 ## Open Source Notes
 
@@ -23,71 +15,246 @@ A production-oriented, forensics-first detector with:
 - Dataset/model licenses vary by source; verify each source license before commercial or production use.
 - Detection outputs are probabilistic and can be wrong; review high-risk decisions with human oversight.
 
-## Quick start
+## Setup And Run
 
-Pipeline-only mode is enabled:
-- Supported: data collection + training
-- Disabled: production serving commands
+This repository is in pipeline-only mode:
+- It collects data from Hugging Face and trains models locally.
+- It does not run production serving in the current setup.
+- The intended host is Linux.
 
-### 1) Open the project folder
+If you only want the normal workflow, follow the steps below in order.
+
+### Before you start
+
+You need:
+- Linux
+- Python 3
+- enough disk space for datasets and artifacts
+- a Hugging Face token
+
+Normal first run:
 
 ```bash
 cd /path/to/image-spam
 cp .env.example .env
+./local.sh doctor
+./local.sh setup
+./local.sh status
 ```
 
-### 2) Run setup (recommended)
+If `doctor` says `HF_TOKEN` is missing, add it to `.env` and run `doctor` again before `setup`.
+
+### Step 1: Open the project on Linux
+
+```bash
+cd /path/to/image-spam
+```
+
+### Step 2: Create your env file
+
+```bash
+cp .env.example .env
+```
+
+What `.env` is for:
+- `HF_TOKEN` for reliable Hugging Face collection
+- cache paths and safe rate-limit defaults
+- diversity and quality gates
+- setup and doctor defaults
+
+### Step 3: Add your Hugging Face token
+
+Open `.env` and set:
+
+```bash
+HF_TOKEN='your_token_here'
+```
+
+If you do not have a token yet:
+- Sign in to Hugging Face
+- Create an access token
+- Paste it into `.env`
+
+### Step 4: Run the preflight check
+
+```bash
+./local.sh doctor
+```
+
+What `doctor` checks:
+- free disk space
+- GPU visibility
+- cache directories
+- Python environment and core packages
+- whether `HF_TOKEN` is present
+
+If `doctor` shows a failure, fix that first before running the full pipeline.
+
+Common fixes:
+- missing `HF_TOKEN`: add it to `.env`
+- missing Python or venv support: install your distro Python packages first
+- GPU not visible: training can still run, but likely slower
+- low disk space: free space before collection starts
+
+### Step 5: Run the full setup
 
 ```bash
 ./local.sh setup
 ```
 
-What setup does:
-- Installs Linux deps (when `apt-get` is available)
-- Installs pinned Python deps
-- Ensures Hugging Face token is configured (prompts if missing)
-- Runs full collection + training pipeline
-- Retries automatically if a step fails
-- Uses resumable setup stage markers in `./.local/stages/*.done`
+What `setup` does:
+- installs Linux packages when `apt-get` is available
+- creates or reuses `.venv`
+- installs pinned Python dependencies
+- validates or prompts for `HF_TOKEN`
+- runs the full collection + training pipeline
+- retries automatically if a stage fails
+- writes resumable setup markers in `./.local/stages/*.done`
 
-### 3) Check pipeline status
+Important:
+- If setup stops, you can run `./local.sh setup` again.
+- Completed setup stages are skipped automatically.
+- To force every setup stage to rerun, use `SETUP_FORCE_STAGES=1 ./local.sh setup`.
+
+What to expect:
+- first runs can take a while because they install deps, discover sources, collect data, and train
+- reruns are usually much faster because the venv, cache, and completed stages are reused
+- collection is Hugging Face-only and uses cache-first behavior to reduce rate-limit pressure
+
+### Step 6: Check the current state
 
 ```bash
 ./local.sh status
 ```
 
-### Common commands
+This shows:
+- whether training is active
+- where image data is stored
+- where video data is stored
+- where trained artifacts are written
 
-- `./local.sh setup` full setup + full pipeline
-- `./local.sh doctor` preflight checks (token, disk, GPU, cache, deps)
-- `./local.sh collect` collection only
-- `./local.sh collect-fast` quick small collection sanity pass
-- `./local.sh train` training only
-- `./local.sh start` run best-quality pipeline
-- `./local.sh status` show pipeline status
-- `./local.sh deps-update` refresh locked dependencies
+### Step 7: Run only the part you need later
 
-### Setup options (optional)
+Use these after the initial setup:
 
-- `SETUP_MAX_ATTEMPTS` default `4`
-- `SETUP_RETRY_SLEEP_SEC` default `45`
-- `SETUP_FORCE_STAGES=1` rerun all setup stages even if stage markers exist
-- `SETUP_STAGE_DIR` custom marker dir (default `./.local/stages`)
-- `HF_SETUP_REQUIRE_TOKEN=0` allow setup without token
-- `HF_SETUP_SAVE_ENV=0` do not write token into `.env`
+- `./local.sh collect`
+  Runs collection only.
 
-### Manual install (only if you do not use `./local.sh setup`)
+- `./local.sh collect-fast`
+  Runs a much smaller collection job for a quick sanity check.
+
+- `./local.sh train`
+  Trains using the current collected data.
+
+- `./local.sh start`
+  Runs the best-quality pipeline path.
+
+- `./local.sh deps-update`
+  Refreshes the locked dependency set.
+
+If you are unsure which command to use:
+- first time: `./local.sh setup`
+- check health: `./local.sh doctor`
+- collect more data only: `./local.sh collect`
+- quick pipeline check: `./local.sh collect-fast`
+- retrain on existing data: `./local.sh train`
+
+### Minimal command reference
+
+```bash
+./local.sh doctor
+./local.sh setup
+./local.sh status
+./local.sh collect
+./local.sh collect-fast
+./local.sh train
+./local.sh start
+```
+
+### Manual install path
+
+Only use this if you do not want `./local.sh setup`:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 bash scripts/install_deps.sh
+./local.sh doctor
+bash scripts/do.sh train-all-types
 ```
 
+### Setup options
+
+- `SETUP_MAX_ATTEMPTS`
+  Default `4`.
+
+- `SETUP_RETRY_SLEEP_SEC`
+  Default `45`.
+
+- `SETUP_FORCE_STAGES`
+  Set to `1` to rerun completed setup stages.
+
+- `SETUP_STAGE_DIR`
+  Custom stage marker directory. Default `./.local/stages`.
+
+- `HF_SETUP_REQUIRE_TOKEN`
+  Set to `0` to allow setup without a token.
+
+- `HF_SETUP_SAVE_ENV`
+  Set to `0` to avoid writing the token into `.env`.
+
 Dependency lock workflow:
-- Install pinned deps: `bash scripts/install_deps.sh`
-- Refresh lock to latest resolved set: `./local.sh deps-update`
-- `deps-update` resolves in an isolated temporary venv, then writes a fully pinned `requirements.lock`.
+- Install pinned deps with `bash scripts/install_deps.sh`
+- Refresh the lock with `./local.sh deps-update`
+- The install script now skips reinstallation when `requirements.lock` and `pyproject.toml` are unchanged
+
+You can ignore the remaining sections unless you want manual control, advanced training options, or lower-level commands.
+
+## Troubleshooting
+
+### Setup stopped
+
+Run:
+
+```bash
+./local.sh setup
+```
+
+Setup resumes from completed stages automatically.
+
+### Collection seems slow
+
+That is usually normal on first run. The pipeline is intentionally cache-first and rate-limit-aware for Hugging Face.
+
+Try:
+
+```bash
+./local.sh status
+./local.sh collect-fast
+```
+
+### You only want to retrain
+
+Run:
+
+```bash
+./local.sh train
+```
+
+That uses the current collected dataset and does not pull new data first.
+
+### You changed dependencies
+
+Run:
+
+```bash
+./local.sh deps-update
+bash scripts/install_deps.sh
+```
+
+## Advanced Reference
+
+Everything below this point is optional reference material for manual workflows and lower-level commands.
 
 ## Dataset format
 
