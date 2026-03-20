@@ -7,6 +7,7 @@ set -euo pipefail
 #   bash scripts/do.sh start-v2
 #   bash scripts/do.sh collect
 #   bash scripts/do.sh collect-diverse
+#   bash scripts/do.sh collect-fast
 #   bash scripts/do.sh collect-image
 #   bash scripts/do.sh collect-video
 #   bash scripts/do.sh ingest
@@ -14,13 +15,25 @@ set -euo pipefail
 #   bash scripts/do.sh train
 #   bash scripts/do.sh train-all-types
 #   bash scripts/do.sh deps-update
-#   bash scripts/do.sh serve
+#   bash scripts/do.sh doctor
 #   bash scripts/do.sh detect ./example.jpg
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 TRAIN_LOCK="${TRAIN_LOCK:-$ROOT_DIR/.local/training.lock}"
+ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 ENV_READY=0
+BEST_HF_QUERY_CSV_DEFAULT="real camera photo dataset,smartphone photo dataset,dslr photo dataset,webcam image dataset,cctv frame image dataset,meme image real vs ai,captioned image real ai,screenshot dataset image,chat ui screenshot,browser screenshot image,dashboard screenshot dataset,image poster infographic,logo brand image dataset,advertisement creative image,receipt scanned document image,id card document image,invoice form document scan,anime illustration real fake,digital art illustration dataset,3d render real fake,cgi synthetic image real,game render frame dataset,watermarked social media image,recompressed image dataset,heavily edited real photo,low resolution blurry image,extreme aspect ratio image,portrait selfie real fake,group photo real fake,deepfake face swap image,diffusion generated image latest"
+DIVERSE_HF_QUERY_CSV_DEFAULT="$BEST_HF_QUERY_CSV_DEFAULT"
+
+load_env_file() {
+  if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+  fi
+}
 
 ensure_env() {
   if [[ "$ENV_READY" == "1" ]]; then
@@ -55,6 +68,17 @@ skip_collection_if_training() {
   return 1
 }
 
+run_collection_command() {
+  if skip_collection_if_training; then
+    return 0
+  fi
+  "$@"
+}
+
+print_usage() {
+  echo "usage: bash scripts/do.sh [start|start-v2|collect|collect-diverse|collect-fast|collect-image|collect-video|ingest|scan [paths...]|train|train-video|train-all|train-all-types|deps-update|doctor|autocollect|detect <image>|status]"
+}
+
 run_malware_scan() {
   if [[ "${MALWARE_SCAN:-1}" != "1" ]]; then
     echo "malware_scan=disabled"
@@ -67,11 +91,35 @@ run_malware_scan() {
   bash scripts/malware_scan.sh "${targets[@]}"
 }
 
-collect_image_data() {
-  mapfile -t diverse_query_args < <(add_diverse_queries)
+print_hf_query_args() {
+  local query_csv="$1"
+  IFS=',' read -r -a _queries <<< "$query_csv"
+  local q=""
+  for q in "${_queries[@]}"; do
+    q="$(echo "$q" | xargs)"
+    [[ -z "$q" ]] && continue
+    printf "%s\n" --hf-query "$q"
+  done
+}
+
+run_image_dataset_build() {
+  local out="$1"
+  local query_csv="$2"
+  shift 2
+  local -a query_args=()
+  mapfile -t query_args < <(print_hf_query_args "$query_csv")
   ensure_env
   python scripts/build_best_dataset.py \
-    --out "${DATA_DIR:-./data_best}" \
+    --out "$out" \
+    "$@" \
+    "${query_args[@]}"
+  run_malware_scan "$out"
+}
+
+collect_image_data() {
+  local out="${DATA_DIR:-./data_best}"
+  local query_csv="${BEST_DS_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}"
+  run_image_dataset_build "$out" "$query_csv" \
     --train-per-class "${TRAIN_PER_CLASS:-80000}" \
     --val-per-class "${VAL_PER_CLASS:-20000}" \
     --test-per-class "${TEST_PER_CLASS:-20000}" \
@@ -90,6 +138,8 @@ collect_image_data() {
     --max-samples-per-source "${BEST_DS_MAX_SAMPLES_PER_SOURCE:-45000}" \
     --acceptance-warmup-samples "${BEST_DS_ACCEPTANCE_WARMUP_SAMPLES:-400}" \
     --min-acceptance-rate "${BEST_DS_MIN_ACCEPTANCE_RATE:-0.01}" \
+    --min-hf-sources-with-accepted "${BEST_DS_MIN_HF_SOURCES_WITH_ACCEPTED:-16}" \
+    --min-hf-sources-per-class "${BEST_DS_MIN_HF_SOURCES_PER_CLASS:-10}" \
     --repo-base-pause-ms "${BEST_DS_REPO_BASE_PAUSE_MS:-1100}" \
     --repo-jitter-ms "${BEST_DS_REPO_JITTER_MS:-900}" \
     --repo-cooldown-ms "${BEST_DS_REPO_COOLDOWN_MS:-45000}" \
@@ -99,9 +149,43 @@ collect_image_data() {
     --min-entropy "${BEST_DS_MIN_ENTROPY:-3.4}" \
     --hardneg-fraction "${BEST_DS_HARDNEG_FRACTION:-0.8}" \
     --hf-only \
-    --require-full-targets \
-    "${diverse_query_args[@]}"
-  run_malware_scan "${DATA_DIR:-./data_best}"
+    --require-full-targets
+}
+
+collect_fast_data() {
+  local out="${DATA_DIR:-./data_best_fast}"
+  local query_csv="${FAST_HF_QUERIES:-${BEST_DS_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}}"
+  run_image_dataset_build "$out" "$query_csv" \
+    --train-per-class "${FAST_TRAIN_PER_CLASS:-4000}" \
+    --val-per-class "${FAST_VAL_PER_CLASS:-1000}" \
+    --test-per-class "${FAST_TEST_PER_CLASS:-1000}" \
+    --discover-hf \
+    --hf-discovery-limit "${FAST_HF_DISCOVERY_LIMIT:-60}" \
+    --hf-max-sources "${FAST_HF_MAX_SOURCES:-100}" \
+    --hf-min-downloads "${FAST_HF_MIN_DOWNLOADS:-80}" \
+    --hf-min-likes "${FAST_HF_MIN_LIKES:-2}" \
+    --hf-min-quality-score "${FAST_HF_MIN_QUALITY_SCORE:-1.7}" \
+    --hf-print-top "${FAST_HF_PRINT_TOP:-10}" \
+    --hf-cache-file "${FAST_HF_CACHE_FILE:-./.local/hf_fast_sources.txt}" \
+    --hf-cache-only-if-present \
+    --cache-dir "${FAST_CACHE_DIR:-./.local/hf}" \
+    --streaming \
+    --stream-buffer-size "${FAST_STREAM_BUFFER_SIZE:-6000}" \
+    --max-samples-per-source "${FAST_MAX_SAMPLES_PER_SOURCE:-12000}" \
+    --acceptance-warmup-samples "${FAST_ACCEPTANCE_WARMUP_SAMPLES:-250}" \
+    --min-acceptance-rate "${FAST_MIN_ACCEPTANCE_RATE:-0.01}" \
+    --min-hf-sources-with-accepted "${FAST_MIN_HF_SOURCES_WITH_ACCEPTED:-10}" \
+    --min-hf-sources-per-class "${FAST_MIN_HF_SOURCES_PER_CLASS:-6}" \
+    --repo-base-pause-ms "${FAST_REPO_BASE_PAUSE_MS:-900}" \
+    --repo-jitter-ms "${FAST_REPO_JITTER_MS:-700}" \
+    --repo-cooldown-ms "${FAST_REPO_COOLDOWN_MS:-30000}" \
+    --max-consecutive-failures "${FAST_MAX_CONSECUTIVE_FAILURES:-2}" \
+    --min-side "${FAST_MIN_SIDE:-224}" \
+    --max-aspect-ratio "${FAST_MAX_ASPECT_RATIO:-2.5}" \
+    --min-entropy "${FAST_MIN_ENTROPY:-3.4}" \
+    --hardneg-fraction "${FAST_HARDNEG_FRACTION:-0.8}" \
+    --hf-only \
+    --require-full-targets
 }
 
 ingest_outputs() {
@@ -114,7 +198,9 @@ ingest_outputs() {
 }
 
 collect_diverse_image_data() {
-  mapfile -t diverse_query_args < <(add_diverse_queries)
+  local query_csv="${DIVERSE_HF_QUERIES:-$DIVERSE_HF_QUERY_CSV_DEFAULT}"
+  local -a diverse_query_args=()
+  mapfile -t diverse_query_args < <(print_hf_query_args "$query_csv")
   ensure_env
   local hf_cache="${DIVERSE_HF_CACHE_FILE:-./.local/hf_diverse_sources.txt}"
   local timeout_sec="${DIVERSE_DISCOVERY_TIMEOUT_SEC:-900}"
@@ -131,6 +217,8 @@ collect_diverse_image_data() {
     --max-samples-per-source "${DIVERSE_MAX_SAMPLES_PER_SOURCE:-80000}"
     --acceptance-warmup-samples "${DIVERSE_ACCEPTANCE_WARMUP_SAMPLES:-450}"
     --min-acceptance-rate "${DIVERSE_MIN_ACCEPTANCE_RATE:-0.012}"
+    --min-hf-sources-with-accepted "${DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED:-24}"
+    --min-hf-sources-per-class "${DIVERSE_MIN_HF_SOURCES_PER_CLASS:-14}"
     --repo-base-pause-ms "${DIVERSE_REPO_BASE_PAUSE_MS:-1400}"
     --repo-jitter-ms "${DIVERSE_REPO_JITTER_MS:-1200}"
     --repo-cooldown-ms "${DIVERSE_REPO_COOLDOWN_MS:-45000}"
@@ -154,15 +242,15 @@ collect_diverse_image_data() {
   local -a cache_args=(--no-discover-hf --sources-file "$hf_cache")
   local -a full_args=("${common_args[@]}")
 
-  # Run discovery as a bounded pre-pass, then always do full build from cache/local sources.
+  # Run discovery as a bounded pre-pass, then build from cached HF ids or live HF discovery.
   if [[ "${DIVERSE_SKIP_DISCOVERY:-0}" != "1" ]]; then
     if command -v timeout >/dev/null 2>&1; then
       if ! timeout "${timeout_sec}s" python scripts/build_best_dataset.py "${common_args[@]}" "${discover_args[@]}" "${diverse_query_args[@]}" --discover-only; then
-        echo "collect_diverse_discovery=failed_or_timed_out fallback=cache_or_local"
+        echo "collect_diverse_discovery=failed_or_timed_out fallback=cache_or_live_hf"
       fi
     else
       if ! python scripts/build_best_dataset.py "${common_args[@]}" "${discover_args[@]}" "${diverse_query_args[@]}" --discover-only; then
-        echo "collect_diverse_discovery=failed fallback=cache_or_local"
+        echo "collect_diverse_discovery=failed fallback=cache_or_live_hf"
       fi
     fi
   fi
@@ -170,8 +258,8 @@ collect_diverse_image_data() {
   if [[ -s "$hf_cache" ]]; then
     full_args+=("${cache_args[@]}")
   else
-    full_args+=(--no-discover-hf)
-    echo "collect_diverse_sources=local_only reason=hf_cache_missing"
+    full_args+=("${discover_args[@]}")
+    echo "collect_diverse_sources=live_discovery reason=hf_cache_missing"
   fi
   python scripts/build_best_dataset.py "${full_args[@]}" "${diverse_query_args[@]}"
   run_malware_scan "${DATA_DIR:-./data_best}"
@@ -180,19 +268,7 @@ collect_diverse_image_data() {
     --data "${DATA_DIR:-./data_best}" \
     --min-unique-sources "${DIVERSE_MIN_UNIQUE_SOURCES:-20}" \
     --min-hardneg-modes "${DIVERSE_MIN_HARDNEG_MODES:-4}" \
-    --max-class-imbalance "${DIVERSE_MAX_CLASS_IMBALANCE:-0.08}" || true
-}
-
-add_diverse_queries() {
-  local query_csv="${DIVERSE_HF_QUERIES:-real camera photo dataset,smartphone photo dataset,dslr photo dataset,webcam image dataset,cctv frame image dataset,meme image real vs ai,captioned image real ai,screenshot dataset image,chat ui screenshot,browser screenshot image,dashboard screenshot dataset,image poster infographic,logo brand image dataset,advertisement creative image,receipt scanned document image,id card document image,invoice form document scan,anime illustration real fake,digital art illustration dataset,3d render real fake,cgi synthetic image real,game render frame dataset,watermarked social media image,recompressed image dataset,heavily edited real photo,low resolution blurry image,extreme aspect ratio image,portrait selfie real fake,group photo real fake,deepfake face swap image,diffusion generated image latest}"
-  IFS=',' read -r -a _queries <<< "$query_csv"
-  local args=()
-  for q in "${_queries[@]}"; do
-    q="$(echo "$q" | xargs)"
-    [[ -z "$q" ]] && continue
-    args+=(--hf-query "$q")
-  done
-  printf "%s\n" "${args[@]}"
+    --max-class-imbalance "${DIVERSE_MAX_CLASS_IMBALANCE:-0.08}"
 }
 
 collect_video_data() {
@@ -215,6 +291,18 @@ collect_video_data() {
     --min-video-bytes "${VIDEO_MIN_BYTES:-100000}" \
     --max-video-bytes "${VIDEO_MAX_BYTES:-0}"
   run_malware_scan "${VIDEO_OUT:-./video_data}"
+}
+
+collect_full_cycle() {
+  collect_diverse_image_data
+  ingest_outputs
+  collect_video_data
+}
+
+collect_diverse_cycle() {
+  collect_diverse_image_data
+  ingest_outputs
+  VIDEO_CACHE_DIR="${VIDEO_CACHE_DIR:-./.local/hf}" VIDEO_SNAPSHOT_MAX_WORKERS="${VIDEO_SNAPSHOT_MAX_WORKERS:-1}" collect_video_data
 }
 
 train_image_pipeline() {
@@ -251,7 +339,7 @@ validate_train_artifacts() {
 
 train_video_only() {
   ensure_env
-  resume_arg=()
+  local -a resume_arg=()
   if [[ "${VIDEO_TRAIN_RESUME:-1}" == "1" ]]; then
     resume_arg=(--resume "${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/last_video.pt")
   fi
@@ -281,6 +369,55 @@ show_status() {
   echo "video model: ${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.safetensors"
 }
 
+resolve_detect_models() {
+  local -a models=()
+  mapfile -t models < <(compgen -G "${MODEL_GLOB:-./artifacts_ens/m*/best.safetensors}" || true)
+  if [[ "${#models[@]}" -eq 0 ]]; then
+    mapfile -t models < <(compgen -G "./artifacts_ens/m*/best.pt" || true)
+  fi
+  if [[ "${#models[@]}" -eq 0 ]]; then
+    models=("${MODEL_PATH:-./artifacts/best.safetensors}")
+  fi
+  printf "%s\n" "${models[@]}"
+}
+
+config_flag_if_exists() {
+  local flag="$1"
+  local path="$2"
+  if [[ -f "$path" ]]; then
+    printf "%s\n%s\n" "$flag" "$path"
+  fi
+}
+
+run_detect() {
+  local image_path="${1:-}"
+  local -a detect_models=()
+  local -a detect_extra=()
+  local -a domain_extra=()
+  local -a tools_extra=()
+
+  if [[ -z "$image_path" ]]; then
+    echo "usage: bash scripts/do.sh detect /path/to/image.jpg"
+    exit 2
+  fi
+
+  ensure_env
+  mapfile -t detect_models < <(resolve_detect_models)
+  mapfile -t detect_extra < <(config_flag_if_exists --ensemble-config "${ENSEMBLE_CONFIG:-./artifacts_ens/ensemble_config.json}")
+  mapfile -t domain_extra < <(config_flag_if_exists --domain-config "${DOMAIN_CONFIG:-./artifacts_ens/domain_config.json}")
+  mapfile -t tools_extra < <(config_flag_if_exists --tools-config "${TOOLS_CONFIG:-./artifacts_ens/tools_config.json}")
+
+  aid-detect \
+    --model "${detect_models[@]}" \
+    "${detect_extra[@]}" \
+    "${domain_extra[@]}" \
+    "${tools_extra[@]}" \
+    --tta-views "${TTA_VIEWS:-2}" \
+    --image "$image_path" \
+    --json
+}
+
+load_env_file
 cmd="${1:-start}"
 shift || true
 
@@ -297,42 +434,27 @@ case "$cmd" in
 
   collect)
     # Full collection cycle: image pull + new-output ingest + video pull.
-    if skip_collection_if_training; then
-      exit 0
-    fi
-    collect_diverse_image_data
-    ingest_outputs
-    collect_video_data
+    run_collection_command collect_full_cycle
     ;;
 
   collect-diverse)
-    if skip_collection_if_training; then
-      exit 0
-    fi
-    collect_diverse_image_data
-    ingest_outputs
-    VIDEO_CACHE_DIR="${VIDEO_CACHE_DIR:-./.local/hf}" VIDEO_SNAPSHOT_MAX_WORKERS="${VIDEO_SNAPSHOT_MAX_WORKERS:-1}" collect_video_data
+    run_collection_command collect_diverse_cycle
+    ;;
+
+  collect-fast)
+    run_collection_command collect_fast_data
     ;;
 
   collect-image)
-    if skip_collection_if_training; then
-      exit 0
-    fi
-    collect_image_data
+    run_collection_command collect_image_data
     ;;
 
   collect-video)
-    if skip_collection_if_training; then
-      exit 0
-    fi
-    collect_video_data
+    run_collection_command collect_video_data
     ;;
 
   ingest)
-    if skip_collection_if_training; then
-      exit 0
-    fi
-    ingest_outputs
+    run_collection_command ingest_outputs
     ;;
 
   scan)
@@ -350,6 +472,10 @@ case "$cmd" in
 
   deps-update)
     bash scripts/update_deps_lock.sh
+    ;;
+
+  doctor)
+    bash scripts/doctor.sh
     ;;
 
   train-all)
@@ -372,36 +498,12 @@ case "$cmd" in
     ;;
 
   serve)
-    bash scripts/serve_prod_4090.sh
+    echo "serve_disabled=1 reason=pipeline_only_mode"
+    exit 2
     ;;
 
   detect)
-    image_path="${1:-}"
-    if [[ -z "$image_path" ]]; then
-      echo "usage: bash scripts/do.sh detect /path/to/image.jpg"
-      exit 2
-    fi
-    ensure_env
-    mapfile -t detect_models < <(ls ${MODEL_GLOB:-./artifacts_ens/m*/best.safetensors} 2>/dev/null || true)
-    if [[ "${#detect_models[@]}" -eq 0 ]]; then
-      mapfile -t detect_models < <(ls ./artifacts_ens/m*/best.pt 2>/dev/null || true)
-    fi
-    if [[ "${#detect_models[@]}" -eq 0 ]]; then
-      detect_models=("${MODEL_PATH:-./artifacts/best.safetensors}")
-    fi
-    detect_extra=()
-    if [[ -f "${ENSEMBLE_CONFIG:-./artifacts_ens/ensemble_config.json}" ]]; then
-      detect_extra=(--ensemble-config "${ENSEMBLE_CONFIG:-./artifacts_ens/ensemble_config.json}")
-    fi
-    domain_extra=()
-    if [[ -f "${DOMAIN_CONFIG:-./artifacts_ens/domain_config.json}" ]]; then
-      domain_extra=(--domain-config "${DOMAIN_CONFIG:-./artifacts_ens/domain_config.json}")
-    fi
-    tools_extra=()
-    if [[ -f "${TOOLS_CONFIG:-./artifacts_ens/tools_config.json}" ]]; then
-      tools_extra=(--tools-config "${TOOLS_CONFIG:-./artifacts_ens/tools_config.json}")
-    fi
-    aid-detect --model "${detect_models[@]}" "${detect_extra[@]}" "${domain_extra[@]}" "${tools_extra[@]}" --tta-views "${TTA_VIEWS:-2}" --image "$image_path" --json
+    run_detect "$@"
     ;;
 
   status)
@@ -409,7 +511,7 @@ case "$cmd" in
     ;;
 
   *)
-    echo "usage: bash scripts/do.sh [start|start-v2|collect|collect-diverse|collect-image|collect-video|ingest|scan [paths...]|train|train-video|train-all|train-all-types|deps-update|autocollect|serve|detect <image>|status]"
+    print_usage
     exit 2
     ;;
 esac

@@ -8,6 +8,7 @@ import shutil
 import time
 from typing import Dict, List
 
+from dataset_builder_common import configure_hf_cache_env, count_existing_split_classes, targets_met
 from huggingface_hub import hf_hub_download, list_repo_files, snapshot_download
 
 
@@ -30,18 +31,15 @@ SOURCES = [
 ]
 
 EXTS = (".mp4", ".mov", ".avi", ".mkv", ".webm", ".MOV")
+EXTS_LOWER = {e.lower() for e in EXTS}
 
 
 def done(have: Dict[str, Dict[str, int]], need: Dict[str, Dict[str, int]]) -> bool:
-    return all(have[s][c] >= need[s][c] for s in ["train", "val"] for c in ["ai", "real"])
+    return targets_met(have, need, ("train", "val"), ("ai", "real"))
 
 
 def count_existing(out: Path) -> Dict[str, Dict[str, int]]:
-    have = {"train": {"ai": 0, "real": 0}, "val": {"ai": 0, "real": 0}}
-    for split in ["train", "val"]:
-        for cls in ["ai", "real"]:
-            have[split][cls] = len(list((out / split / cls).glob("*")))
-    return have
+    return count_existing_split_classes(out, ("train", "val"), ("ai", "real"), "*")
 
 
 def _collect_snapshot_files(root: Path, prefixes: List[str]) -> List[Path]:
@@ -49,7 +47,7 @@ def _collect_snapshot_files(root: Path, prefixes: List[str]) -> List[Path]:
     for p in root.rglob("*"):
         if not p.is_file():
             continue
-        if p.suffix not in EXTS and p.suffix.lower() not in tuple(e.lower() for e in EXTS):
+        if p.suffix.lower() not in EXTS_LOWER:
             continue
         rel = p.relative_to(root).as_posix()
         if any(rel.startswith(pref) for pref in prefixes):
@@ -104,11 +102,8 @@ def main():
     args = ap.parse_args()
 
     os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
-    if args.cache_dir:
-        cache_dir = Path(args.cache_dir)
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        os.environ.setdefault("HF_HOME", str(cache_dir))
-        os.environ.setdefault("HF_HUB_CACHE", str(cache_dir / "hub"))
+    cache_dir = configure_hf_cache_env(args.cache_dir)
+    if cache_dir is not None:
         print(f"hf_cache_dir={cache_dir}")
 
     token = os.getenv(args.token_env)
@@ -139,9 +134,6 @@ def main():
         repo_pause = args.repo_base_pause_ms + random.randint(0, max(args.repo_jitter_ms, 0))
         time.sleep(repo_pause / 1000.0)
         print(f"repo={repo} mode={args.mode}")
-
-        fake_files: List[str] = []
-        real_files: List[str] = []
 
         if args.mode == "snapshot":
             # Minimal HF API calls: one snapshot download call per repo.
@@ -193,7 +185,7 @@ def main():
                 continue
 
             def pick_files(prefixes: List[str], seed_offset: int) -> List[str]:
-                cands = [f for f in files if any(f.startswith(p) for p in prefixes) and f.endswith(EXTS)]
+                cands = [f for f in files if any(f.startswith(p) for p in prefixes) and Path(f).suffix.lower() in EXTS_LOWER]
                 rng = random.Random(args.seed + seed_offset)
                 rng.shuffle(cands)
                 return cands

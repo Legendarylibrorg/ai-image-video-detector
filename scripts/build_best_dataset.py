@@ -14,6 +14,7 @@ from typing import DefaultDict, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from datasets import load_dataset
 from PIL import Image, ImageFilter
+from dataset_builder_common import configure_hf_cache_env, count_existing_split_classes, targets_met
 
 try:
     from huggingface_hub import HfApi
@@ -40,6 +41,7 @@ DEFAULT_DISCOVERY_QUERIES = [
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 LOW_QUALITY_NAME_RE = re.compile(r"(^|[^a-z0-9])(toy|dummy|sample|mini|tiny|test)([^a-z0-9]|$)")
+HF_DATASET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def normalize_label(v) -> Optional[str]:
@@ -188,6 +190,10 @@ def unique_preserve(items: Iterable[str]) -> List[str]:
     return out
 
 
+def is_probable_hf_dataset_id(src: str) -> bool:
+    return bool(HF_DATASET_ID_RE.match(src.strip()))
+
+
 def source_tag(src: str) -> str:
     if src.startswith("local::"):
         base = src.replace("local::", "local_")
@@ -275,8 +281,12 @@ def likely_rate_limited(msg: str) -> bool:
     return any(k in low for k in ["429", "too many requests", "rate limit", "ratelimit", "5 min"])
 
 
+SPLITS = ("train", "val", "test")
+CLASSES = ("ai", "real")
+
+
 def done(have: Dict[str, Dict[str, int]], need: Dict[str, Dict[str, int]]) -> bool:
-    return all(have[s][c] >= need[s][c] for s in ["train", "val", "test"] for c in ["ai", "real"])
+    return targets_met(have, need, SPLITS, CLASSES)
 
 
 def next_split_for_class(
@@ -285,7 +295,7 @@ def next_split_for_class(
     cls: str,
     rng: random.Random,
 ) -> Optional[str]:
-    remaining = {s: max(0, need[s][cls] - have[s][cls]) for s in ["train", "val", "test"]}
+    remaining = {s: max(0, need[s][cls] - have[s][cls]) for s in SPLITS}
     choices = [s for s, rem in remaining.items() if rem > 0]
     if not choices:
         return None
@@ -300,21 +310,32 @@ def next_split_for_class(
 
 
 def count_existing(out: Path) -> Dict[str, Dict[str, int]]:
-    have = {s: {"ai": 0, "real": 0} for s in ["train", "val", "test"]}
-    for split in ["train", "val", "test"]:
-        for cls in ["ai", "real"]:
-            d = out / split / cls
-            have[split][cls] = len(list(d.glob("*.jpg"))) if d.exists() else 0
-    return have
+    return count_existing_split_classes(out, SPLITS, CLASSES, "*.jpg")
 
 
 def build_source_list(args) -> List[str]:
+    def finalize_sources(raw_sources: Iterable[str]) -> List[str]:
+        resolved = unique_preserve(raw_sources)
+        if not args.hf_only:
+            return resolved
+        before = len(resolved)
+        resolved = [s for s in resolved if not str(s).startswith("local::")]
+        filtered = before - len(resolved)
+        if filtered > 0:
+            print(f"hf_only_filtered_non_hf_sources={filtered}")
+        before_valid = len(resolved)
+        resolved = [s for s in resolved if is_probable_hf_dataset_id(str(s))]
+        invalid = before_valid - len(resolved)
+        if invalid > 0:
+            print(f"hf_only_filtered_invalid_dataset_ids={invalid}")
+        return resolved
+
     sources: List[str] = []
-    if not args.no_default_sources and not args.hf_only:
+    if not args.no_default_sources:
         sources.extend(DEFAULT_SOURCES)
-    if args.sources_file and not args.hf_only:
+    if args.sources_file:
         sources.extend(read_sources_file(Path(args.sources_file)))
-    if args.extra_source and not args.hf_only:
+    if args.extra_source:
         sources.extend(args.extra_source)
     if args.discover_hf:
         discovered: List[str] = []
@@ -326,7 +347,7 @@ def build_source_list(args) -> List[str]:
                 print("hf_discovery_mode=cache_only_if_present")
                 print(f"discovered_hf_sources={len(discovered)}")
                 sources.extend(discovered)
-                return unique_preserve(sources)
+                return finalize_sources(sources)
         if not discovered:
             discovered = discover_hf_sources(
                 queries=args.hf_query or DEFAULT_DISCOVERY_QUERIES,
@@ -343,7 +364,7 @@ def build_source_list(args) -> List[str]:
                 print(f"saved_hf_discovery_cache={cache_path} count={len(discovered)}")
         print(f"discovered_hf_sources={len(discovered)}")
         sources.extend(discovered)
-    return unique_preserve(sources)
+    return finalize_sources(sources)
 
 
 def main():
@@ -365,7 +386,7 @@ def main():
     ap.add_argument("--sources-file", default="")
     ap.add_argument("--extra-source", action="append", default=[])
     ap.add_argument("--local-source", action="append", default=[])
-    ap.add_argument("--hf-only", action="store_true", default=False, help="Only use Hugging Face sources (disable local/default additions)")
+    ap.add_argument("--hf-only", action="store_true", default=False, help="Only use Hugging Face dataset ids (disables local-source directories)")
     ap.add_argument("--no-default-sources", action="store_true", default=False, help="Disable built-in static source list")
     ap.add_argument("--discover-hf", action="store_true", default=False)
     ap.add_argument("--no-discover-hf", dest="discover_hf", action="store_false")
@@ -393,7 +414,10 @@ def main():
     ap.add_argument("--token-env", default="HF_TOKEN")
     ap.add_argument("--discover-only", action="store_true", default=False, help="Only run HF discovery/cache update and exit")
     ap.add_argument("--require-full-targets", action="store_true", default=False, help="Exit non-zero if final dataset is below requested class/split targets")
+    ap.add_argument("--min-hf-sources-with-accepted", type=int, default=0, help="Require at least this many HF sources to contribute accepted samples")
+    ap.add_argument("--min-hf-sources-per-class", type=int, default=0, help="Require at least this many HF sources with accepted samples for each class")
     args = ap.parse_args()
+    start_time = time.time()
 
     random.seed(args.seed)
     rng = random.Random(args.seed + 17)
@@ -403,6 +427,9 @@ def main():
         print(f"using_token_env={args.token_env}")
     else:
         print(f"warning_no_token env={args.token_env} (public datasets still work, but with lower limits)")
+    cache_dir = configure_hf_cache_env(args.cache_dir)
+    if cache_dir is not None:
+        print(f"hf_cache_dir={cache_dir}")
     print(f"hf_quality_filters min_downloads={args.hf_min_downloads} min_likes={args.hf_min_likes} min_score={args.hf_min_quality_score} min_acceptance_rate={args.min_acceptance_rate}")
 
     if args.discover_only:
@@ -661,19 +688,66 @@ def main():
         "global_rejections": dict(global_rejects),
         "source_reports": source_reports,
     }
+    hf_reports = [r for r in source_reports if r.get("type") == "hf"]
+    hf_sources_with_accepted = sum(1 for r in hf_reports if int(r.get("accepted_ai", 0)) + int(r.get("accepted_real", 0)) > 0)
+    hf_sources_ai = sum(1 for r in hf_reports if int(r.get("accepted_ai", 0)) > 0)
+    hf_sources_real = sum(1 for r in hf_reports if int(r.get("accepted_real", 0)) > 0)
+    summary["hf_sources_with_accepted"] = int(hf_sources_with_accepted)
+    summary["hf_sources_ai"] = int(hf_sources_ai)
+    summary["hf_sources_real"] = int(hf_sources_real)
+
+    if args.min_hf_sources_with_accepted > 0 and hf_sources_with_accepted < int(args.min_hf_sources_with_accepted):
+        raise SystemExit(
+            f"hf_source_diversity_too_low accepted_sources={hf_sources_with_accepted} required={args.min_hf_sources_with_accepted}"
+        )
+    if args.min_hf_sources_per_class > 0:
+        if hf_sources_ai < int(args.min_hf_sources_per_class) or hf_sources_real < int(args.min_hf_sources_per_class):
+            raise SystemExit(
+                "hf_source_class_diversity_too_low "
+                f"ai_sources={hf_sources_ai} real_sources={hf_sources_real} required={args.min_hf_sources_per_class}"
+            )
+
+    shortfalls = []
+    for split in ["train", "val", "test"]:
+        for cls in ["ai", "real"]:
+            have_n = summary["final_counts"][split][cls]
+            need_n = targets[split][cls]
+            if have_n < need_n:
+                shortfalls.append(f"{split}/{cls}:{have_n}<{need_n}")
+    full_targets_ok = len(shortfalls) == 0
+    summary["full_targets_ok"] = bool(full_targets_ok)
+
+    elapsed_sec = float(time.time() - start_time)
+    accepted_ai_total = int(sum(summary["final_counts"][s]["ai"] for s in ["train", "val", "test"]))
+    accepted_real_total = int(sum(summary["final_counts"][s]["real"] for s in ["train", "val", "test"]))
+    run_summary = {
+        "elapsed_sec": round(elapsed_sec, 2),
+        "hf_sources_used": int(hf_sources_with_accepted),
+        "accepted_ai_total": accepted_ai_total,
+        "accepted_real_total": accepted_real_total,
+        "gate_hf_diversity": "pass",
+        "gate_hf_per_class": "pass",
+        "gate_full_targets": "pass" if full_targets_ok else "fail",
+        "report_path": str((out / "dataset_build_report.json").resolve()),
+    }
+
     (out / "dataset_build_report.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    print("dataset_ready", out)
+    (out / "dataset_run_summary.json").write_text(json.dumps(run_summary, indent=2), encoding="utf-8")
+    print(
+        "run_summary "
+        f"elapsed_sec={run_summary['elapsed_sec']} "
+        f"hf_sources_used={run_summary['hf_sources_used']} "
+        f"accepted_ai_total={run_summary['accepted_ai_total']} "
+        f"accepted_real_total={run_summary['accepted_real_total']} "
+        f"gate_hf_diversity={run_summary['gate_hf_diversity']} "
+        f"gate_hf_per_class={run_summary['gate_hf_per_class']} "
+        f"gate_full_targets={run_summary['gate_full_targets']}"
+    )
     print(f"report={out / 'dataset_build_report.json'}")
-    if args.require_full_targets:
-        shortfalls = []
-        for split in ["train", "val", "test"]:
-            for cls in ["ai", "real"]:
-                have_n = summary["final_counts"][split][cls]
-                need_n = targets[split][cls]
-                if have_n < need_n:
-                    shortfalls.append(f"{split}/{cls}:{have_n}<{need_n}")
-        if shortfalls:
-            raise SystemExit("dataset_incomplete: " + ",".join(shortfalls))
+    print(f"run_summary_file={out / 'dataset_run_summary.json'}")
+    if args.require_full_targets and not full_targets_ok:
+        raise SystemExit("dataset_incomplete: " + ",".join(shortfalls))
+    print("dataset_ready", out)
 
 
 if __name__ == "__main__":

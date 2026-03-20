@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Weekly retrain with gating. Intended for Linux cron/systemd timers.
+# Weekly retrain with gating for pipeline-only mode.
 # 1) ingest reviewed queue labels
 # 2) collect diverse data
 # 3) run max-accuracy v2
 # 4) run benchmark gate
-# 5) if gate passes, restart service
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -32,5 +31,4 @@ python scripts/benchmark_gate.py \
   --min-video-acc "${GATE_MIN_VIDEO_ACC:-0.82}"
 
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) weekly_retrain_gate_passed"
-bash scripts/linux_service.sh restart || true
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) weekly_retrain_done"

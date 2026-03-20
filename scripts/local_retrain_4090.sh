@@ -1,26 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Local retrain flow, separated from prod serve loop.
+# Local retrain flow for pipeline-only mode.
 # Optional:
-#   PAUSE_PROD=1 bash scripts/local_retrain_4090.sh
+#   PIPELINE_CMD="bash scripts/do.sh start-v2" bash scripts/local_retrain_4090.sh
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-PAUSE_PROD="${PAUSE_PROD:-1}"
 PIPELINE_CMD="${PIPELINE_CMD:-bash scripts/do.sh start-v2}"
-
-if [[ "$PAUSE_PROD" == "1" ]]; then
-  bash scripts/linux_service.sh pause || true
-fi
-
-cleanup() {
-  if [[ "$PAUSE_PROD" == "1" ]]; then
-    bash scripts/linux_service.sh resume || true
-  fi
-}
-trap cleanup EXIT INT TERM
 
 eval "$PIPELINE_CMD"
 

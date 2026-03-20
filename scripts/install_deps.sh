@@ -8,6 +8,26 @@ LOCK_FILE="${LOCK_FILE:-$ROOT_DIR/requirements.lock}"
 VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 UPGRADE_TOOLCHAIN="${UPGRADE_TOOLCHAIN:-0}"
 TORCH_CUDA_INDEX_URL="${TORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
+DEPS_STAMP_FILE="${DEPS_STAMP_FILE:-$VENV_DIR/.deps_stamp}"
+
+hash_cmd() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum
+    return
+  fi
+  shasum -a 256
+}
+
+deps_fingerprint() {
+  {
+    if [[ -f "$LOCK_FILE" ]]; then
+      cat "$LOCK_FILE"
+    fi
+    if [[ -f "$ROOT_DIR/pyproject.toml" ]]; then
+      cat "$ROOT_DIR/pyproject.toml"
+    fi
+  } | hash_cmd | awk '{print $1}'
+}
 
 if [[ ! -d "$VENV_DIR" ]]; then
   python3 -m venv "$VENV_DIR"
@@ -18,6 +38,19 @@ source "$VENV_DIR/bin/activate"
 if [[ "$UPGRADE_TOOLCHAIN" == "1" ]]; then
   if ! python -m pip install --upgrade pip setuptools wheel; then
     echo "warning_toolchain_upgrade_failed using_existing_versions=1"
+  fi
+fi
+
+deps_fp="$(deps_fingerprint)"
+if [[ "$UPGRADE_TOOLCHAIN" != "1" && -f "$DEPS_STAMP_FILE" && "$(cat "$DEPS_STAMP_FILE")" == "$deps_fp" ]]; then
+  if python - <<'PY' >/dev/null 2>&1
+import ai_image_detector  # noqa: F401
+import datasets  # noqa: F401
+import torch  # noqa: F401
+PY
+  then
+    echo "deps_status=up_to_date"
+    exit 0
   fi
 fi
 
@@ -44,3 +77,4 @@ else
   pip install --upgrade --upgrade-strategy eager -e .
 fi
 python -m pip check
+printf "%s\n" "$deps_fp" > "$DEPS_STAMP_FILE"

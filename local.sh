@@ -8,13 +8,22 @@ shift || true
 
 case "$cmd" in
   setup)
-    bash scripts/one_command_4090.sh
+    bash scripts/setup_linux.sh
+    ;;
+  start)
+    bash scripts/do.sh start "$@"
     ;;
   collect)
     bash scripts/do.sh collect-diverse "$@"
     ;;
+  collect-fast)
+    bash scripts/do.sh collect-fast "$@"
+    ;;
   train)
     bash scripts/do.sh train-all "$@"
+    ;;
+  doctor)
+    bash scripts/do.sh doctor "$@"
     ;;
   scan)
     bash scripts/do.sh scan "$@"
@@ -22,16 +31,10 @@ case "$cmd" in
   deps-update)
     bash scripts/do.sh deps-update
     ;;
-  serve)
-    exec bash scripts/linux_service.sh start
-    ;;
-  full)
-    exec bash scripts/linux_service.sh full-start
-    ;;
-  status|logs|pause|resume|stop|restart)
-    exec bash scripts/linux_service.sh "$cmd"
+  status)
+    bash scripts/do.sh status
     ;;
   help|*)
-    echo "usage: ./local.sh [setup|collect|train|scan|deps-update|serve|full|status|logs|pause|resume|stop|restart]"
+    echo "usage: ./local.sh [setup|doctor|start|collect|collect-fast|train|scan|deps-update|status]"
     ;;
 esac

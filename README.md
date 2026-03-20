@@ -25,31 +25,58 @@ A production-oriented, forensics-first detector with:
 
 ## Quick start
 
-Linux local-only (recommended):
+Pipeline-only mode is enabled:
+- Supported: data collection + training
+- Disabled: production serving commands
+
+### 1) Open the project folder
 
 ```bash
 cd /path/to/image-spam
-./local.sh setup      # installs deps + runs full optimized local pipeline
-./local.sh serve      # starts local supervisor on Linux
-./local.sh status
-./local.sh logs
+cp .env.example .env
 ```
 
-Minimal local command surface:
-- `./local.sh setup`
-- `./local.sh collect`
-- `./local.sh train`
-- `./local.sh deps-update`
-- `./local.sh serve`
-- `./local.sh full`
-- `./local.sh status|logs|pause|resume|stop|restart`
-
-Linux (Ubuntu/Debian) prerequisites:
+### 2) Run setup (recommended)
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip build-essential
+./local.sh setup
 ```
+
+What setup does:
+- Installs Linux deps (when `apt-get` is available)
+- Installs pinned Python deps
+- Ensures Hugging Face token is configured (prompts if missing)
+- Runs full collection + training pipeline
+- Retries automatically if a step fails
+- Uses resumable setup stage markers in `./.local/stages/*.done`
+
+### 3) Check pipeline status
+
+```bash
+./local.sh status
+```
+
+### Common commands
+
+- `./local.sh setup` full setup + full pipeline
+- `./local.sh doctor` preflight checks (token, disk, GPU, cache, deps)
+- `./local.sh collect` collection only
+- `./local.sh collect-fast` quick small collection sanity pass
+- `./local.sh train` training only
+- `./local.sh start` run best-quality pipeline
+- `./local.sh status` show pipeline status
+- `./local.sh deps-update` refresh locked dependencies
+
+### Setup options (optional)
+
+- `SETUP_MAX_ATTEMPTS` default `4`
+- `SETUP_RETRY_SLEEP_SEC` default `45`
+- `SETUP_FORCE_STAGES=1` rerun all setup stages even if stage markers exist
+- `SETUP_STAGE_DIR` custom marker dir (default `./.local/stages`)
+- `HF_SETUP_REQUIRE_TOKEN=0` allow setup without token
+- `HF_SETUP_SAVE_ENV=0` do not write token into `.env`
+
+### Manual install (only if you do not use `./local.sh setup`)
 
 ```bash
 python3 -m venv .venv
@@ -144,7 +171,9 @@ Returns:
 - `ood_score`, `ood_flags`
 - `combined_risk`
 
-## API (hardened)
+## API (Archived; Disabled In Pipeline-Only Mode)
+
+`aid-serve` paths are intentionally disabled in the current pipeline-only setup.
 
 ```bash
 aid-serve --model ./artifacts/best.pt --host 127.0.0.1 --port 8000
@@ -201,6 +230,8 @@ python scripts/benchmark_gate.py --ens-out ./artifacts_ens --video-out ./video_a
 bash scripts/weekly_retrain_v3.sh
 ```
 
+`weekly_retrain_v3.sh` now stays fully inside the pipeline-only flow and no longer restarts any serving process.
+
 Reviewed uncertainty queue ingestion:
 
 ```bash
@@ -208,7 +239,7 @@ python scripts/review_queue_to_dataset.py --queue ./incoming_review_queue --dst 
 ```
 
 Compliance/privacy mode (recommended baseline):
-- `UNCERTAIN_CAPTURE=0` (default in `serve_prod_4090.sh`)
+- `UNCERTAIN_CAPTURE=0`
 - `IP_LOG_MODE=masked` (default; no raw IP logging)
 - Optional stricter: `IP_LOG_MODE=none`
 - Run periodic retention cleanup:
@@ -439,20 +470,22 @@ bash scripts/do.sh start          # full best-quality pipeline
 bash scripts/do.sh start-v2       # max-accuracy v2 (domain calibration + refinement loops)
 bash scripts/do.sh collect        # full collection cycle (image + ingest + video)
 bash scripts/do.sh collect-diverse # super-diverse collection preset (recommended for robustness)
+bash scripts/do.sh collect-fast   # quick small collection sanity pass
 bash scripts/do.sh collect-image  # image dataset only
 bash scripts/do.sh collect-video  # video dataset only
 bash scripts/do.sh ingest         # ingest incoming model outputs only
 bash scripts/do.sh scan           # malware scan now
+bash scripts/do.sh doctor         # preflight checks before long runs
 bash scripts/do.sh train          # image training pipeline only
 bash scripts/do.sh train-all      # image + video training (no new data pull)
 bash scripts/do.sh train-all-types # collect-diverse + full image/video training + artifact validation
 bash scripts/do.sh autocollect    # continuous collection loop
-bash scripts/do.sh serve          # serve API
 bash scripts/do.sh detect ./img.jpg
 bash scripts/do.sh status         # lock + artifact paths
 ```
 
-Collection defaults are HF-only and diverse-first, and dataset build is fail-fast when targets are not met.
+Collection defaults are Hugging Face-only and diverse-first, and dataset build is fail-fast when targets or source-diversity gates are not met.
+Run `bash scripts/do.sh doctor` before long jobs to verify token, disk, GPU visibility, cache paths, and Python deps.
 
 Linux shortcut launchers:
 
@@ -476,10 +509,19 @@ Diverse dataset preset:
 - Override style query mix with `DIVERSE_HF_QUERIES` (comma-separated).
 - Each run now executes `scripts/audit_diversity.py` to check unique source spread, hard-negative mode variety, and class balance.
 - Audit knobs: `DIVERSE_MIN_UNIQUE_SOURCES`, `DIVERSE_MIN_HARDNEG_MODES`, `DIVERSE_MAX_CLASS_IMBALANCE`.
+- HF source diversity gates are enforced by default:
+  - `DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED` (default `24`)
+  - `DIVERSE_MIN_HF_SOURCES_PER_CLASS` (default `14`)
+- Standard collect image gate defaults:
+  - `BEST_DS_MIN_HF_SOURCES_WITH_ACCEPTED` (default `16`)
+  - `BEST_DS_MIN_HF_SOURCES_PER_CLASS` (default `10`)
 - HF cache-first behavior is enabled by default (`--hf-cache-only-if-present`) and uses local cache dirs (`./.local/hf`) to reduce repeated Hub API/resolver calls.
-- `collect-diverse` now runs bounded discovery first (`--discover-only`) and always proceeds with a non-blocking build phase.
+- `collect-diverse` runs bounded discovery first (`--discover-only`), then builds from cache when available, otherwise falls back to live HF discovery (still HF-only).
 - Discovery timeout is controlled by `DIVERSE_DISCOVERY_TIMEOUT_SEC` (default `900`).
-- Set `DIVERSE_SKIP_DISCOVERY=1` to skip live Hub discovery entirely and run cache/local-only.
+- Set `DIVERSE_SKIP_DISCOVERY=1` to skip live Hub discovery entirely and use only cached HF source ids.
+
+Fast sanity preset:
+- `bash scripts/do.sh collect-fast` keeps the same HF-only quality gates but uses much smaller sample targets for quick validation runs.
 
 HF 5-minute limit fast-safe profile:
 - Keep `VIDEO_MODE=snapshot` (default) and `VIDEO_SNAPSHOT_MAX_WORKERS=1`.
@@ -509,49 +551,15 @@ Run everything end-to-end:
 bash scripts/full_pipeline_4090.sh
 ```
 
-True one-command bootstrap (installs deps, trains optimized pipeline, optional auto-serve):
+True one-command bootstrap (installs deps, trains optimized pipeline):
 
 ```bash
 bash scripts/one_command_4090.sh
 ```
 
-True one-command setup + start (broad collection, full training, then serve):
-
-```bash
-./run.sh                            # starts Linux background supervisor (serve-only)
-./run.sh full-start                 # one-shot train + continuous serve mode
-bash scripts/linux_service.sh status
-bash scripts/linux_service.sh logs
-```
-
 This command installs all required system and Python dependencies (including Hugging Face dataset tooling and safetensors support) before training starts.
 
-Linux run control (auto-restart + pause/resume):
-
-```bash
-bash scripts/linux_service.sh start      # prod mode: serve-only auto-restart
-bash scripts/linux_service.sh full-start # train + serve loop mode
-bash scripts/linux_service.sh pause
-bash scripts/linux_service.sh resume
-bash scripts/linux_service.sh restart
-bash scripts/linux_service.sh stop
-bash scripts/linux_service.sh status
-bash scripts/linux_service.sh logs
-```
-
-Behavior:
-- `start` runs serve-only loop for production stability.
-- `full-start` runs end-to-end training once (`train-all-types`), then serves continuously.
-- If training or serve process exits unexpectedly, worker auto-restarts.
-- `pause` stops the active child process and keeps worker idle.
-- `resume` continues from where it left off.
-- `reset-training` forces a fresh full training cycle before serving again.
-
-Local retrain without mixing prod serve:
-
-```bash
-PAUSE_PROD=1 bash scripts/local_retrain_4090.sh
-```
+Legacy service/supervisor scripts are not part of pipeline-only mode.
 
 Maximum-quality profile (slowest, strongest defaults, includes video training):
 
@@ -561,18 +569,7 @@ HF_TOKEN=your_token bash scripts/max_quality_4090.sh
 
 Key quality knobs: `EPOCHS`, `SWEEP_EPOCHS`, `DISTILL_EPOCHS`, `HARD_MINING_TOPK`, `VIDEO_TRAIN_EPOCHS`, `BEST_DS_DISCOVER_HF`, `BEST_DS_HF_MAX_SOURCES`, `BEST_DS_REPO_BASE_PAUSE_MS`, `BEST_DS_REPO_COOLDOWN_MS`.
 
-Auto-start API/UI after training:
-
-```bash
-AUTO_SERVE=1 bash scripts/one_command_4090.sh
-```
-
-By default this now binds to localhost (`127.0.0.1`) for private access.
-To expose intentionally, override:
-
-```bash
-AUTO_SERVE=1 bash scripts/one_command_4090.sh
-```
+Auto-serve flags are ignored in pipeline-only mode.
 
 4090 stability notes:
 
@@ -633,27 +630,4 @@ bash scripts/incremental_refresh.sh
 
 ## Production hosting on a 4090
 
-### Option A: Native process
-
-```bash
-bash scripts/serve_prod_4090.sh
-```
-
-### Option B: Docker + GPU
-
-```bash
-cd deploy
-docker compose -f docker-compose.gpu.yml up -d --build
-```
-
-### Option C: systemd service
-
-Use [ai-detector.service](deploy/ai-detector.service) on your Linux host:
-
-```bash
-sudo cp deploy/ai-detector.service /etc/systemd/system/ai-detector.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now ai-detector
-```
-
-The API will be available locally on `http://127.0.0.1:8000/`.
+Production serving is intentionally disabled in this repository's current pipeline-only mode.

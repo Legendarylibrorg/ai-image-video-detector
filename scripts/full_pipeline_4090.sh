@@ -1,6 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
+
+load_env_file() {
+  if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+  fi
+}
+
+load_env_file
+
 DATA_DIR="${DATA_DIR:-./data_best}"
 TRAIN_PER_CLASS="${TRAIN_PER_CLASS:-40000}"
 VAL_PER_CLASS="${VAL_PER_CLASS:-9000}"
@@ -17,6 +32,10 @@ BEST_DS_HARDNEG_FRACTION="${BEST_DS_HARDNEG_FRACTION:-0.6}"
 BEST_DS_DISCOVER_HF="${BEST_DS_DISCOVER_HF:-1}"
 BEST_DS_HF_DISCOVERY_LIMIT="${BEST_DS_HF_DISCOVERY_LIMIT:-120}"
 BEST_DS_HF_MAX_SOURCES="${BEST_DS_HF_MAX_SOURCES:-260}"
+BEST_DS_HF_MIN_DOWNLOADS="${BEST_DS_HF_MIN_DOWNLOADS:-80}"
+BEST_DS_HF_MIN_LIKES="${BEST_DS_HF_MIN_LIKES:-2}"
+BEST_DS_HF_MIN_QUALITY_SCORE="${BEST_DS_HF_MIN_QUALITY_SCORE:-1.7}"
+BEST_DS_HF_PRINT_TOP="${BEST_DS_HF_PRINT_TOP:-15}"
 BEST_DS_HF_CACHE_FILE="${BEST_DS_HF_CACHE_FILE:-./.local/hf_discovered_sources.txt}"
 BEST_DS_CACHE_DIR="${BEST_DS_CACHE_DIR:-./.local/hf}"
 BEST_DS_HF_QUERIES="${BEST_DS_HF_QUERIES:-real camera photo dataset,smartphone photo dataset,dslr photo dataset,webcam image dataset,cctv frame image dataset,meme image real vs ai,captioned image real ai,screenshot dataset image,chat ui screenshot,browser screenshot image,dashboard screenshot dataset,image poster infographic,logo brand image dataset,advertisement creative image,receipt scanned document image,id card document image,invoice form document scan,anime illustration real fake,digital art illustration dataset,3d render real fake,cgi synthetic image real,game render frame dataset,watermarked social media image,recompressed image dataset,heavily edited real photo,low resolution blurry image,extreme aspect ratio image,portrait selfie real fake,group photo real fake,deepfake face swap image,diffusion generated image latest}"
@@ -28,6 +47,10 @@ BEST_DS_NO_DEFAULT_SOURCES="${BEST_DS_NO_DEFAULT_SOURCES:-1}"
 BEST_DS_STREAMING="${BEST_DS_STREAMING:-1}"
 BEST_DS_STREAM_BUFFER_SIZE="${BEST_DS_STREAM_BUFFER_SIZE:-12000}"
 BEST_DS_MAX_SAMPLES_PER_SOURCE="${BEST_DS_MAX_SAMPLES_PER_SOURCE:-60000}"
+BEST_DS_ACCEPTANCE_WARMUP_SAMPLES="${BEST_DS_ACCEPTANCE_WARMUP_SAMPLES:-400}"
+BEST_DS_MIN_ACCEPTANCE_RATE="${BEST_DS_MIN_ACCEPTANCE_RATE:-0.01}"
+BEST_DS_MIN_HF_SOURCES_WITH_ACCEPTED="${BEST_DS_MIN_HF_SOURCES_WITH_ACCEPTED:-20}"
+BEST_DS_MIN_HF_SOURCES_PER_CLASS="${BEST_DS_MIN_HF_SOURCES_PER_CLASS:-12}"
 BEST_DS_REPO_BASE_PAUSE_MS="${BEST_DS_REPO_BASE_PAUSE_MS:-900}"
 BEST_DS_REPO_JITTER_MS="${BEST_DS_REPO_JITTER_MS:-900}"
 BEST_DS_REPO_COOLDOWN_MS="${BEST_DS_REPO_COOLDOWN_MS:-45000}"
@@ -84,20 +107,67 @@ run_cmd() {
   fi
 }
 
+run_array_cmd() {
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf "[DRY_RUN]"
+    printf " %q" "$@"
+    printf "\n"
+  else
+    "$@"
+  fi
+}
+
 run_cmd "bash scripts/install_deps.sh"
 source .venv/bin/activate
 
 if [[ "$SKIP_DATA" != "1" ]]; then
-  dataset_cmd="python scripts/build_best_dataset.py --out \"$DATA_DIR\" --train-per-class \"$TRAIN_PER_CLASS\" --val-per-class \"$VAL_PER_CLASS\" --test-per-class \"$TEST_PER_CLASS\" --near-hamming \"$BEST_DS_NEAR_HAMMING\" --near-window \"$BEST_DS_NEAR_WINDOW\" --min-side \"$BEST_DS_MIN_SIDE\" --max-aspect-ratio \"$BEST_DS_MAX_ASPECT_RATIO\" --min-entropy \"$BEST_DS_MIN_ENTROPY\" --max-unique-per-source \"$BEST_DS_MAX_UNIQUE_PER_SOURCE\" --max-per-source-class \"$BEST_DS_MAX_PER_SOURCE_CLASS\" --jpeg-quality \"$BEST_DS_JPEG_QUALITY\" --hardneg-fraction \"$BEST_DS_HARDNEG_FRACTION\" --cache-dir \"$BEST_DS_CACHE_DIR\" --hf-cache-only-if-present --stream-buffer-size \"$BEST_DS_STREAM_BUFFER_SIZE\" --max-samples-per-source \"$BEST_DS_MAX_SAMPLES_PER_SOURCE\" --repo-base-pause-ms \"$BEST_DS_REPO_BASE_PAUSE_MS\" --repo-jitter-ms \"$BEST_DS_REPO_JITTER_MS\" --repo-cooldown-ms \"$BEST_DS_REPO_COOLDOWN_MS\" --max-consecutive-failures \"$BEST_DS_MAX_CONSECUTIVE_FAILURES\" --require-full-targets"
+  dataset_cmd=(
+    python scripts/build_best_dataset.py
+    --out "$DATA_DIR"
+    --train-per-class "$TRAIN_PER_CLASS"
+    --val-per-class "$VAL_PER_CLASS"
+    --test-per-class "$TEST_PER_CLASS"
+    --near-hamming "$BEST_DS_NEAR_HAMMING"
+    --near-window "$BEST_DS_NEAR_WINDOW"
+    --min-side "$BEST_DS_MIN_SIDE"
+    --max-aspect-ratio "$BEST_DS_MAX_ASPECT_RATIO"
+    --min-entropy "$BEST_DS_MIN_ENTROPY"
+    --max-unique-per-source "$BEST_DS_MAX_UNIQUE_PER_SOURCE"
+    --max-per-source-class "$BEST_DS_MAX_PER_SOURCE_CLASS"
+    --jpeg-quality "$BEST_DS_JPEG_QUALITY"
+    --hardneg-fraction "$BEST_DS_HARDNEG_FRACTION"
+    --cache-dir "$BEST_DS_CACHE_DIR"
+    --hf-cache-only-if-present
+    --stream-buffer-size "$BEST_DS_STREAM_BUFFER_SIZE"
+    --max-samples-per-source "$BEST_DS_MAX_SAMPLES_PER_SOURCE"
+    --acceptance-warmup-samples "$BEST_DS_ACCEPTANCE_WARMUP_SAMPLES"
+    --min-acceptance-rate "$BEST_DS_MIN_ACCEPTANCE_RATE"
+    --min-hf-sources-with-accepted "$BEST_DS_MIN_HF_SOURCES_WITH_ACCEPTED"
+    --min-hf-sources-per-class "$BEST_DS_MIN_HF_SOURCES_PER_CLASS"
+    --repo-base-pause-ms "$BEST_DS_REPO_BASE_PAUSE_MS"
+    --repo-jitter-ms "$BEST_DS_REPO_JITTER_MS"
+    --repo-cooldown-ms "$BEST_DS_REPO_COOLDOWN_MS"
+    --max-consecutive-failures "$BEST_DS_MAX_CONSECUTIVE_FAILURES"
+    --require-full-targets
+  )
 
   if [[ "$BEST_DS_STREAMING" == "1" ]]; then
-    dataset_cmd="$dataset_cmd --streaming"
+    dataset_cmd+=(--streaming)
   else
-    dataset_cmd="$dataset_cmd --no-streaming"
+    dataset_cmd+=(--no-streaming)
   fi
 
   if [[ "$BEST_DS_DISCOVER_HF" == "1" ]]; then
-    dataset_cmd="$dataset_cmd --discover-hf --hf-discovery-limit \"$BEST_DS_HF_DISCOVERY_LIMIT\" --hf-max-sources \"$BEST_DS_HF_MAX_SOURCES\" --hf-cache-file \"$BEST_DS_HF_CACHE_FILE\""
+    dataset_cmd+=(
+      --discover-hf
+      --hf-discovery-limit "$BEST_DS_HF_DISCOVERY_LIMIT"
+      --hf-max-sources "$BEST_DS_HF_MAX_SOURCES"
+      --hf-min-downloads "$BEST_DS_HF_MIN_DOWNLOADS"
+      --hf-min-likes "$BEST_DS_HF_MIN_LIKES"
+      --hf-min-quality-score "$BEST_DS_HF_MIN_QUALITY_SCORE"
+      --hf-print-top "$BEST_DS_HF_PRINT_TOP"
+      --hf-cache-file "$BEST_DS_HF_CACHE_FILE"
+    )
   fi
 
   if [[ -n "$BEST_DS_HF_QUERIES" ]]; then
@@ -105,12 +175,12 @@ if [[ "$SKIP_DATA" != "1" ]]; then
     for q in "${_queries[@]}"; do
       q="$(echo "$q" | xargs)"
       [[ -z "$q" ]] && continue
-      dataset_cmd="$dataset_cmd --hf-query \"$q\""
+      dataset_cmd+=(--hf-query "$q")
     done
   fi
 
   if [[ -n "$BEST_DS_SOURCES_FILE" ]]; then
-    dataset_cmd="$dataset_cmd --sources-file \"$BEST_DS_SOURCES_FILE\""
+    dataset_cmd+=(--sources-file "$BEST_DS_SOURCES_FILE")
   fi
 
   if [[ -n "$BEST_DS_EXTRA_SOURCES" ]]; then
@@ -118,7 +188,7 @@ if [[ "$SKIP_DATA" != "1" ]]; then
     for src in "${_extra_sources[@]}"; do
       src="$(echo "$src" | xargs)"
       [[ -z "$src" ]] && continue
-      dataset_cmd="$dataset_cmd --extra-source \"$src\""
+      dataset_cmd+=(--extra-source "$src")
     done
   fi
 
@@ -127,35 +197,64 @@ if [[ "$SKIP_DATA" != "1" ]]; then
     for src in "${_local_sources[@]}"; do
       src="$(echo "$src" | xargs)"
       [[ -z "$src" ]] && continue
-      dataset_cmd="$dataset_cmd --local-source \"$src\""
+      dataset_cmd+=(--local-source "$src")
     done
   fi
   if [[ "$BEST_DS_HF_ONLY" == "1" ]]; then
-    dataset_cmd="$dataset_cmd --hf-only"
+    dataset_cmd+=(--hf-only)
   fi
   if [[ "$BEST_DS_NO_DEFAULT_SOURCES" == "1" ]]; then
-    dataset_cmd="$dataset_cmd --no-default-sources"
+    dataset_cmd+=(--no-default-sources)
   fi
 
-  run_cmd "$dataset_cmd"
+  run_array_cmd "${dataset_cmd[@]}"
   if [[ "${MALWARE_SCAN:-1}" == "1" ]]; then
     run_cmd "bash scripts/malware_scan.sh \"$DATA_DIR\""
   fi
 fi
 
 if [[ "$RUN_VIDEO_DATA_PULL" == "1" ]]; then
-  run_cmd "python scripts/build_video_dataset.py --out \"$VIDEO_OUT\" --train-per-class \"$VIDEO_TRAIN_PER_CLASS\" --val-per-class \"$VIDEO_VAL_PER_CLASS\" --mode \"$VIDEO_MODE\" --cache-dir \"$VIDEO_CACHE_DIR\" --snapshot-max-workers \"$VIDEO_SNAPSHOT_MAX_WORKERS\" --repo-base-pause-ms \"$VIDEO_REPO_BASE_PAUSE_MS\" --repo-jitter-ms \"$VIDEO_REPO_JITTER_MS\" --copy-sleep-ms \"$VIDEO_COPY_SLEEP_MS\" --sleep-ms \"$VIDEO_SLEEP_MS\" --jitter-ms \"$VIDEO_JITTER_MS\" --chunk-pause-ms \"$VIDEO_CHUNK_PAUSE_MS\" --repo-cooldown-ms \"$VIDEO_REPO_COOLDOWN_MS\" --retries \"$VIDEO_RETRIES\""
+  video_data_cmd=(
+    python scripts/build_video_dataset.py
+    --out "$VIDEO_OUT"
+    --train-per-class "$VIDEO_TRAIN_PER_CLASS"
+    --val-per-class "$VIDEO_VAL_PER_CLASS"
+    --mode "$VIDEO_MODE"
+    --cache-dir "$VIDEO_CACHE_DIR"
+    --snapshot-max-workers "$VIDEO_SNAPSHOT_MAX_WORKERS"
+    --repo-base-pause-ms "$VIDEO_REPO_BASE_PAUSE_MS"
+    --repo-jitter-ms "$VIDEO_REPO_JITTER_MS"
+    --copy-sleep-ms "$VIDEO_COPY_SLEEP_MS"
+    --sleep-ms "$VIDEO_SLEEP_MS"
+    --jitter-ms "$VIDEO_JITTER_MS"
+    --chunk-pause-ms "$VIDEO_CHUNK_PAUSE_MS"
+    --repo-cooldown-ms "$VIDEO_REPO_COOLDOWN_MS"
+    --retries "$VIDEO_RETRIES"
+  )
+  run_array_cmd "${video_data_cmd[@]}"
   if [[ "${MALWARE_SCAN:-1}" == "1" ]]; then
     run_cmd "bash scripts/malware_scan.sh \"$VIDEO_OUT\""
   fi
 fi
 
 if [[ "$RUN_VIDEO_TRAIN" == "1" ]]; then
+  video_train_cmd=(
+    aid-video-train
+    --data "$VIDEO_OUT"
+    --out "$VIDEO_ARTIFACTS_OUT"
+    --epochs "$VIDEO_TRAIN_EPOCHS"
+    --batch-size "$VIDEO_TRAIN_BATCH_SIZE"
+    --img-size "$VIDEO_TRAIN_IMG_SIZE"
+    --frames "$VIDEO_TRAIN_FRAMES"
+    --grad-accum "$VIDEO_TRAIN_GRAD_ACCUM"
+    --lr "$VIDEO_TRAIN_LR"
+    --patience "$VIDEO_TRAIN_PATIENCE"
+    --min-delta "$VIDEO_TRAIN_MIN_DELTA"
+  )
   if [[ "$VIDEO_TRAIN_RESUME" == "1" ]]; then
-    run_cmd "aid-video-train --data \"$VIDEO_OUT\" --out \"$VIDEO_ARTIFACTS_OUT\" --epochs \"$VIDEO_TRAIN_EPOCHS\" --batch-size \"$VIDEO_TRAIN_BATCH_SIZE\" --img-size \"$VIDEO_TRAIN_IMG_SIZE\" --frames \"$VIDEO_TRAIN_FRAMES\" --grad-accum \"$VIDEO_TRAIN_GRAD_ACCUM\" --lr \"$VIDEO_TRAIN_LR\" --patience \"$VIDEO_TRAIN_PATIENCE\" --min-delta \"$VIDEO_TRAIN_MIN_DELTA\" --resume \"$VIDEO_ARTIFACTS_OUT/last_video.pt\""
-  else
-    run_cmd "aid-video-train --data \"$VIDEO_OUT\" --out \"$VIDEO_ARTIFACTS_OUT\" --epochs \"$VIDEO_TRAIN_EPOCHS\" --batch-size \"$VIDEO_TRAIN_BATCH_SIZE\" --img-size \"$VIDEO_TRAIN_IMG_SIZE\" --frames \"$VIDEO_TRAIN_FRAMES\" --grad-accum \"$VIDEO_TRAIN_GRAD_ACCUM\" --lr \"$VIDEO_TRAIN_LR\" --patience \"$VIDEO_TRAIN_PATIENCE\" --min-delta \"$VIDEO_TRAIN_MIN_DELTA\""
+    video_train_cmd+=(--resume "$VIDEO_ARTIFACTS_OUT/last_video.pt")
   fi
+  run_array_cmd "${video_train_cmd[@]}"
 fi
 
 if [[ "$SKIP_SWEEP" != "1" ]]; then
