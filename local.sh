@@ -12,7 +12,7 @@ run_do() {
 
 print_usage() {
   cat <<'EOF'
-usage: ./local.sh [setup|run|smoke|collect|train|retrain|continuous|check|status|scan [paths...]|deps-update]
+usage: ./local.sh [setup|run|smoke|collect|collect-status|train|retrain|continuous|check|status|scan [paths...]|deps-update]
 
 recommended:
   ./local.sh setup    # bootstrap deps and local env
@@ -22,6 +22,7 @@ recommended:
   ./local.sh retrain  # merge fresh data and benchmark-gate a retrain
   ./local.sh continuous # continuous collect + retrain loop
   ./local.sh check    # preflight validation
+  ./local.sh collect-status # collection/build status and resume summary
 
 aliases:
   init/bootstrap -> setup
@@ -50,6 +51,9 @@ case "$cmd" in
     ;;
   collect)
     run_do collect-diverse "$@"
+    ;;
+  collect-status|collection-status)
+    run_do collection-status "$@"
     ;;
   train)
     run_do train-existing "$@"

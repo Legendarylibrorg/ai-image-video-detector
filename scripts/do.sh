@@ -14,6 +14,7 @@ set -euo pipefail
 #   bash scripts/do.sh collect-fast
 #   bash scripts/do.sh collect-image
 #   bash scripts/do.sh collect-video
+#   bash scripts/do.sh collection-status
 #   bash scripts/do.sh ingest
 #   bash scripts/do.sh scan
 #   bash scripts/do.sh train
@@ -91,6 +92,10 @@ case "$cmd" in
 
   collect-video)
     run_collection_command collect_video_data
+    ;;
+
+  collection-status)
+    show_collection_status "$@"
     ;;
 
   ingest)

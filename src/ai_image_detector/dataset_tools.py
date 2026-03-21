@@ -129,6 +129,156 @@ def cmd_balance_report(data_root: str):
     print(json.dumps(report, indent=2))
 
 
+def _read_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _count_image_files(root: Path) -> dict[str, dict[str, int]]:
+    counts: dict[str, dict[str, int]] = {
+        split: {cls: 0 for cls in ("ai", "real")}
+        for split in ("train", "val", "test")
+    }
+    for split in ("train", "val", "test"):
+        for cls in ("ai", "real"):
+            bucket = root / split / cls
+            if not bucket.exists():
+                continue
+            counts[split][cls] = sum(1 for p in bucket.iterdir() if p.is_file() and p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"})
+    return counts
+
+
+def _count_video_files(root: Path) -> dict[str, dict[str, int]]:
+    exts = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+    counts: dict[str, dict[str, int]] = {
+        split: {cls: 0 for cls in ("ai", "real")}
+        for split in ("train", "val")
+    }
+    for split in ("train", "val"):
+        for cls in ("ai", "real"):
+            bucket = root / split / cls
+            if not bucket.exists():
+                continue
+            counts[split][cls] = sum(1 for p in bucket.iterdir() if p.is_file() and p.suffix.lower() in exts)
+    return counts
+
+
+def _load_manifest_entries(path: Path) -> list[dict]:
+    entries: list[dict] = []
+    if not path.exists():
+        return entries
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            entries.append(item)
+    return entries
+
+
+def cmd_collection_status(
+    data_root: str,
+    incremental_root: str = "",
+    prepared_root: str = "",
+    video_root: str = "",
+    recent_sources: int = 8,
+) -> None:
+    root = Path(data_root)
+    report_path = root / "dataset_build_report.json"
+    run_summary_path = root / "dataset_run_summary.json"
+    state_path = root / "dataset_state.json"
+    manifest_path = root / "dataset_source_manifest.jsonl"
+
+    build_report = _read_json(report_path)
+    run_summary = _read_json(run_summary_path)
+    state = _read_json(state_path)
+    manifest_entries = _load_manifest_entries(manifest_path)
+
+    latest_by_source: dict[str, dict] = {}
+    for entry in manifest_entries:
+        source = str(entry.get("source", "")).strip()
+        if source:
+            latest_by_source[source] = entry
+
+    latest_entries = list(latest_by_source.values())
+    latest_entries.sort(key=lambda item: str(item.get("finished_utc", "")), reverse=True)
+    skipped_sources = [entry for entry in latest_entries if bool(entry.get("skip_future_runs", False))]
+    completed_sources = [entry for entry in latest_entries if str(entry.get("status", "")) == "completed"]
+    failed_sources = [
+        entry for entry in latest_entries
+        if str(entry.get("status", "")) not in {"completed", "skipped_manifest", ""}
+    ]
+
+    source_candidates = state.get("source_candidates", [])
+    if not isinstance(source_candidates, list):
+        source_candidates = []
+    source_candidates_count = len(source_candidates)
+    full_targets_ok = bool(state.get("full_targets_ok", build_report.get("full_targets_ok", False)))
+    resume_needed = not full_targets_ok
+
+    report = {
+        "data_root": str(root.resolve()),
+        "paths": {
+            "build_report": str(report_path.resolve()),
+            "run_summary": str(run_summary_path.resolve()),
+            "dataset_state": str(state_path.resolve()),
+            "source_manifest": str(manifest_path.resolve()),
+        },
+        "current_counts": _count_image_files(root),
+        "build_report_present": report_path.exists(),
+        "run_summary_present": run_summary_path.exists(),
+        "dataset_state_present": state_path.exists(),
+        "source_manifest_present": manifest_path.exists(),
+        "full_targets_ok": full_targets_ok,
+        "manifest": {
+            "entries": len(manifest_entries),
+            "unique_sources": len(latest_entries),
+            "completed_sources": len(completed_sources),
+            "failed_sources": len(failed_sources),
+            "skipped_future_runs": len(skipped_sources),
+            "accepted_total": int(sum(int(entry.get("accepted_total", 0)) for entry in completed_sources)),
+            "processed_total": int(sum(int(entry.get("processed_total", 0)) for entry in completed_sources)),
+            "last_finished_utc": latest_entries[0].get("finished_utc") if latest_entries else "",
+            "recent_sources": latest_entries[: max(0, int(recent_sources))],
+        },
+        "resume": {
+            "resume_supported": manifest_path.exists() or report_path.exists(),
+            "resume_needed": resume_needed,
+            "source_candidates": source_candidates_count,
+            "remaining_candidates_estimate": max(0, source_candidates_count - len(skipped_sources)) if source_candidates_count > 0 else None,
+            "recommended_command": "./local.sh collect" if resume_needed else "./local.sh train",
+        },
+        "run_summary": run_summary,
+    }
+
+    if incremental_root:
+        report["incremental_root"] = {
+            "path": str(Path(incremental_root).resolve()),
+            "counts": _count_image_files(Path(incremental_root)),
+        }
+    if prepared_root:
+        report["prepared_training_root"] = {
+            "path": str(Path(prepared_root).resolve()),
+            "counts": _count_image_files(Path(prepared_root)),
+        }
+    if video_root:
+        report["video_root"] = {
+            "path": str(Path(video_root).resolve()),
+            "counts": _count_video_files(Path(video_root)),
+        }
+
+    print(json.dumps(report, indent=2))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Dataset hygiene tools")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -149,6 +299,13 @@ def main() -> None:
     p_bal = sub.add_parser("balance-report", help="Report class balance by split/class buckets")
     p_bal.add_argument("--data", required=True)
 
+    p_status = sub.add_parser("collection-status", help="Report dataset collection/build state and resume info")
+    p_status.add_argument("--data", required=True)
+    p_status.add_argument("--incremental", default="")
+    p_status.add_argument("--prepared", default="")
+    p_status.add_argument("--video", default="")
+    p_status.add_argument("--recent-sources", type=int, default=8)
+
     args = ap.parse_args()
 
     if args.cmd == "manifest":
@@ -159,6 +316,14 @@ def main() -> None:
         cmd_near_dupes(args.data, args.max_images, args.max_hamming)
     elif args.cmd == "balance-report":
         cmd_balance_report(args.data)
+    elif args.cmd == "collection-status":
+        cmd_collection_status(
+            args.data,
+            incremental_root=args.incremental,
+            prepared_root=args.prepared,
+            video_root=args.video,
+            recent_sources=args.recent_sources,
+        )
 
 
 if __name__ == "__main__":

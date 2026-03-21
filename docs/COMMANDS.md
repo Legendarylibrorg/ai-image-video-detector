@@ -27,6 +27,8 @@ Full list:
   End-to-end setup, collection, and training.
 - `./local.sh collect`
   Run collection only.
+- `./local.sh collect-status`
+  Print JSON status for the current image/video collection state, source manifest, and resume hints.
 - `./local.sh train`
   Prepare additive training data from `./data_best` plus `./data_new` and train without recollecting.
 - `./local.sh retrain`
@@ -57,6 +59,7 @@ bash scripts/do.sh collect-diverse
 bash scripts/do.sh collect-fast
 bash scripts/do.sh collect-image
 bash scripts/do.sh collect-video
+bash scripts/do.sh collection-status
 bash scripts/do.sh ingest
 bash scripts/do.sh scan [paths...]
 bash scripts/do.sh train
@@ -69,6 +72,25 @@ bash scripts/do.sh continuous
 bash scripts/do.sh train-all-types
 bash scripts/do.sh deps-update
 bash scripts/do.sh status
+```
+
+## Collection status
+
+```bash
+bash scripts/do.sh collection-status
+aid-dataset collection-status --data ./data_best
+```
+
+## Collection progress controls
+
+Image collection defaults to quiet Hugging Face `datasets` progress output so source-level logs stay readable.
+
+Set one of these env vars to `1` if you want verbose `map`/`filter` progress bars during collection:
+
+```bash
+BEST_DS_VERBOSE_PROGRESS=1 bash scripts/do.sh collect
+DIVERSE_VERBOSE_PROGRESS=1 bash scripts/do.sh collect-diverse
+FAST_VERBOSE_PROGRESS=1 bash scripts/do.sh collect-fast
 ```
 
 ## Top-level wrappers
