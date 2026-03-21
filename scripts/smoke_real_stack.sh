@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 WORKDIR="${SMOKE_REAL_WORKDIR:-$(mktemp -d "${TMPDIR:-/tmp}/aid-real-smoke.XXXXXX")}"
 KEEP_WORKDIR="${SMOKE_REAL_KEEP_WORKDIR:-0}"
 DATA_DIR="$WORKDIR/data"
@@ -46,7 +47,7 @@ fi
 
 bash scripts/install_deps.sh >&2
 # shellcheck disable=SC1091
-source .venv/bin/activate
+source "$VENV_DIR/bin/activate"
 
 python - <<'PY'
 import sys
