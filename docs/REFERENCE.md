@@ -9,6 +9,20 @@ This file keeps the README short and startup-focused while collecting the broade
 - supports resumable setup and pipeline runs
 - stays in training-only mode; production serving is intentionally disabled
 
+## Current pipeline shape
+
+The current Linux pipeline is:
+
+1. setup a local pinned environment in `./.venv`
+2. collect and curate image data into `./data_best`
+3. collect video data into `./video_data`
+4. ingest or preserve incremental image data under `./data_new`
+5. prepare additive image training data in `./.local/training_data`
+6. train image models, and optionally video models when complete video data exists
+7. persist resumable state, collection manifests, and stage markers under `./.local`
+
+This means the repo is no longer just “run one train script on one folder.” It is a local dataset-building and retraining workflow with resumability and incremental refresh support.
+
 ## Dataset and artifact basics
 
 Typical image dataset layout:
@@ -104,6 +118,15 @@ Normal users should start with:
 ./local.sh setup
 ./local.sh smoke
 ./local.sh run
+```
+
+For stage-by-stage Linux usage:
+
+```bash
+./local.sh collect
+./local.sh collect-status
+./local.sh train
+./local.sh retrain
 ```
 
 For command-level control, use:
