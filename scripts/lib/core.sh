@@ -138,7 +138,7 @@ run_collection_command() {
 }
 
 print_usage() {
-  echo "usage: bash scripts/do.sh [pipeline|run|smoke|check|start|start-v2|collect|collect-diverse|collect-fast|collect-image|collect-video|ingest|scan [paths...]|train|train-existing|train-image|train-video|train-all|retrain|continuous|train-all-types|deps-update|doctor|status]"
+  echo "usage: bash scripts/do.sh [pipeline|run|smoke|check|start|start-v2|collect|collect-diverse|collect-fast|collect-image|collect-video|collection-status|ingest|scan [paths...]|train|train-existing|train-image|train-video|train-all|retrain|continuous|train-all-types|deps-update|doctor|status]"
 }
 
 run_doctor_check() {
@@ -172,8 +172,22 @@ print_cli_flag() {
   printf "%s\n" "$1"
 }
 
+print_cli_flags() {
+  local flag=""
+  for flag in "$@"; do
+    print_cli_flag "$flag"
+  done
+}
+
 print_cli_flag_value() {
   printf "%s\n%s\n" "$1" "$2"
+}
+
+print_cli_flag_value_pairs() {
+  while [[ "$#" -gt 0 ]]; do
+    print_cli_flag_value "$1" "$2"
+    shift 2
+  done
 }
 
 print_cli_flag_value_from_env() {
@@ -181,6 +195,13 @@ print_cli_flag_value_from_env() {
   local env_name="$2"
   local default="$3"
   print_cli_flag_value "$flag" "${!env_name:-$default}"
+}
+
+print_cli_flag_value_from_env_triplets() {
+  while [[ "$#" -gt 0 ]]; do
+    print_cli_flag_value_from_env "$1" "$2" "$3"
+    shift 3
+  done
 }
 
 print_cli_flag_values_from_csv() {
@@ -197,3 +218,18 @@ print_cli_flag_values_from_csv() {
   done
 }
 
+run_repo_python() {
+  ensure_env
+  python "$@"
+}
+
+run_repo_python_with_timeout() {
+  local timeout_sec="$1"
+  shift
+  ensure_env
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "${timeout_sec}s" python "$@"
+    return
+  fi
+  python "$@"
+}

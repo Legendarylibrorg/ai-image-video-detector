@@ -34,6 +34,7 @@ class DoShTests(unittest.TestCase):
     def test_best_profile_defaults_to_hf_only(self) -> None:
         out = self.run_bash("source scripts/do.sh; print_image_collection_args best")
         self.assertIn("--hf-only\n", out)
+        self.assertIn("--quiet-progress\n", out)
 
     def test_best_profile_emits_split_source_diversity_gate(self) -> None:
         out = self.run_bash("source scripts/do.sh; print_image_collection_args best")
@@ -55,6 +56,7 @@ class DoShTests(unittest.TestCase):
         self.assertIn("pipeline", out)
         self.assertIn("run", out)
         self.assertIn("smoke", out)
+        self.assertIn("collection-status", out)
         self.assertIn("check", out)
         self.assertIn("train-existing", out)
         self.assertIn("retrain", out)

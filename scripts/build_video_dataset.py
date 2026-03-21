@@ -11,7 +11,11 @@ import time
 from typing import Dict, List
 
 from dataset_builder_common import configure_hf_cache_env, count_existing_split_classes, targets_met
-from huggingface_hub import hf_hub_download, list_repo_files, snapshot_download
+from hf_data import download_dataset_file, list_dataset_repo_files, snapshot_dataset_repo
+
+hf_hub_download = download_dataset_file
+list_repo_files = list_dataset_repo_files
+snapshot_download = snapshot_dataset_repo
 
 
 SOURCES = [
@@ -60,7 +64,7 @@ def _collect_snapshot_files(root: Path, prefixes: List[str]) -> List[Path]:
 def _download_with_retry(repo: str, filename: str, token: str | None, retries: int, sleep_ms: int) -> str | None:
     for attempt in range(retries):
         try:
-            return hf_hub_download(repo_id=repo, repo_type="dataset", filename=filename, token=token)
+            return hf_hub_download(repo, filename, token=token)
         except Exception:
             if attempt + 1 >= retries:
                 return None
@@ -174,12 +178,10 @@ def main():
             allow_patterns = [f"{pref}*" for pref in src["fake_prefixes"] + src["real_prefixes"]]
             try:
                 snap = snapshot_download(
-                    repo_id=repo,
-                    repo_type="dataset",
+                    repo,
                     token=token,
                     allow_patterns=allow_patterns,
-                    resume_download=True,
-                    max_workers=max(1, int(args.snapshot_max_workers)),
+                    max_workers=args.snapshot_max_workers,
                     cache_dir=args.cache_dir,
                 )
             except Exception as e:
@@ -217,7 +219,7 @@ def main():
 
         else:
             try:
-                files = list_repo_files(repo, repo_type="dataset", token=token)
+                files = list_repo_files(repo, token=token)
             except Exception as e:
                 print(f"skip repo={repo} err={e}")
                 continue

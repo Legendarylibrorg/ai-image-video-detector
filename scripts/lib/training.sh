@@ -213,3 +213,11 @@ show_status() {
   echo "video model: ${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.safetensors"
 }
 
+show_collection_status() {
+  run_repo_python -m ai_image_detector.dataset_tools collection-status \
+    --data "${DATA_DIR:-./data_best}" \
+    --incremental "$(resolve_incremental_image_root)" \
+    --prepared "${TRAIN_READY_DATA_DIR:-./.local/training_data}" \
+    --video "${VIDEO_OUT:-./video_data}" \
+    "$@"
+}

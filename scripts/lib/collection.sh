@@ -4,8 +4,7 @@ run_image_dataset_builder() {
   shift 2
   local -a query_args=()
   mapfile -t query_args < <(print_hf_query_args "$query_csv")
-  ensure_env
-  python scripts/build_best_dataset.py \
+  run_repo_python scripts/build_best_dataset.py \
     --out "$out" \
     "$@" \
     "${query_args[@]}"
@@ -18,20 +17,11 @@ run_image_dataset_discovery() {
   shift 3
   local -a query_args=()
   mapfile -t query_args < <(print_hf_query_args "$query_csv")
-  ensure_env
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "${timeout_sec}s" python scripts/build_best_dataset.py \
-      --out "$out" \
-      "$@" \
-      "${query_args[@]}" \
-      --discover-only
-  else
-    python scripts/build_best_dataset.py \
-      --out "$out" \
-      "$@" \
-      "${query_args[@]}" \
-      --discover-only
-  fi
+  run_repo_python_with_timeout "$timeout_sec" scripts/build_best_dataset.py \
+    --out "$out" \
+    "$@" \
+    "${query_args[@]}" \
+    --discover-only
 }
 
 run_image_dataset_build() {
@@ -73,6 +63,7 @@ print_image_collection_args() {
   local sources_file_env=""
   local extra_sources_env=""
   local local_sources_env=""
+  local verbose_progress_env=""
 
   case "$profile" in
     best)
@@ -105,6 +96,7 @@ print_image_collection_args() {
       sources_file_env="BEST_DS_SOURCES_FILE"
       extra_sources_env="BEST_DS_EXTRA_SOURCES"
       local_sources_env="BEST_DS_LOCAL_SOURCES"
+      verbose_progress_env="BEST_DS_VERBOSE_PROGRESS"
       ;;
     fast)
       train_env="FAST_TRAIN_PER_CLASS"
@@ -136,6 +128,7 @@ print_image_collection_args() {
       sources_file_env="FAST_SOURCES_FILE"
       extra_sources_env="FAST_EXTRA_SOURCES"
       local_sources_env="FAST_LOCAL_SOURCES"
+      verbose_progress_env="FAST_VERBOSE_PROGRESS"
       ;;
     *)
       echo "unknown_image_collection_profile=$profile" >&2
@@ -143,37 +136,40 @@ print_image_collection_args() {
       ;;
   esac
 
-  print_cli_flag_value_from_env --train-per-class "$train_env" "$train_default"
-  print_cli_flag_value_from_env --val-per-class "$val_env" "$val_default"
-  print_cli_flag_value_from_env --test-per-class "$test_env" "$test_default"
+  print_cli_flag_value_from_env_triplets \
+    --train-per-class "$train_env" "$train_default" \
+    --val-per-class "$val_env" "$val_default" \
+    --test-per-class "$test_env" "$test_default"
   print_cli_flag --discover-hf
-  print_cli_flag_value_from_env --hf-discovery-limit "${prefix}_HF_DISCOVERY_LIMIT" "$discovery_limit_default"
-  print_cli_flag_value_from_env --hf-max-sources "${prefix}_HF_MAX_SOURCES" "$max_sources_default"
-  print_cli_flag_value_from_env --hf-min-downloads "${prefix}_HF_MIN_DOWNLOADS" "80"
-  print_cli_flag_value_from_env --hf-min-likes "${prefix}_HF_MIN_LIKES" "2"
-  print_cli_flag_value_from_env --hf-min-quality-score "${prefix}_HF_MIN_QUALITY_SCORE" "1.7"
-  print_cli_flag_value_from_env --hf-print-top "${prefix}_HF_PRINT_TOP" "$print_top_default"
-  print_cli_flag_value_from_env --hf-cache-file "${prefix}_HF_CACHE_FILE" "$cache_file_default"
+  print_cli_flag_value_from_env_triplets \
+    --hf-discovery-limit "${prefix}_HF_DISCOVERY_LIMIT" "$discovery_limit_default" \
+    --hf-max-sources "${prefix}_HF_MAX_SOURCES" "$max_sources_default" \
+    --hf-min-downloads "${prefix}_HF_MIN_DOWNLOADS" "80" \
+    --hf-min-likes "${prefix}_HF_MIN_LIKES" "2" \
+    --hf-min-quality-score "${prefix}_HF_MIN_QUALITY_SCORE" "1.7" \
+    --hf-print-top "${prefix}_HF_PRINT_TOP" "$print_top_default" \
+    --hf-cache-file "${prefix}_HF_CACHE_FILE" "$cache_file_default"
   print_cli_flag --hf-cache-only-if-present
   print_cli_flag_value_from_env --cache-dir "${prefix}_CACHE_DIR" "./.local/hf"
   print_cli_flag --streaming
-  print_cli_flag_value_from_env --stream-buffer-size "${prefix}_STREAM_BUFFER_SIZE" "$stream_buffer_default"
-  print_cli_flag_value_from_env --max-samples-per-source "${prefix}_MAX_SAMPLES_PER_SOURCE" "$max_samples_default"
-  print_cli_flag_value_from_env --max-per-source-class "${prefix}_MAX_PER_SOURCE_CLASS" "$max_per_source_class_default"
-  print_cli_flag_value_from_env --max-per-source-split-class "${prefix}_MAX_PER_SOURCE_SPLIT_CLASS" "$max_per_source_split_class_default"
-  print_cli_flag_value_from_env --acceptance-warmup-samples "${prefix}_ACCEPTANCE_WARMUP_SAMPLES" "$warmup_default"
-  print_cli_flag_value_from_env --min-acceptance-rate "${prefix}_MIN_ACCEPTANCE_RATE" "0.01"
-  print_cli_flag_value_from_env --min-hf-sources-with-accepted "${prefix}_MIN_HF_SOURCES_WITH_ACCEPTED" "$min_sources_with_accepted_default"
-  print_cli_flag_value_from_env --min-hf-sources-per-class "${prefix}_MIN_HF_SOURCES_PER_CLASS" "$min_sources_per_class_default"
-  print_cli_flag_value_from_env --min-hf-sources-per-split-class "${prefix}_MIN_HF_SOURCES_PER_SPLIT_CLASS" "$min_sources_per_split_class_default"
-  print_cli_flag_value_from_env --repo-base-pause-ms "${prefix}_REPO_BASE_PAUSE_MS" "$base_pause_default"
-  print_cli_flag_value_from_env --repo-jitter-ms "${prefix}_REPO_JITTER_MS" "$jitter_default"
-  print_cli_flag_value_from_env --repo-cooldown-ms "${prefix}_REPO_COOLDOWN_MS" "$cooldown_default"
-  print_cli_flag_value_from_env --max-consecutive-failures "${prefix}_MAX_CONSECUTIVE_FAILURES" "2"
-  print_cli_flag_value_from_env --min-side "${prefix}_MIN_SIDE" "$min_side_default"
-  print_cli_flag_value_from_env --max-aspect-ratio "${prefix}_MAX_ASPECT_RATIO" "2.5"
-  print_cli_flag_value_from_env --min-entropy "${prefix}_MIN_ENTROPY" "3.4"
-  print_cli_flag_value_from_env --hardneg-fraction "${prefix}_HARDNEG_FRACTION" "$hardneg_fraction_default"
+  print_cli_flag_value_from_env_triplets \
+    --stream-buffer-size "${prefix}_STREAM_BUFFER_SIZE" "$stream_buffer_default" \
+    --max-samples-per-source "${prefix}_MAX_SAMPLES_PER_SOURCE" "$max_samples_default" \
+    --max-per-source-class "${prefix}_MAX_PER_SOURCE_CLASS" "$max_per_source_class_default" \
+    --max-per-source-split-class "${prefix}_MAX_PER_SOURCE_SPLIT_CLASS" "$max_per_source_split_class_default" \
+    --acceptance-warmup-samples "${prefix}_ACCEPTANCE_WARMUP_SAMPLES" "$warmup_default" \
+    --min-acceptance-rate "${prefix}_MIN_ACCEPTANCE_RATE" "0.01" \
+    --min-hf-sources-with-accepted "${prefix}_MIN_HF_SOURCES_WITH_ACCEPTED" "$min_sources_with_accepted_default" \
+    --min-hf-sources-per-class "${prefix}_MIN_HF_SOURCES_PER_CLASS" "$min_sources_per_class_default" \
+    --min-hf-sources-per-split-class "${prefix}_MIN_HF_SOURCES_PER_SPLIT_CLASS" "$min_sources_per_split_class_default" \
+    --repo-base-pause-ms "${prefix}_REPO_BASE_PAUSE_MS" "$base_pause_default" \
+    --repo-jitter-ms "${prefix}_REPO_JITTER_MS" "$jitter_default" \
+    --repo-cooldown-ms "${prefix}_REPO_COOLDOWN_MS" "$cooldown_default" \
+    --max-consecutive-failures "${prefix}_MAX_CONSECUTIVE_FAILURES" "2" \
+    --min-side "${prefix}_MIN_SIDE" "$min_side_default" \
+    --max-aspect-ratio "${prefix}_MAX_ASPECT_RATIO" "2.5" \
+    --min-entropy "${prefix}_MIN_ENTROPY" "3.4" \
+    --hardneg-fraction "${prefix}_HARDNEG_FRACTION" "$hardneg_fraction_default"
   if [[ -n "${!sources_file_env:-}" ]]; then
     print_cli_flag_value --sources-file "${!sources_file_env}"
   fi
@@ -185,6 +181,11 @@ print_image_collection_args() {
   fi
   if [[ "${!no_default_sources_env:-1}" == "1" ]]; then
     print_cli_flag --no-default-sources
+  fi
+  if [[ "${!verbose_progress_env:-0}" == "1" ]]; then
+    print_cli_flag --verbose-progress
+  else
+    print_cli_flag --quiet-progress
   fi
   print_cli_flag --require-full-targets
 }
@@ -206,8 +207,7 @@ collect_fast_data() {
 }
 
 ingest_outputs() {
-  ensure_env
-  python scripts/ingest_model_outputs.py \
+  run_repo_python scripts/ingest_model_outputs.py \
     --src "${MODEL_OUTPUTS_SRC:-./incoming_model_outputs}" \
     --dst "${NEW_DATA_DST:-./data_new/train}" \
     --archive "${MODEL_OUTPUTS_ARCHIVE:-./incoming_model_outputs/_processed}"
@@ -215,65 +215,73 @@ ingest_outputs() {
 }
 
 print_diverse_common_args() {
-  print_cli_flag_value_from_env --train-per-class "DIVERSE_TRAIN_PER_CLASS" "100000"
-  print_cli_flag_value_from_env --val-per-class "DIVERSE_VAL_PER_CLASS" "25000"
-  print_cli_flag_value_from_env --test-per-class "DIVERSE_TEST_PER_CLASS" "25000"
-  print_cli_flag_value_from_env --hf-cache-file "DIVERSE_HF_CACHE_FILE" "./.local/hf_diverse_sources.txt"
+  print_cli_flag_value_from_env_triplets \
+    --train-per-class "DIVERSE_TRAIN_PER_CLASS" "100000" \
+    --val-per-class "DIVERSE_VAL_PER_CLASS" "25000" \
+    --test-per-class "DIVERSE_TEST_PER_CLASS" "25000" \
+    --hf-cache-file "DIVERSE_HF_CACHE_FILE" "./.local/hf_diverse_sources.txt"
   print_cli_flag --hf-cache-only-if-present
   print_cli_flag_value_from_env --cache-dir "DIVERSE_CACHE_DIR" "./.local/hf"
   print_cli_flag --streaming
-  print_cli_flag_value_from_env --stream-buffer-size "DIVERSE_STREAM_BUFFER_SIZE" "16000"
-  print_cli_flag_value_from_env --max-samples-per-source "DIVERSE_MAX_SAMPLES_PER_SOURCE" "80000"
-  print_cli_flag_value_from_env --max-per-source-class "DIVERSE_MAX_PER_SOURCE_CLASS" "16000"
-  print_cli_flag_value_from_env --max-per-source-split-class "DIVERSE_MAX_PER_SOURCE_SPLIT_CLASS" "5500"
-  print_cli_flag_value_from_env --acceptance-warmup-samples "DIVERSE_ACCEPTANCE_WARMUP_SAMPLES" "256"
-  print_cli_flag_value_from_env --min-acceptance-rate "DIVERSE_MIN_ACCEPTANCE_RATE" "0.015"
-  print_cli_flag_value_from_env --min-hf-sources-with-accepted "DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED" "24"
-  print_cli_flag_value_from_env --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "14"
-  print_cli_flag_value_from_env --min-hf-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "8"
-  print_cli_flag_value_from_env --repo-base-pause-ms "DIVERSE_REPO_BASE_PAUSE_MS" "150"
-  print_cli_flag_value_from_env --repo-jitter-ms "DIVERSE_REPO_JITTER_MS" "150"
-  print_cli_flag_value_from_env --repo-cooldown-ms "DIVERSE_REPO_COOLDOWN_MS" "15000"
-  print_cli_flag_value_from_env --transient-error-cooldown-ms "DIVERSE_TRANSIENT_ERROR_COOLDOWN_MS" "2500"
-  print_cli_flag_value_from_env --max-consecutive-failures "DIVERSE_MAX_CONSECUTIVE_FAILURES" "5"
-  print_cli_flag_value_from_env --min-side "DIVERSE_MIN_SIDE" "192"
-  print_cli_flag_value_from_env --max-aspect-ratio "DIVERSE_MAX_ASPECT_RATIO" "3.2"
-  print_cli_flag_value_from_env --min-entropy "DIVERSE_MIN_ENTROPY" "3.1"
-  print_cli_flag_value_from_env --hardneg-fraction "DIVERSE_HARDNEG_FRACTION" "0.5"
-  print_cli_flag --hf-only
-  print_cli_flag --require-full-targets
+  print_cli_flag_value_from_env_triplets \
+    --stream-buffer-size "DIVERSE_STREAM_BUFFER_SIZE" "16000" \
+    --max-samples-per-source "DIVERSE_MAX_SAMPLES_PER_SOURCE" "80000" \
+    --max-per-source-class "DIVERSE_MAX_PER_SOURCE_CLASS" "16000" \
+    --max-per-source-split-class "DIVERSE_MAX_PER_SOURCE_SPLIT_CLASS" "5500" \
+    --acceptance-warmup-samples "DIVERSE_ACCEPTANCE_WARMUP_SAMPLES" "256" \
+    --min-acceptance-rate "DIVERSE_MIN_ACCEPTANCE_RATE" "0.015" \
+    --min-hf-sources-with-accepted "DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED" "24" \
+    --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "14" \
+    --min-hf-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "8" \
+    --repo-base-pause-ms "DIVERSE_REPO_BASE_PAUSE_MS" "150" \
+    --repo-jitter-ms "DIVERSE_REPO_JITTER_MS" "150" \
+    --repo-cooldown-ms "DIVERSE_REPO_COOLDOWN_MS" "15000" \
+    --transient-error-cooldown-ms "DIVERSE_TRANSIENT_ERROR_COOLDOWN_MS" "2500" \
+    --max-consecutive-failures "DIVERSE_MAX_CONSECUTIVE_FAILURES" "5" \
+    --min-side "DIVERSE_MIN_SIDE" "192" \
+    --max-aspect-ratio "DIVERSE_MAX_ASPECT_RATIO" "3.2" \
+    --min-entropy "DIVERSE_MIN_ENTROPY" "3.1" \
+    --hardneg-fraction "DIVERSE_HARDNEG_FRACTION" "0.5"
+  if [[ "${DIVERSE_VERBOSE_PROGRESS:-0}" == "1" ]]; then
+    print_cli_flag --verbose-progress
+  else
+    print_cli_flag --quiet-progress
+  fi
+  print_cli_flags --hf-only --require-full-targets
 }
 
 print_diverse_discovery_args() {
   print_cli_flag --discover-hf
-  print_cli_flag_value_from_env --hf-discovery-limit "DIVERSE_HF_DISCOVERY_LIMIT" "140"
-  print_cli_flag_value_from_env --hf-max-sources "DIVERSE_HF_MAX_SOURCES" "320"
-  print_cli_flag_value_from_env --hf-min-downloads "DIVERSE_HF_MIN_DOWNLOADS" "100"
-  print_cli_flag_value_from_env --hf-min-likes "DIVERSE_HF_MIN_LIKES" "2"
-  print_cli_flag_value_from_env --hf-min-quality-score "DIVERSE_HF_MIN_QUALITY_SCORE" "1.85"
-  print_cli_flag_value_from_env --hf-print-top "DIVERSE_HF_PRINT_TOP" "20"
-  print_cli_flag_value_from_env --hf-query-pause-ms "DIVERSE_HF_QUERY_PAUSE_MS" "900"
+  print_cli_flag_value_from_env_triplets \
+    --hf-discovery-limit "DIVERSE_HF_DISCOVERY_LIMIT" "140" \
+    --hf-max-sources "DIVERSE_HF_MAX_SOURCES" "320" \
+    --hf-min-downloads "DIVERSE_HF_MIN_DOWNLOADS" "100" \
+    --hf-min-likes "DIVERSE_HF_MIN_LIKES" "2" \
+    --hf-min-quality-score "DIVERSE_HF_MIN_QUALITY_SCORE" "1.85" \
+    --hf-print-top "DIVERSE_HF_PRINT_TOP" "20" \
+    --hf-query-pause-ms "DIVERSE_HF_QUERY_PAUSE_MS" "900"
 }
 
 print_diverse_audit_args() {
-  print_cli_flag_value_from_env --min-unique-sources "DIVERSE_MIN_UNIQUE_SOURCES" "20"
-  print_cli_flag_value_from_env --min-hardneg-modes "DIVERSE_MIN_HARDNEG_MODES" "4"
-  print_cli_flag_value_from_env --max-class-imbalance "DIVERSE_MAX_CLASS_IMBALANCE" "0.08"
-  print_cli_flag_value_from_env --max-source-share-per-split "DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT" "0.22"
-  print_cli_flag_value_from_env --max-source-share-per-split-class "DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT_CLASS" "0.3"
+  local include_split_gate="${1:-0}"
+  if [[ "$include_split_gate" == "1" ]]; then
+    print_cli_flag_value_from_env --min-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "8"
+  fi
+  print_cli_flag_value_from_env_triplets \
+    --min-unique-sources "DIVERSE_MIN_UNIQUE_SOURCES" "20" \
+    --min-hardneg-modes "DIVERSE_MIN_HARDNEG_MODES" "4" \
+    --max-class-imbalance "DIVERSE_MAX_CLASS_IMBALANCE" "0.08" \
+    --max-source-share-per-split "DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT" "0.22" \
+    --max-source-share-per-split-class "DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT_CLASS" "0.3"
 }
 
 audit_image_dataset() {
   local out="${1:-${DATA_DIR:-./data_best}}"
-  ensure_env
-  python scripts/audit_diversity.py \
+  local -a audit_args=()
+  mapfile -t audit_args < <(print_diverse_audit_args 1)
+  run_repo_python scripts/audit_diversity.py \
     --data "$out" \
-    --min-unique-sources "${DIVERSE_MIN_UNIQUE_SOURCES:-20}" \
-    --min-hardneg-modes "${DIVERSE_MIN_HARDNEG_MODES:-4}" \
-    --min-sources-per-split-class "${DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS:-8}" \
-    --max-class-imbalance "${DIVERSE_MAX_CLASS_IMBALANCE:-0.08}" \
-    --max-source-share-per-split "${DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT:-0.22}" \
-    --max-source-share-per-split-class "${DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT_CLASS:-0.3}"
+    "${audit_args[@]}"
 }
 
 collect_diverse_image_data() {
@@ -310,30 +318,35 @@ collect_diverse_image_data() {
   run_image_dataset_builder "$out" "$query_csv" "${full_args[@]}"
   run_malware_scan "$out"
 
-  python scripts/audit_diversity.py \
+  run_repo_python scripts/audit_diversity.py \
     --data "$out" \
     "${audit_args[@]}"
 }
 
+print_video_collection_args() {
+  print_cli_flag_value_from_env_triplets \
+    --out "VIDEO_OUT" "./video_data" \
+    --train-per-class "VIDEO_TRAIN_PER_CLASS" "1000" \
+    --val-per-class "VIDEO_VAL_PER_CLASS" "250" \
+    --mode "VIDEO_MODE" "snapshot" \
+    --cache-dir "VIDEO_CACHE_DIR" "./.local/hf" \
+    --snapshot-max-workers "VIDEO_SNAPSHOT_MAX_WORKERS" "4" \
+    --repo-base-pause-ms "VIDEO_REPO_BASE_PAUSE_MS" "150" \
+    --repo-jitter-ms "VIDEO_REPO_JITTER_MS" "150" \
+    --copy-sleep-ms "VIDEO_COPY_SLEEP_MS" "0" \
+    --sleep-ms "VIDEO_SLEEP_MS" "40" \
+    --jitter-ms "VIDEO_JITTER_MS" "20" \
+    --chunk-pause-ms "VIDEO_CHUNK_PAUSE_MS" "250" \
+    --repo-cooldown-ms "VIDEO_REPO_COOLDOWN_MS" "12000" \
+    --retries "VIDEO_RETRIES" "5" \
+    --min-video-bytes "VIDEO_MIN_BYTES" "100000" \
+    --max-video-bytes "VIDEO_MAX_BYTES" "0"
+}
+
 collect_video_data() {
-  ensure_env
-  python scripts/build_video_dataset.py \
-    --out "${VIDEO_OUT:-./video_data}" \
-    --train-per-class "${VIDEO_TRAIN_PER_CLASS:-1000}" \
-    --val-per-class "${VIDEO_VAL_PER_CLASS:-250}" \
-    --mode "${VIDEO_MODE:-snapshot}" \
-    --cache-dir "${VIDEO_CACHE_DIR:-./.local/hf}" \
-    --snapshot-max-workers "${VIDEO_SNAPSHOT_MAX_WORKERS:-4}" \
-    --repo-base-pause-ms "${VIDEO_REPO_BASE_PAUSE_MS:-150}" \
-    --repo-jitter-ms "${VIDEO_REPO_JITTER_MS:-150}" \
-    --copy-sleep-ms "${VIDEO_COPY_SLEEP_MS:-0}" \
-    --sleep-ms "${VIDEO_SLEEP_MS:-40}" \
-    --jitter-ms "${VIDEO_JITTER_MS:-20}" \
-    --chunk-pause-ms "${VIDEO_CHUNK_PAUSE_MS:-250}" \
-    --repo-cooldown-ms "${VIDEO_REPO_COOLDOWN_MS:-12000}" \
-    --retries "${VIDEO_RETRIES:-5}" \
-    --min-video-bytes "${VIDEO_MIN_BYTES:-100000}" \
-    --max-video-bytes "${VIDEO_MAX_BYTES:-0}"
+  local -a video_args=()
+  mapfile -t video_args < <(print_video_collection_args)
+  run_repo_python scripts/build_video_dataset.py "${video_args[@]}"
   run_malware_scan "${VIDEO_OUT:-./video_data}"
 }
 
@@ -358,4 +371,3 @@ run_simple_collection_smoke() {
   wait_for_training_to_finish "pipeline_stage=smoke"
   collect_fast_data
 }
-
