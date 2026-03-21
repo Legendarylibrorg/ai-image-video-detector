@@ -72,10 +72,22 @@ If you do not have a token yet:
 3. Run a quick smoke test:
 
 ```bash
-./local.sh collect-fast
+./local.sh smoke
 ```
 
-4. Run the normal pipeline when you are ready:
+4. Run the full pipeline when you are ready:
+
+```bash
+./local.sh run
+```
+
+`./local.sh run` is resumable:
+- completed stages are skipped automatically on the next run
+- active training locks are waited out instead of failing immediately
+- transient stage failures are retried automatically
+- collection defaults are tuned for authenticated Hugging Face limits and cache-first reuse
+
+5. Optional manual mode if you want collection and training as separate steps:
 
 ```bash
 ./local.sh collect
@@ -121,17 +133,20 @@ This shows:
 - `./local.sh setup`
   Bootstrap the local environment only.
 
+- `./local.sh run`
+  Runs the full collection + training pipeline with retries and resumable stages.
+
+- `./local.sh smoke`
+  Runs a much smaller collection job for a quick sanity check.
+
+- `./local.sh check`
+  Run the preflight check directly.
+
 - `./local.sh setup-full`
   End-to-end setup, collection, and training.
 
-- `./local.sh doctor`
-  Run the preflight check directly.
-
 - `./local.sh collect`
   Runs collection only.
-
-- `./local.sh collect-fast`
-  Runs a much smaller collection job for a quick sanity check.
 
 - `./local.sh train`
   Trains using the current collected data.
@@ -144,21 +159,23 @@ This shows:
 
 If you are unsure which command to use:
 - first time: `./local.sh setup`
+- quick validation: `./local.sh smoke`
+- normal end-to-end run: `./local.sh run`
 - one command for everything: `./local.sh setup-full`
-- check health: `./local.sh doctor`
+- check health: `./local.sh check`
 - collect more data only: `./local.sh collect`
-- quick pipeline check: `./local.sh collect-fast`
 - retrain on existing data: `./local.sh train`
 
 ### Minimal command reference
 
 ```bash
 ./local.sh setup
-./local.sh doctor
+./local.sh smoke
+./local.sh run
+./local.sh check
 ./local.sh setup-full
 ./local.sh status
 ./local.sh collect
-./local.sh collect-fast
 ./local.sh train
 ./local.sh start
 ```
@@ -171,7 +188,7 @@ Only use this if you do not want `./local.sh setup`:
 python3 -m venv .venv
 source .venv/bin/activate
 bash scripts/install_deps.sh
-./local.sh doctor
+./local.sh check
 ```
 
 ### Setup options
@@ -205,6 +222,35 @@ Dependency lock workflow:
 - Refresh the lock with `./local.sh deps-update`
 - The install script now skips reinstallation when `requirements.lock` and `pyproject.toml` are unchanged
 
+Run pipeline controls:
+- `PIPELINE_MAX_ATTEMPTS`
+  Default `4` per stage during `./local.sh run`.
+
+- `PIPELINE_RETRY_SLEEP_SEC`
+  Default `45` seconds between retries.
+
+- `PIPELINE_STAGE_DIR`
+  Custom resumable stage marker directory. Default `./.local/pipeline`.
+
+- `PIPELINE_FORCE_STAGES`
+  Set to `1` to rerun completed `run` stages.
+
+- `PIPELINE_WAIT_FOR_TRAINING_SEC`
+  Default `600` seconds while waiting for an active training lock to clear.
+
+Collection speed controls:
+- `DIVERSE_REPO_BASE_PAUSE_MS`, `DIVERSE_REPO_JITTER_MS`, `DIVERSE_REPO_COOLDOWN_MS`
+  Control image-source pacing and rate-limit backoff for `./local.sh run` / `collect`.
+
+- `DIVERSE_HF_QUERY_PAUSE_MS`
+  Pause between discovery queries to stay under Hugging Face page limits.
+
+- `VIDEO_SNAPSHOT_MAX_WORKERS`
+  Parallel video snapshot downloads. Default `4` for the simple pipeline path.
+
+- `VIDEO_REPO_BASE_PAUSE_MS`, `VIDEO_REPO_JITTER_MS`, `VIDEO_REPO_COOLDOWN_MS`
+  Control video collection pacing and backoff.
+
 You can ignore the remaining sections unless you want manual control, advanced training options, or lower-level commands.
 
 ## Troubleshooting
@@ -227,7 +273,7 @@ Try:
 
 ```bash
 ./local.sh status
-./local.sh collect-fast
+./local.sh smoke
 ```
 
 ### You only want to retrain
@@ -630,6 +676,10 @@ python scripts/fit_ensemble.py \
 Minimal usage (recommended):
 
 ```bash
+bash scripts/do.sh pipeline       # full collect + train + artifact validation
+bash scripts/do.sh run            # alias for pipeline
+bash scripts/do.sh smoke          # quick small collection sanity pass
+bash scripts/do.sh check          # preflight checks before long runs
 bash scripts/do.sh start          # full best-quality pipeline
 bash scripts/do.sh start-v2       # max-accuracy v2 (domain calibration + refinement loops)
 bash scripts/do.sh collect        # full collection cycle (image + ingest + video)
@@ -639,7 +689,7 @@ bash scripts/do.sh collect-image  # image dataset only
 bash scripts/do.sh collect-video  # video dataset only
 bash scripts/do.sh ingest         # ingest incoming model outputs only
 bash scripts/do.sh scan           # malware scan now
-bash scripts/do.sh doctor         # preflight checks before long runs
+bash scripts/do.sh doctor         # alias for check
 bash scripts/do.sh train          # image training pipeline only
 bash scripts/do.sh train-all      # image + video training (no new data pull)
 bash scripts/do.sh train-all-types # collect-diverse + full image/video training + artifact validation
