@@ -89,8 +89,11 @@ What `setup` does:
 - copies `.env.example` to `.env` if needed
 - installs Linux packages when `apt-get` is available
 - creates or reuses `.venv`
+- refreshes `pip`, `setuptools`, and `wheel`
 - installs pinned Python dependencies from `requirements.lock`
+- installs `huggingface_hub` into that repo-local venv
 - prepares local cache directories
+- retries dependency install and doctor checks automatically
 - runs `doctor` in non-strict mode so a missing `HF_TOKEN` is a warning instead of a hard failure
 
 4. During `./local.sh setup`, paste your Hugging Face token when prompted, or add it to `.env`:
@@ -186,6 +189,7 @@ bash scripts/install_deps.sh
 - creates or reuses `.venv`
 - installs the pinned dependency set from `requirements.lock`
 - installs the local package in editable mode
+- installs `huggingface_hub` in that venv
 - uses the CUDA PyTorch wheel index on Linux when `nvidia-smi` is available
 
 ## Setup options

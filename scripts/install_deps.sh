@@ -46,11 +46,14 @@ if [[ "$UPGRADE_TOOLCHAIN" != "1" && -f "$DEPS_STAMP_FILE" && "$(cat "$DEPS_STAM
   if python - <<'PY' >/dev/null 2>&1
 import ai_image_detector  # noqa: F401
 import datasets  # noqa: F401
+import huggingface_hub  # noqa: F401
 import torch  # noqa: F401
 PY
   then
-    echo "deps_status=up_to_date"
-    exit 0
+    if command -v hf >/dev/null 2>&1; then
+      echo "deps_status=up_to_date"
+      exit 0
+    fi
   fi
 fi
 
@@ -76,5 +79,20 @@ else
   echo "deps_lock=missing file=$LOCK_FILE fallback=pyproject_resolve"
   pip install --upgrade --upgrade-strategy eager -e .
 fi
+
+if ! python - <<'PY' >/dev/null 2>&1
+import datasets  # noqa: F401
+import huggingface_hub  # noqa: F401
+PY
+then
+  echo "deps_fail=huggingface_python_missing run=bash scripts/install_deps.sh" >&2
+  exit 1
+fi
+
+if ! command -v hf >/dev/null 2>&1; then
+  echo "deps_fail=huggingface_cli_missing run=bash scripts/install_deps.sh" >&2
+  exit 1
+fi
+
 python -m pip check
 printf "%s\n" "$deps_fp" > "$DEPS_STAMP_FILE"

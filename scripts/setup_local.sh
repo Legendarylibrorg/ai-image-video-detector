@@ -12,6 +12,8 @@ SETUP_INSTALL_SYSTEM_DEPS="${SETUP_INSTALL_SYSTEM_DEPS:-1}"
 SETUP_SKIP_DOCTOR="${SETUP_SKIP_DOCTOR:-0}"
 SETUP_PROMPT_FOR_HF_TOKEN="${SETUP_PROMPT_FOR_HF_TOKEN:-1}"
 SETUP_ALLOW_STDIN_TOKEN="${SETUP_ALLOW_STDIN_TOKEN:-0}"
+SETUP_MAX_ATTEMPTS="${SETUP_MAX_ATTEMPTS:-3}"
+SETUP_RETRY_SLEEP_SEC="${SETUP_RETRY_SLEEP_SEC:-10}"
 
 load_env_file() {
   if [[ ! -f "$ENV_FILE" ]]; then
@@ -59,6 +61,26 @@ mark_stage_done() {
   local stage="$1"
   mkdir -p "$SETUP_STAGE_DIR"
   printf "%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$(stage_file "$stage")"
+}
+
+run_setup_step_with_retry() {
+  local stage="$1"
+  shift
+  local attempt=1
+  while true; do
+    echo "setup_stage=$stage status=run attempt=$attempt/$SETUP_MAX_ATTEMPTS"
+    if "$@"; then
+      echo "setup_stage=$stage status=done"
+      return 0
+    fi
+    if [[ "$attempt" -ge "$SETUP_MAX_ATTEMPTS" ]]; then
+      echo "setup_stage=$stage status=failed attempts=$attempt"
+      return 1
+    fi
+    echo "setup_stage=$stage status=retry sleep_sec=$SETUP_RETRY_SLEEP_SEC"
+    sleep "$SETUP_RETRY_SLEEP_SEC"
+    attempt=$((attempt + 1))
+  done
 }
 
 save_hf_token_env() {
@@ -193,9 +215,7 @@ prepare_local_dirs() {
 }
 
 install_python_deps() {
-  echo "setup_stage=python_deps status=run"
-  bash scripts/install_deps.sh
-  echo "setup_stage=python_deps status=done"
+  UPGRADE_TOOLCHAIN="${UPGRADE_TOOLCHAIN:-1}" run_setup_step_with_retry python_deps bash scripts/install_deps.sh
 }
 
 run_doctor() {
@@ -203,9 +223,7 @@ run_doctor() {
     echo "setup_stage=doctor status=skip_opt_out"
     return
   fi
-  echo "setup_stage=doctor status=run"
-  DOCTOR_REQUIRE_TOKEN=0 bash scripts/doctor.sh
-  echo "setup_stage=doctor status=done"
+  DOCTOR_REQUIRE_TOKEN=0 run_setup_step_with_retry doctor bash scripts/doctor.sh
 }
 
 print_next_step() {
@@ -213,9 +231,9 @@ print_next_step() {
   local token=""
   token="$(current_hf_token)"
   if [[ -n "$token" ]]; then
-    echo "setup_next=run ./local.sh collect-fast or ./local.sh collect"
+    echo "setup_next=run ./local.sh smoke, then ./local.sh run"
   else
-    echo "setup_next=rerun ./local.sh setup to add HF_TOKEN, or edit .env before ./local.sh collect-fast or ./local.sh setup-full"
+    echo "setup_next=add HF_TOKEN in .env if needed, then run ./local.sh smoke or ./local.sh run"
   fi
 }
 

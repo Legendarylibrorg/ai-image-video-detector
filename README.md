@@ -17,7 +17,7 @@ The repo now runs a local-first pipeline with a pinned `.venv`, Hugging Face dat
 The normal flow is:
 
 1. `./local.sh setup`
-   Installs system dependencies when available, creates or reuses `.venv`, installs the pinned Python dependency set from `requirements.lock`, prepares local cache directories, and runs a health check.
+   Installs system dependencies when available, creates or reuses `.venv`, refreshes the packaging toolchain, installs the pinned Python dependency set from `requirements.lock`, prepares local cache directories, retries flaky setup steps automatically, and runs a health check.
 2. `./local.sh collect` or `./local.sh run`
    Collects image and video data locally. Image collection uses `datasets` and `huggingface_hub`, normalizes labels, filters low-quality or duplicate samples, and writes a curated dataset under `./data_best`. Video collection writes into `./video_data`.
 3. Incremental inputs are merged when present
@@ -74,7 +74,7 @@ sudo freshclam || true
 ./local.sh setup
 ```
 
-This creates or reuses a local virtualenv at `.venv` and installs the pinned Python dependency set from `requirements.lock`.
+This creates or reuses a local virtualenv at `.venv`, refreshes the packaging toolchain, and installs the pinned Python dependency set from `requirements.lock`, including `huggingface_hub`.
 
 4. During `./local.sh setup`, paste your Hugging Face token when prompted, or add it to `.env`:
 
@@ -110,6 +110,8 @@ Important notes:
 - `./local.sh setup` already tries `apt-get` automatically on supported Linux hosts and uses `sudo` when available.
 - Keep `sudo` on package-manager commands only. Run `./local.sh ...` and `bash scripts/...` as your normal user.
 - The repo-local virtualenv is `./.venv`. The setup and pipeline scripts create or reuse it instead of relying on a global Python install.
+- `huggingface_hub` is installed into that same repo-local venv during setup.
+- `./local.sh setup` retries dependency install and health checks automatically so it can finish cleanly after transient failures.
 - `./local.sh run` is resumable: completed stages are skipped, training locks are waited out, and transient failures are retried.
 - `./local.sh collect-status` shows the current collection/build state, recent source activity, and resume hints.
 
