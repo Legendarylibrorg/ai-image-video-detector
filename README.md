@@ -125,6 +125,8 @@ Important:
 This shows:
 - whether training is active
 - where image data is stored
+- where incremental image data is picked up from
+- where prepared training data is assembled
 - where video data is stored
 - where trained artifacts are written
 
@@ -149,7 +151,13 @@ This shows:
   Runs collection only.
 
 - `./local.sh train`
-  Trains using the current collected data.
+  Prepares additive training data from `./data_best` plus `./data_new` and trains without recollecting.
+
+- `./local.sh retrain`
+  Reuses collected data, folds in fresh incremental samples, and runs the local retrain flow plus benchmark gate.
+
+- `./local.sh continuous`
+  Runs the continuous training loop.
 
 - `./local.sh start`
   Runs the best-quality pipeline path.
@@ -164,7 +172,8 @@ If you are unsure which command to use:
 - one command for everything: `./local.sh setup-full`
 - check health: `./local.sh check`
 - collect more data only: `./local.sh collect`
-- retrain on existing data: `./local.sh train`
+- retrain with benchmark gate: `./local.sh retrain`
+- continuous training loop: `./local.sh continuous`
 
 ### Minimal command reference
 
@@ -172,12 +181,13 @@ If you are unsure which command to use:
 ./local.sh setup
 ./local.sh smoke
 ./local.sh run
+./local.sh retrain
+./local.sh continuous
 ./local.sh check
 ./local.sh setup-full
 ./local.sh status
 ./local.sh collect
 ./local.sh train
-./local.sh start
 ```
 
 ### Manual install path
@@ -282,9 +292,12 @@ Run:
 
 ```bash
 ./local.sh train
+./local.sh retrain
 ```
 
-That uses the current collected dataset and does not pull new data first.
+- `./local.sh train` prepares `./.local/training_data` from `./data_best` plus any incremental data under `./data_new`.
+- `./local.sh train` trains images immediately and includes video training only when a complete video dataset is already present.
+- `./local.sh retrain` runs that no-recollect train path and then benchmark-gates the result.
 
 ### You changed dependencies
 
@@ -381,48 +394,12 @@ Returns:
 - `ood_score`, `ood_flags`
 - `combined_risk`
 
-## API (Archived; Disabled In Pipeline-Only Mode)
+## Retraining And Continuous Training
 
-`aid-serve` paths are intentionally disabled in the current pipeline-only setup.
-
-```bash
-aid-serve --model ./artifacts/best.pt --host 127.0.0.1 --port 8000
-```
-
-Optional hardening knobs:
-
-```bash
-aid-serve --model ./artifacts/best.pt --max-bytes 10485760 --rate-limit-per-min 60 --unknown-margin 0.08
-```
-
-Weighted ensemble serving:
-
-```bash
-aid-serve --model ./artifacts_ens/m1/best.pt ./artifacts_ens/m2/best.pt ./artifacts_ens/m3/best.pt ./artifacts_ens/m4/best.pt \
-  --ensemble-config ./artifacts_ens/ensemble_config.json \
-  --domain-config ./artifacts_ens/domain_config.json \
-  --tools-config ./artifacts_ens/tools_config.json \
-  --tta-views 2
-```
-
-Endpoints:
-
-- `GET /health`
-- `GET /` (API info)
-- `POST /detect` (multipart file field `image`)
-- `POST /analyze/text` (JSON: `{ "text": "..." }`)
-- `POST /analyze/conversation` (JSON: `{ "text": "..." }`)
-- `POST /analyze/url` (JSON: `{ "url": "..." }`)
-- `POST /analyze/pdf` (multipart file field `file`)
-- `POST /analyze/audio` (multipart file field `file`)
-- `POST /analyze/multimodal` (JSON: `{ "scores": { "image": 0.7, "text": 0.4, ... } }`)
-- Optional: learned multimodal fusion config via `--fusion-config ./artifacts_ens/fusion_config.json`
-- Optional active-learning queue capture in API serve:
-  - `--uncertain-capture --uncertain-dir ./incoming_review_queue`
-- Optional inference tools config:
-  - `--tools-config ./artifacts_ens/tools_config.json` (risk/probability bias and rule-engine adjustments)
-- Optional test-time augmentation consensus:
-  - `--tta-views 2` (or `3` for stronger but slower inference)
+The repo is training-only now:
+- no serving API
+- no service supervisor
+- no deployment manifests
 
 Fit learned multimodal fusion weights from labeled outcomes:
 
@@ -438,9 +415,18 @@ Promotion gate and weekly retrain loop:
 ```bash
 python scripts/benchmark_gate.py --ens-out ./artifacts_ens --video-out ./video_artifacts
 bash scripts/weekly_retrain_v3.sh
+bash scripts/continuous_training.sh
 ```
 
-`weekly_retrain_v3.sh` now stays fully inside the pipeline-only flow and no longer restarts any serving process.
+Recommended wrappers:
+
+```bash
+./retrain.sh
+./continuous.sh
+```
+
+`weekly_retrain_v3.sh` runs one gated retrain cycle.
+`continuous_training.sh` loops that retrain cycle on an interval.
 
 Reviewed uncertainty queue ingestion:
 
@@ -448,11 +434,7 @@ Reviewed uncertainty queue ingestion:
 python scripts/review_queue_to_dataset.py --queue ./incoming_review_queue --dst ./data_new/train
 ```
 
-Compliance/privacy mode (recommended baseline):
-- `UNCERTAIN_CAPTURE=0`
-- `IP_LOG_MODE=masked` (default; no raw IP logging)
-- Optional stricter: `IP_LOG_MODE=none`
-- Run periodic retention cleanup:
+Privacy cleanup for reviewed-data workflows:
 
 ```bash
 bash scripts/privacy_cleanup.sh
@@ -690,11 +672,12 @@ bash scripts/do.sh collect-video  # video dataset only
 bash scripts/do.sh ingest         # ingest incoming model outputs only
 bash scripts/do.sh scan           # malware scan now
 bash scripts/do.sh doctor         # alias for check
-bash scripts/do.sh train          # image training pipeline only
-bash scripts/do.sh train-all      # image + video training (no new data pull)
+bash scripts/do.sh train          # train from existing image data, plus video if present
+bash scripts/do.sh train-image    # image-only training from existing data
+bash scripts/do.sh train-all      # image + video training, requires complete video data
+bash scripts/do.sh retrain        # one-shot retrain + benchmark gate
+bash scripts/do.sh continuous     # continuous training loop
 bash scripts/do.sh train-all-types # collect-diverse + full image/video training + artifact validation
-bash scripts/do.sh autocollect    # continuous collection loop
-bash scripts/do.sh detect ./img.jpg
 bash scripts/do.sh status         # lock + artifact paths
 ```
 
@@ -706,13 +689,18 @@ Linux shortcut launchers:
 ```bash
 ./start.sh                        # same as: bash scripts/do.sh start
 ./collect.sh                      # same as: bash scripts/do.sh collect
-./train.sh                        # same as: bash scripts/do.sh train (image pipeline)
-./autocollect.sh                  # same as: bash scripts/do.sh autocollect
+./train.sh                        # same as: bash scripts/do.sh train (reuse collected data)
+./retrain.sh                      # same as: bash scripts/do.sh retrain
+./continuous.sh                   # same as: bash scripts/do.sh continuous
+./autocollect.sh                  # compatibility wrapper to continuous training
 ```
 
-Training/collection safety:
+Training/retraining safety:
 - collection auto-skips while a training lock is active
-- continuous collection waits and retries after training completes
+- continuous training waits and retries after active training completes
+- image training prepares `./.local/training_data` by additively merging `./data_best` with `./data_new`
+- `./local.sh train` and `./local.sh retrain` do not recollect Hugging Face data before training
+- `bash scripts/do.sh train-all` fails fast if video buckets are incomplete instead of silently starting a broken run
 - fresh model outputs are ingested from `./incoming_model_outputs/{ai,real}` into `./data_new/train/{ai,real}`
 - malware scanning is automatic during collection/ingest (set `MALWARE_SCAN=0` to disable)
 
@@ -773,8 +761,6 @@ bash scripts/one_command_4090.sh
 
 This command installs all required system and Python dependencies (including Hugging Face dataset tooling and safetensors support) before training starts.
 
-Legacy service/supervisor scripts are not part of pipeline-only mode.
-
 Maximum-quality profile (slowest, strongest defaults, includes video training):
 
 ```bash
@@ -782,8 +768,6 @@ HF_TOKEN=your_token bash scripts/max_quality_4090.sh
 ```
 
 Key quality knobs: `EPOCHS`, `SWEEP_EPOCHS`, `DISTILL_EPOCHS`, `HARD_MINING_TOPK`, `VIDEO_TRAIN_EPOCHS`, `BEST_DS_DISCOVER_HF`, `BEST_DS_HF_MAX_SOURCES`, `BEST_DS_REPO_BASE_PAUSE_MS`, `BEST_DS_REPO_COOLDOWN_MS`.
-
-Auto-serve flags are ignored in pipeline-only mode.
 
 4090 stability notes:
 

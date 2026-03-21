@@ -22,7 +22,10 @@ class LocalShTests(unittest.TestCase):
         self.assertIn("./local.sh setup", out)
         self.assertIn("./local.sh smoke", out)
         self.assertIn("./local.sh run", out)
+        self.assertIn("./local.sh retrain", out)
+        self.assertIn("./local.sh continuous", out)
         self.assertIn("./local.sh check", out)
+        self.assertNotIn("detect <image>", out)
 
 
 if __name__ == "__main__":

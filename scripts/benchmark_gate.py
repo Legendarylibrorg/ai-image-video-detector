@@ -19,6 +19,8 @@ def main() -> int:
     ap.add_argument("--min-image-auc", type=float, default=0.93)
     ap.add_argument("--min-image-f1", type=float, default=0.90)
     ap.add_argument("--min-video-acc", type=float, default=0.82)
+    ap.add_argument("--allow-missing-video", action="store_true", default=False)
+    ap.add_argument("--skip-video", action="store_true", default=False)
     args = ap.parse_args()
 
     ens = Path(args.ens_out)
@@ -37,7 +39,9 @@ def main() -> int:
         failures.append(f"image_f1 {image_f1:.4f} < {args.min_image_f1:.4f}")
 
     vlog = video / "training_log.jsonl"
-    if vlog.exists():
+    if args.skip_video:
+        checks["video_best_val_acc"] = "skipped"
+    elif vlog.exists():
         best_acc = 0.0
         for line in vlog.read_text(encoding="utf-8").splitlines():
             line = line.strip()
@@ -51,6 +55,8 @@ def main() -> int:
         checks["video_best_val_acc"] = best_acc
         if best_acc < args.min_video_acc:
             failures.append(f"video_best_val_acc {best_acc:.4f} < {args.min_video_acc:.4f}")
+    elif args.allow_missing_video:
+        checks["video_best_val_acc"] = "skipped_missing_video"
     else:
         failures.append(f"missing {vlog}")
 
@@ -62,7 +68,12 @@ def main() -> int:
     for p in required:
         if not p.exists():
             failures.append(f"missing {p}")
-    if not (video / "best_video.safetensors").exists() and not (video / "best_video.pt").exists():
+    if (
+        not args.skip_video
+        and not (video / "best_video.safetensors").exists()
+        and not (video / "best_video.pt").exists()
+        and not args.allow_missing_video
+    ):
         failures.append(f"missing {video / 'best_video.safetensors'}")
 
     out = {"ok": len(failures) == 0, "checks": checks, "failures": failures}

@@ -56,6 +56,10 @@ class DoShTests(unittest.TestCase):
         self.assertIn("run", out)
         self.assertIn("smoke", out)
         self.assertIn("check", out)
+        self.assertIn("train-existing", out)
+        self.assertIn("retrain", out)
+        self.assertIn("continuous", out)
+        self.assertNotIn("detect", out)
 
     def test_pipeline_stage_is_resumable(self) -> None:
         out = self.run_bash(

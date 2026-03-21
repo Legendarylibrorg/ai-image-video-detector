@@ -2,4 +2,4 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-exec bash scripts/do.sh pipeline "$@"
+exec bash scripts/do.sh retrain "$@"
