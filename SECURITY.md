@@ -1,19 +1,7 @@
 # Security Policy
 
 ## Supported Versions
-
-Only the latest `main` branch is supported for security updates.
+Security updates are applied to the `main` branch.
 
 ## Reporting a Vulnerability
-
-Please do not open public issues for security vulnerabilities.
-
-Report privately to: `legendarylibraries@gmail.com`
-
-Include:
-- Affected commit/version
-- Reproduction steps
-- Impact assessment
-- Suggested remediation (if available)
-
-We will acknowledge receipt and follow up with a remediation timeline.
+Please report security issues privately via GitHub Security Advisories.
