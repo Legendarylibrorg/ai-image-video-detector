@@ -12,8 +12,6 @@ dependencies = [
   "pillow>=10.0",
   "piexif>=1.1.3",
   "opencv-python-headless>=4.10",
-  "fastapi>=0.111",
-  "uvicorn>=0.30",
   "datasets>=2.19",
   "huggingface_hub>=0.24",
   "safetensors>=0.4",
@@ -22,7 +20,6 @@ dependencies = [
 [project.scripts]
 aid-train = "ai_image_detector.train:main"
 aid-detect = "ai_image_detector.infer:main"
-aid-serve = "ai_image_detector.api:main"
 aid-metadata = "ai_image_detector.metadata:main"
 aid-explain = "ai_image_detector.explain:main"
 aid-robust-eval = "ai_image_detector.robust_eval:main"

@@ -17,16 +17,18 @@ set -euo pipefail
 #   bash scripts/do.sh ingest
 #   bash scripts/do.sh scan
 #   bash scripts/do.sh train
+#   bash scripts/do.sh retrain
+#   bash scripts/do.sh continuous
 #   bash scripts/do.sh train-all-types
 #   bash scripts/do.sh deps-update
 #   bash scripts/do.sh doctor
-#   bash scripts/do.sh detect ./example.jpg
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 TRAIN_LOCK="${TRAIN_LOCK:-$ROOT_DIR/.local/training.lock}"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 ENV_READY=0
+PREPARED_IMAGE_DATA_DIR=""
 PIPELINE_STAGE_DIR="${PIPELINE_STAGE_DIR:-$ROOT_DIR/.local/pipeline}"
 PIPELINE_FORCE_STAGES="${PIPELINE_FORCE_STAGES:-0}"
 PIPELINE_MAX_ATTEMPTS="${PIPELINE_MAX_ATTEMPTS:-4}"
@@ -175,7 +177,7 @@ run_collection_command() {
 }
 
 print_usage() {
-  echo "usage: bash scripts/do.sh [pipeline|run|smoke|check|start|start-v2|collect|collect-diverse|collect-fast|collect-image|collect-video|ingest|scan [paths...]|train|train-video|train-all|train-all-types|deps-update|doctor|autocollect|detect <image>|status]"
+  echo "usage: bash scripts/do.sh [pipeline|run|smoke|check|start|start-v2|collect|collect-diverse|collect-fast|collect-image|collect-video|ingest|scan [paths...]|train|train-existing|train-image|train-video|train-all|retrain|continuous|train-all-types|deps-update|doctor|status]"
 }
 
 run_doctor_check() {
@@ -499,6 +501,107 @@ print_diverse_audit_args() {
   print_cli_flag_value_from_env --max-source-share-per-split-class "DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT_CLASS" "0.3"
 }
 
+resolve_incremental_image_root() {
+  if [[ -n "${TRAIN_INCREMENTAL_DATA_DIR:-}" ]]; then
+    echo "${TRAIN_INCREMENTAL_DATA_DIR}"
+    return
+  fi
+  local new_data_dst="${NEW_DATA_DST:-./data_new/train}"
+  if [[ "$(basename "$new_data_dst")" == "train" ]]; then
+    echo "$(dirname "$new_data_dst")"
+    return
+  fi
+  echo "$new_data_dst"
+}
+
+bucket_has_files() {
+  local dir="$1"
+  shift
+  [[ -d "$dir" ]] || return 1
+  local -a expr=()
+  local pattern=""
+  for pattern in "$@"; do
+    if [[ "${#expr[@]}" -gt 0 ]]; then
+      expr+=(-o)
+    fi
+    expr+=(-iname "$pattern")
+  done
+  local first_match=""
+  first_match="$(find "$dir" -maxdepth 1 -type f \( "${expr[@]}" \) -print -quit)"
+  [[ -n "$first_match" ]]
+}
+
+image_bucket_has_files() {
+  bucket_has_files "$1" "*.jpg" "*.jpeg" "*.png" "*.webp" "*.bmp" "*.tif" "*.tiff"
+}
+
+video_bucket_has_files() {
+  bucket_has_files "$1" "*.mp4" "*.mov" "*.avi" "*.mkv" "*.webm" "*.m4v"
+}
+
+require_image_training_data() {
+  local data_root="$1"
+  local missing=0
+  local split=""
+  local cls=""
+  for split in train val test; do
+    for cls in ai real; do
+      if ! image_bucket_has_files "$data_root/$split/$cls"; then
+        echo "missing_image_bucket=$data_root/$split/$cls"
+        missing=1
+      fi
+    done
+  done
+  if [[ "$missing" == "1" ]]; then
+    echo "image_training_data=invalid root=$data_root"
+    return 1
+  fi
+  echo "image_training_data=ok root=$data_root"
+}
+
+have_complete_video_training_data() {
+  local video_root="${1:-${VIDEO_OUT:-./video_data}}"
+  local split=""
+  local cls=""
+  for split in train val; do
+    for cls in ai real; do
+      if ! video_bucket_has_files "$video_root/$split/$cls"; then
+        return 1
+      fi
+    done
+  done
+  return 0
+}
+
+require_video_training_data() {
+  local video_root="${1:-${VIDEO_OUT:-./video_data}}"
+  if have_complete_video_training_data "$video_root"; then
+    echo "video_training_data=ok root=$video_root"
+    return 0
+  fi
+  echo "video_training_data=invalid root=$video_root"
+  return 1
+}
+
+prepare_training_image_data() {
+  local base_root="${DATA_DIR:-./data_best}"
+  local incremental_root=""
+  incremental_root="$(resolve_incremental_image_root)"
+  local out_root="${TRAIN_READY_DATA_DIR:-./.local/training_data}"
+  local -a copy_arg=()
+  if [[ "${TRAIN_DATA_COPY_ONLY:-0}" == "1" ]]; then
+    copy_arg=(--copy)
+  fi
+  ensure_env
+  python scripts/prepare_training_data.py \
+    --base "$base_root" \
+    --incremental "$incremental_root" \
+    --out "$out_root" \
+    "${copy_arg[@]}"
+  require_image_training_data "$out_root"
+  PREPARED_IMAGE_DATA_DIR="$out_root"
+}
+
 audit_image_dataset() {
   local out="${1:-${DATA_DIR:-./data_best}}"
   ensure_env
@@ -593,7 +696,7 @@ run_pipeline_collection_stage() {
 
 run_pipeline_training_stage() {
   wait_for_training_to_finish "pipeline_stage=train"
-  with_training_lock train_all_pipeline
+  with_training_lock train_existing_pipeline
 }
 
 run_pipeline_validation_stage() {
@@ -612,13 +715,25 @@ run_full_pipeline() {
 }
 
 train_image_pipeline() {
-  audit_image_dataset "${DATA_DIR:-./data_best}"
-  env SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 RUN_VIDEO_TRAIN=0 bash scripts/max_quality_4090.sh
+  prepare_training_image_data
+  env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 RUN_VIDEO_TRAIN=0 bash scripts/max_quality_4090.sh
 }
 
 train_all_pipeline() {
-  audit_image_dataset "${DATA_DIR:-./data_best}"
-  env SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 bash scripts/max_quality_4090.sh
+  prepare_training_image_data
+  require_video_training_data "${VIDEO_OUT:-./video_data}"
+  env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 bash scripts/max_quality_4090.sh
+}
+
+train_existing_pipeline() {
+  prepare_training_image_data
+  if have_complete_video_training_data "${VIDEO_OUT:-./video_data}"; then
+    echo "train_mode=image_plus_video"
+    env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 bash scripts/max_quality_4090.sh
+    return
+  fi
+  echo "train_mode=image_only reason=video_data_missing"
+  env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 RUN_VIDEO_TRAIN=0 bash scripts/max_quality_4090.sh
 }
 
 validate_train_artifacts() {
@@ -626,6 +741,21 @@ validate_train_artifacts() {
   local vid_best_pt="${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.pt"
   local vid_best_sft="${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.safetensors"
   local missing=0
+  local video_required=0
+
+  case "${VALIDATE_REQUIRE_VIDEO:-auto}" in
+    1|true|yes|always)
+      video_required=1
+      ;;
+    0|false|no|never)
+      video_required=0
+      ;;
+    *)
+      if have_complete_video_training_data "${VIDEO_OUT:-./video_data}"; then
+        video_required=1
+      fi
+      ;;
+  esac
 
   for p in "$ens_dir/m1/best.safetensors" "$ens_dir/m2/best.safetensors" "$ens_dir/m3/best.safetensors" "$ens_dir/m4/best.safetensors" "$ens_dir/test_metrics.json" "$ens_dir/prod_manifest.json"; do
     if [[ ! -f "$p" ]]; then
@@ -633,9 +763,11 @@ validate_train_artifacts() {
       missing=1
     fi
   done
-  if [[ ! -f "$vid_best_sft" && ! -f "$vid_best_pt" ]]; then
+  if [[ "$video_required" == "1" && ! -f "$vid_best_sft" && ! -f "$vid_best_pt" ]]; then
     echo "missing_artifact=$vid_best_sft"
     missing=1
+  elif [[ "$video_required" != "1" ]]; then
+    echo "artifact_validation_video=skipped reason=video_optional"
   fi
 
   if [[ "$missing" == "1" ]]; then
@@ -646,6 +778,7 @@ validate_train_artifacts() {
 }
 
 train_video_only() {
+  require_video_training_data "${VIDEO_OUT:-./video_data}"
   ensure_env
   local -a resume_arg=()
   if [[ "${VIDEO_TRAIN_RESUME:-1}" == "1" ]]; then
@@ -672,57 +805,11 @@ show_status() {
     echo "training: idle"
   fi
   echo "image data: ${DATA_DIR:-./data_best}"
+  echo "incremental image data: $(resolve_incremental_image_root)"
+  echo "prepared training data: ${TRAIN_READY_DATA_DIR:-./.local/training_data}"
   echo "video data: ${VIDEO_OUT:-./video_data}"
   echo "image ensemble: ${ENS_OUT:-./artifacts_ens}"
   echo "video model: ${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.safetensors"
-}
-
-resolve_detect_models() {
-  local -a models=()
-  mapfile -t models < <(compgen -G "${MODEL_GLOB:-./artifacts_ens/m*/best.safetensors}" || true)
-  if [[ "${#models[@]}" -eq 0 ]]; then
-    mapfile -t models < <(compgen -G "./artifacts_ens/m*/best.pt" || true)
-  fi
-  if [[ "${#models[@]}" -eq 0 ]]; then
-    models=("${MODEL_PATH:-./artifacts/best.safetensors}")
-  fi
-  printf "%s\n" "${models[@]}"
-}
-
-config_flag_if_exists() {
-  local flag="$1"
-  local path="$2"
-  if [[ -f "$path" ]]; then
-    printf "%s\n%s\n" "$flag" "$path"
-  fi
-}
-
-run_detect() {
-  local image_path="${1:-}"
-  local -a detect_models=()
-  local -a detect_extra=()
-  local -a domain_extra=()
-  local -a tools_extra=()
-
-  if [[ -z "$image_path" ]]; then
-    echo "usage: bash scripts/do.sh detect /path/to/image.jpg"
-    exit 2
-  fi
-
-  ensure_env
-  mapfile -t detect_models < <(resolve_detect_models)
-  mapfile -t detect_extra < <(config_flag_if_exists --ensemble-config "${ENSEMBLE_CONFIG:-./artifacts_ens/ensemble_config.json}")
-  mapfile -t domain_extra < <(config_flag_if_exists --domain-config "${DOMAIN_CONFIG:-./artifacts_ens/domain_config.json}")
-  mapfile -t tools_extra < <(config_flag_if_exists --tools-config "${TOOLS_CONFIG:-./artifacts_ens/tools_config.json}")
-
-  aid-detect \
-    --model "${detect_models[@]}" \
-    "${detect_extra[@]}" \
-    "${domain_extra[@]}" \
-    "${tools_extra[@]}" \
-    --tta-views "${TTA_VIEWS:-2}" \
-    --image "$image_path" \
-    --json
 }
 
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -785,7 +872,12 @@ case "$cmd" in
     run_malware_scan "$@"
     ;;
 
-  train|train-image)
+  train|train-existing)
+    # Train from collected image data already on disk, with video if available.
+    with_training_lock train_existing_pipeline
+    ;;
+
+  train-image)
     # Image pipeline only, assumes data already collected.
     with_training_lock train_image_pipeline
     ;;
@@ -803,22 +895,18 @@ case "$cmd" in
     with_training_lock train_all_pipeline
     ;;
 
+  retrain)
+    wait_for_training_to_finish "retrain"
+    bash scripts/local_retrain_4090.sh "$@"
+    ;;
+
+  continuous)
+    bash scripts/continuous_training.sh "$@"
+    ;;
+
   train-all-types)
     # End-to-end: broad collection + image/video training + artifact checks.
     run_full_pipeline
-    ;;
-
-  autocollect)
-    bash scripts/continuous_collect.sh "$@"
-    ;;
-
-  serve)
-    echo "serve_disabled=1 reason=pipeline_only_mode"
-    exit 2
-    ;;
-
-  detect)
-    run_detect "$@"
     ;;
 
   status)

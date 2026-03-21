@@ -12,17 +12,22 @@ run_do() {
 
 print_usage() {
   cat <<'EOF'
-usage: ./local.sh [setup|run|smoke|collect|train|check|status|detect <image>|scan [paths...]|deps-update]
+usage: ./local.sh [setup|run|smoke|collect|train|retrain|continuous|check|status|scan [paths...]|deps-update]
 
 recommended:
   ./local.sh setup    # bootstrap deps and local env
   ./local.sh smoke    # quick collection sanity check
   ./local.sh run      # resumable collect + train pipeline
+  ./local.sh train    # train on collected data already on disk
+  ./local.sh retrain  # merge fresh data and benchmark-gate a retrain
+  ./local.sh continuous # continuous collect + retrain loop
   ./local.sh check    # preflight validation
 
 aliases:
   init/bootstrap -> setup
   pipeline       -> run
+  refresh        -> retrain
+  autocollect    -> continuous
   quick          -> smoke
   doctor         -> check
   setup-full     -> bootstrap + full pipeline
@@ -47,13 +52,16 @@ case "$cmd" in
     run_do collect-diverse "$@"
     ;;
   train)
-    run_do train-all "$@"
+    run_do train-existing "$@"
+    ;;
+  retrain|refresh)
+    run_do retrain "$@"
+    ;;
+  continuous|autocollect)
+    run_do continuous "$@"
     ;;
   check|doctor)
     run_do doctor "$@"
-    ;;
-  detect)
-    run_do detect "$@"
     ;;
   start)
     run_do start "$@"

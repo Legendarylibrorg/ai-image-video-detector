@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Weekly retrain with gating for pipeline-only mode.
+# Weekly retrain with gating for training-only mode.
 # 1) ingest reviewed queue labels
-# 2) collect diverse data
-# 3) run max-accuracy v2
-# 4) run benchmark gate
+# 2) run the local retrain flow
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -20,15 +18,7 @@ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) weekly_retrain_start"
 
 python scripts/review_queue_to_dataset.py --queue "${REVIEW_QUEUE_DIR:-./incoming_review_queue}" --dst "${NEW_DATA_DST:-./data_new/train}" || true
 
-bash scripts/do.sh collect-diverse
-bash scripts/do.sh start-v2
-
-python scripts/benchmark_gate.py \
-  --ens-out "${ENS_OUT:-./artifacts_ens}" \
-  --video-out "${VIDEO_ARTIFACTS_OUT:-./video_artifacts}" \
-  --min-image-auc "${GATE_MIN_IMAGE_AUC:-0.93}" \
-  --min-image-f1 "${GATE_MIN_IMAGE_F1:-0.90}" \
-  --min-video-acc "${GATE_MIN_VIDEO_ACC:-0.82}"
+bash scripts/local_retrain_4090.sh
 
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) weekly_retrain_gate_passed"
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) weekly_retrain_done"
