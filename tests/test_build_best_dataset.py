@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from _support import write_rgb_image
 import build_best_dataset
@@ -129,6 +130,29 @@ class BuildBestDatasetTests(unittest.TestCase):
         )
 
         self.assertIn(split, {"val", "test"})
+
+    def test_main_reaches_source_validation_without_nameerror(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch(
+                "sys.argv",
+                [
+                    "build_best_dataset.py",
+                    "--out",
+                    tmp,
+                    "--train-per-class",
+                    "0",
+                    "--val-per-class",
+                    "0",
+                    "--test-per-class",
+                    "0",
+                    "--no-discover-hf",
+                    "--no-default-sources",
+                ],
+            ):
+                with self.assertRaises(SystemExit) as ctx:
+                    build_best_dataset.main()
+
+        self.assertIn("no_hf_sources_resolved", str(ctx.exception))
 
 
 if __name__ == "__main__":

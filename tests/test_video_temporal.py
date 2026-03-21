@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 from contextlib import redirect_stdout
+from pathlib import Path
+import tempfile
 import unittest
 from unittest import mock
 
@@ -36,6 +38,17 @@ class _FakeTemporalModel:
 
 
 class VideoTemporalTests(unittest.TestCase):
+    def test_collect_videos_includes_m4v_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            clip = root / "ai" / "clip.m4v"
+            clip.parent.mkdir(parents=True)
+            clip.write_bytes(b"x")
+
+            samples = video_temporal._collect_videos(root)
+
+            self.assertEqual(samples, [(str(clip), 1)])
+
     def test_temporal_video_detector_does_not_request_pretrained_weights_by_default(self) -> None:
         captured: list[object] = []
 

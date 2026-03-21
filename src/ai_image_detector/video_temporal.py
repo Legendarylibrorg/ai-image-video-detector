@@ -21,7 +21,7 @@ from torchvision import models
 from .checkpoints import load_checkpoint, resolve_checkpoint_path, save_safetensors_checkpoint
 
 
-VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
+VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
 
 
 def _collect_videos(root: Path) -> List[Tuple[str, int]]:
