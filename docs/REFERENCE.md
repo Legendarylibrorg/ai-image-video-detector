@@ -1,0 +1,151 @@
+# Reference
+
+This file keeps the README short and startup-focused while collecting the broader concepts in one place.
+
+## What This Repo Does
+
+- collects image and video data locally
+- trains local detectors
+- supports resumable setup and pipeline runs
+- stays in training-only mode; production serving is intentionally disabled
+
+## Dataset and artifact basics
+
+Typical image dataset layout:
+
+```text
+data/
+  train/
+    real/
+    ai/
+  val/
+    real/
+    ai/
+  test/
+    real/
+    ai/
+```
+
+Typical video dataset layout:
+
+```text
+video_data/
+  train/
+    real/
+    ai/
+  val/
+    real/
+    ai/
+```
+
+Image training writes artifacts such as:
+- `best.pt`
+- `last.pt`
+- `epoch_XXX.pt`
+- `best_metrics.json`
+- `test_metrics.json`
+- `config.json`
+- `training_log.jsonl`
+
+Video training writes artifacts such as:
+- `best_video.pt` or `best_video.safetensors`
+- `last_video.pt`
+- `epoch_video_XXX.pt`
+
+## Core workflows
+
+Train a model:
+
+```bash
+aid-train --data ./data --epochs 12 --img-size 256 --out ./artifacts
+```
+
+Resume training:
+
+```bash
+aid-train --data ./data --out ./artifacts --epochs 12 --resume ./artifacts/last.pt --save-every 1
+```
+
+Run prediction:
+
+```bash
+aid-detect --model ./artifacts/best.pt --image ./example.jpg --json
+```
+
+Run explainability:
+
+```bash
+aid-explain --model ./artifacts/best.pt --image ./example.jpg --out ./artifacts/explain --grid 8 --top-k 8
+```
+
+Run robustness evaluation:
+
+```bash
+aid-robust-eval --data ./data --model ./artifacts/best.pt --out ./artifacts/robust_eval.json
+```
+
+Train the temporal video model:
+
+```bash
+aid-video-train --data ./video_data --out ./video_artifacts --epochs 8 --frames 24 --img-size 224
+```
+
+Run video inference:
+
+```bash
+aid-video-detect-temporal --model ./video_artifacts/best_video.pt --video ./sample.mp4
+```
+
+## Pipeline entrypoints
+
+Normal users should start with:
+
+```bash
+./local.sh setup
+./local.sh smoke
+./local.sh run
+```
+
+For command-level control, use:
+
+```bash
+bash scripts/do.sh pipeline
+bash scripts/do.sh collect-diverse
+bash scripts/do.sh train-existing
+bash scripts/do.sh train-all-types
+```
+
+For deeper command coverage, see [COMMANDS.md](COMMANDS.md).
+
+## Performance-oriented paths
+
+Quality-first pipeline:
+
+```bash
+bash scripts/max_quality_4090.sh
+```
+
+Full optimized pipeline:
+
+```bash
+bash scripts/full_pipeline_4090.sh
+```
+
+One-command optimized bootstrap:
+
+```bash
+bash scripts/one_command_4090.sh
+```
+
+Example override:
+
+```bash
+DATA_DIR=./data_best EPOCHS=14 SKIP_SWEEP=1 bash scripts/full_pipeline_4090.sh
+```
+
+## Related docs
+
+- [STARTUP.md](STARTUP.md)
+- [COMMANDS.md](COMMANDS.md)
+- [../CONTRIBUTING.md](../CONTRIBUTING.md)
+- [../SECURITY.md](../SECURITY.md)
