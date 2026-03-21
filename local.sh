@@ -6,38 +6,68 @@ cd "$(dirname "$0")"
 cmd="${1:-help}"
 shift || true
 
+run_do() {
+  bash scripts/do.sh "$@"
+}
+
+print_usage() {
+  cat <<'EOF'
+usage: ./local.sh [setup|run|smoke|collect|train|check|status|detect <image>|scan [paths...]|deps-update]
+
+recommended:
+  ./local.sh setup    # bootstrap deps and local env
+  ./local.sh smoke    # quick collection sanity check
+  ./local.sh run      # resumable collect + train pipeline
+  ./local.sh check    # preflight validation
+
+aliases:
+  init/bootstrap -> setup
+  pipeline       -> run
+  quick          -> smoke
+  doctor         -> check
+  setup-full     -> bootstrap + full pipeline
+  start          -> advanced quality-first preset
+EOF
+}
+
 case "$cmd" in
-  setup)
+  setup|init|bootstrap)
     bash scripts/setup_local.sh
     ;;
   setup-full)
     bash scripts/setup_linux.sh
     ;;
-  start)
-    bash scripts/do.sh start "$@"
+  run|pipeline)
+    run_do pipeline "$@"
+    ;;
+  smoke|quick|collect-fast)
+    run_do smoke "$@"
     ;;
   collect)
-    bash scripts/do.sh collect-diverse "$@"
-    ;;
-  collect-fast)
-    bash scripts/do.sh collect-fast "$@"
+    run_do collect-diverse "$@"
     ;;
   train)
-    bash scripts/do.sh train-all "$@"
+    run_do train-all "$@"
     ;;
-  doctor)
-    bash scripts/do.sh doctor "$@"
+  check|doctor)
+    run_do doctor "$@"
+    ;;
+  detect)
+    run_do detect "$@"
+    ;;
+  start)
+    run_do start "$@"
     ;;
   scan)
-    bash scripts/do.sh scan "$@"
+    run_do scan "$@"
     ;;
   deps-update)
-    bash scripts/do.sh deps-update
+    run_do deps-update
     ;;
   status)
-    bash scripts/do.sh status
+    run_do status
     ;;
   help|*)
-    echo "usage: ./local.sh [setup|setup-full|doctor|start|collect|collect-fast|train|scan|deps-update|status]"
+    print_usage
     ;;
 esac

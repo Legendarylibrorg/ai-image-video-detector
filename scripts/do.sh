@@ -3,6 +3,10 @@ set -euo pipefail
 
 # Minimal command surface for everyday use.
 # Examples:
+#   bash scripts/do.sh pipeline
+#   bash scripts/do.sh run
+#   bash scripts/do.sh smoke
+#   bash scripts/do.sh check
 #   bash scripts/do.sh start
 #   bash scripts/do.sh start-v2
 #   bash scripts/do.sh collect
@@ -23,6 +27,11 @@ cd "$ROOT_DIR"
 TRAIN_LOCK="${TRAIN_LOCK:-$ROOT_DIR/.local/training.lock}"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 ENV_READY=0
+PIPELINE_STAGE_DIR="${PIPELINE_STAGE_DIR:-$ROOT_DIR/.local/pipeline}"
+PIPELINE_FORCE_STAGES="${PIPELINE_FORCE_STAGES:-0}"
+PIPELINE_MAX_ATTEMPTS="${PIPELINE_MAX_ATTEMPTS:-4}"
+PIPELINE_RETRY_SLEEP_SEC="${PIPELINE_RETRY_SLEEP_SEC:-45}"
+PIPELINE_WAIT_FOR_TRAINING_SEC="${PIPELINE_WAIT_FOR_TRAINING_SEC:-600}"
 BEST_HF_QUERY_CSV_DEFAULT="real camera photo dataset,smartphone photo dataset,dslr photo dataset,webcam image dataset,cctv frame image dataset,meme image real vs ai,captioned image real ai,screenshot dataset image,chat ui screenshot,browser screenshot image,dashboard screenshot dataset,image poster infographic,logo brand image dataset,advertisement creative image,receipt scanned document image,id card document image,invoice form document scan,anime illustration real fake,digital art illustration dataset,3d render real fake,cgi synthetic image real,game render frame dataset,watermarked social media image,recompressed image dataset,heavily edited real photo,low resolution blurry image,extreme aspect ratio image,portrait selfie real fake,group photo real fake,deepfake face swap image,diffusion generated image latest"
 DIVERSE_HF_QUERY_CSV_DEFAULT="$BEST_HF_QUERY_CSV_DEFAULT"
 
@@ -49,15 +58,105 @@ is_training_active() {
   [[ -f "$TRAIN_LOCK" ]]
 }
 
-with_training_lock() {
-  mkdir -p "$(dirname "$TRAIN_LOCK")"
-  if is_training_active; then
-    echo "training lock active path=$TRAIN_LOCK"
-    exit 1
+stage_file() {
+  local stage="$1"
+  echo "$PIPELINE_STAGE_DIR/${stage}.done"
+}
+
+stage_done() {
+  local stage="$1"
+  if [[ "$PIPELINE_FORCE_STAGES" == "1" ]]; then
+    return 1
   fi
-  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$TRAIN_LOCK"
-  trap 'rm -f "$TRAIN_LOCK"' EXIT INT TERM
-  "$@"
+  [[ -f "$(stage_file "$stage")" ]]
+}
+
+mark_stage_done() {
+  local stage="$1"
+  mkdir -p "$PIPELINE_STAGE_DIR"
+  printf "%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$(stage_file "$stage")"
+}
+
+wait_for_training_to_finish() {
+  local reason="${1:-pipeline}"
+  while is_training_active; do
+    echo "${reason}: training lock present ($TRAIN_LOCK), sleeping ${PIPELINE_WAIT_FOR_TRAINING_SEC}s"
+    sleep "$PIPELINE_WAIT_FOR_TRAINING_SEC"
+  done
+}
+
+acquire_training_lock() {
+  mkdir -p "$(dirname "$TRAIN_LOCK")"
+  if ( set -o noclobber; printf "%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$TRAIN_LOCK" ) 2>/dev/null; then
+    return 0
+  fi
+  echo "training lock active path=$TRAIN_LOCK"
+  return 1
+}
+
+release_training_lock() {
+  rm -f "$TRAIN_LOCK"
+}
+
+with_training_lock() {
+  if ! acquire_training_lock; then
+    return 1
+  fi
+  local status=0
+  trap 'release_training_lock' EXIT INT TERM
+  if "$@"; then
+    status=0
+  else
+    status=$?
+  fi
+  release_training_lock
+  trap - EXIT INT TERM
+  return "$status"
+}
+
+run_with_retry() {
+  local label="$1"
+  shift
+  local attempt=1
+  while true; do
+    echo "pipeline_step=${label} status=run attempt=${attempt}/${PIPELINE_MAX_ATTEMPTS}"
+    if "$@"; then
+      echo "pipeline_step=${label} status=done"
+      return 0
+    fi
+    if [[ "$attempt" -ge "$PIPELINE_MAX_ATTEMPTS" ]]; then
+      echo "pipeline_step=${label} status=failed attempts=$attempt"
+      return 1
+    fi
+    echo "pipeline_step=${label} status=retry sleep_sec=${PIPELINE_RETRY_SLEEP_SEC}"
+    sleep "$PIPELINE_RETRY_SLEEP_SEC"
+    attempt=$((attempt + 1))
+  done
+}
+
+run_stage_once() {
+  local stage="$1"
+  shift
+  local status=0
+  if stage_done "$stage"; then
+    echo "pipeline_stage=${stage} status=skip_done"
+    return 0
+  fi
+  if "$@"; then
+    status=0
+  else
+    status=$?
+  fi
+  if [[ "$status" -ne 0 ]]; then
+    return "$status"
+  fi
+  mark_stage_done "$stage"
+}
+
+run_pipeline_stage() {
+  local stage="$1"
+  shift
+  run_with_retry "$stage" run_stage_once "$stage" "$@"
 }
 
 skip_collection_if_training() {
@@ -76,7 +175,11 @@ run_collection_command() {
 }
 
 print_usage() {
-  echo "usage: bash scripts/do.sh [start|start-v2|collect|collect-diverse|collect-fast|collect-image|collect-video|ingest|scan [paths...]|train|train-video|train-all|train-all-types|deps-update|doctor|autocollect|detect <image>|status]"
+  echo "usage: bash scripts/do.sh [pipeline|run|smoke|check|start|start-v2|collect|collect-diverse|collect-fast|collect-image|collect-video|ingest|scan [paths...]|train|train-video|train-all|train-all-types|deps-update|doctor|autocollect|detect <image>|status]"
+}
+
+run_doctor_check() {
+  bash scripts/doctor.sh "$@"
 }
 
 run_malware_scan() {
@@ -359,15 +462,16 @@ print_diverse_common_args() {
   print_cli_flag_value_from_env --max-samples-per-source "DIVERSE_MAX_SAMPLES_PER_SOURCE" "80000"
   print_cli_flag_value_from_env --max-per-source-class "DIVERSE_MAX_PER_SOURCE_CLASS" "16000"
   print_cli_flag_value_from_env --max-per-source-split-class "DIVERSE_MAX_PER_SOURCE_SPLIT_CLASS" "5500"
-  print_cli_flag_value_from_env --acceptance-warmup-samples "DIVERSE_ACCEPTANCE_WARMUP_SAMPLES" "450"
-  print_cli_flag_value_from_env --min-acceptance-rate "DIVERSE_MIN_ACCEPTANCE_RATE" "0.012"
+  print_cli_flag_value_from_env --acceptance-warmup-samples "DIVERSE_ACCEPTANCE_WARMUP_SAMPLES" "256"
+  print_cli_flag_value_from_env --min-acceptance-rate "DIVERSE_MIN_ACCEPTANCE_RATE" "0.015"
   print_cli_flag_value_from_env --min-hf-sources-with-accepted "DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED" "24"
   print_cli_flag_value_from_env --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "14"
   print_cli_flag_value_from_env --min-hf-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "8"
-  print_cli_flag_value_from_env --repo-base-pause-ms "DIVERSE_REPO_BASE_PAUSE_MS" "1400"
-  print_cli_flag_value_from_env --repo-jitter-ms "DIVERSE_REPO_JITTER_MS" "1200"
-  print_cli_flag_value_from_env --repo-cooldown-ms "DIVERSE_REPO_COOLDOWN_MS" "45000"
-  print_cli_flag_value_from_env --max-consecutive-failures "DIVERSE_MAX_CONSECUTIVE_FAILURES" "2"
+  print_cli_flag_value_from_env --repo-base-pause-ms "DIVERSE_REPO_BASE_PAUSE_MS" "150"
+  print_cli_flag_value_from_env --repo-jitter-ms "DIVERSE_REPO_JITTER_MS" "150"
+  print_cli_flag_value_from_env --repo-cooldown-ms "DIVERSE_REPO_COOLDOWN_MS" "15000"
+  print_cli_flag_value_from_env --transient-error-cooldown-ms "DIVERSE_TRANSIENT_ERROR_COOLDOWN_MS" "2500"
+  print_cli_flag_value_from_env --max-consecutive-failures "DIVERSE_MAX_CONSECUTIVE_FAILURES" "5"
   print_cli_flag_value_from_env --min-side "DIVERSE_MIN_SIDE" "192"
   print_cli_flag_value_from_env --max-aspect-ratio "DIVERSE_MAX_ASPECT_RATIO" "3.2"
   print_cli_flag_value_from_env --min-entropy "DIVERSE_MIN_ENTROPY" "3.1"
@@ -384,6 +488,7 @@ print_diverse_discovery_args() {
   print_cli_flag_value_from_env --hf-min-likes "DIVERSE_HF_MIN_LIKES" "2"
   print_cli_flag_value_from_env --hf-min-quality-score "DIVERSE_HF_MIN_QUALITY_SCORE" "1.85"
   print_cli_flag_value_from_env --hf-print-top "DIVERSE_HF_PRINT_TOP" "20"
+  print_cli_flag_value_from_env --hf-query-pause-ms "DIVERSE_HF_QUERY_PAUSE_MS" "900"
 }
 
 print_diverse_audit_args() {
@@ -455,14 +560,14 @@ collect_video_data() {
     --val-per-class "${VIDEO_VAL_PER_CLASS:-250}" \
     --mode "${VIDEO_MODE:-snapshot}" \
     --cache-dir "${VIDEO_CACHE_DIR:-./.local/hf}" \
-    --snapshot-max-workers "${VIDEO_SNAPSHOT_MAX_WORKERS:-1}" \
-    --repo-base-pause-ms "${VIDEO_REPO_BASE_PAUSE_MS:-900}" \
-    --repo-jitter-ms "${VIDEO_REPO_JITTER_MS:-600}" \
+    --snapshot-max-workers "${VIDEO_SNAPSHOT_MAX_WORKERS:-4}" \
+    --repo-base-pause-ms "${VIDEO_REPO_BASE_PAUSE_MS:-150}" \
+    --repo-jitter-ms "${VIDEO_REPO_JITTER_MS:-150}" \
     --copy-sleep-ms "${VIDEO_COPY_SLEEP_MS:-0}" \
-    --sleep-ms "${VIDEO_SLEEP_MS:-120}" \
-    --jitter-ms "${VIDEO_JITTER_MS:-80}" \
-    --chunk-pause-ms "${VIDEO_CHUNK_PAUSE_MS:-1000}" \
-    --repo-cooldown-ms "${VIDEO_REPO_COOLDOWN_MS:-3000}" \
+    --sleep-ms "${VIDEO_SLEEP_MS:-40}" \
+    --jitter-ms "${VIDEO_JITTER_MS:-20}" \
+    --chunk-pause-ms "${VIDEO_CHUNK_PAUSE_MS:-250}" \
+    --repo-cooldown-ms "${VIDEO_REPO_COOLDOWN_MS:-12000}" \
     --retries "${VIDEO_RETRIES:-5}" \
     --min-video-bytes "${VIDEO_MIN_BYTES:-100000}" \
     --max-video-bytes "${VIDEO_MAX_BYTES:-0}"
@@ -479,6 +584,31 @@ collect_diverse_cycle() {
   collect_diverse_image_data
   ingest_outputs
   VIDEO_CACHE_DIR="${VIDEO_CACHE_DIR:-./.local/hf}" VIDEO_SNAPSHOT_MAX_WORKERS="${VIDEO_SNAPSHOT_MAX_WORKERS:-1}" collect_video_data
+}
+
+run_pipeline_collection_stage() {
+  wait_for_training_to_finish "pipeline_stage=collect"
+  collect_diverse_cycle
+}
+
+run_pipeline_training_stage() {
+  wait_for_training_to_finish "pipeline_stage=train"
+  with_training_lock train_all_pipeline
+}
+
+run_pipeline_validation_stage() {
+  validate_train_artifacts
+}
+
+run_simple_collection_smoke() {
+  wait_for_training_to_finish "pipeline_stage=smoke"
+  collect_fast_data
+}
+
+run_full_pipeline() {
+  run_pipeline_stage collect run_pipeline_collection_stage
+  run_pipeline_stage train run_pipeline_training_stage
+  run_pipeline_stage validate run_pipeline_validation_stage
 }
 
 train_image_pipeline() {
@@ -510,7 +640,7 @@ validate_train_artifacts() {
 
   if [[ "$missing" == "1" ]]; then
     echo "artifact_validation=failed"
-    exit 1
+    return 1
   fi
   echo "artifact_validation=ok"
 }
@@ -604,6 +734,18 @@ cmd="${1:-start}"
 shift || true
 
 case "$cmd" in
+  pipeline|run)
+    run_full_pipeline
+    ;;
+
+  smoke)
+    run_simple_collection_smoke
+    ;;
+
+  check|doctor)
+    run_doctor_check
+    ;;
+
   start)
     # Full, best-quality pipeline.
     with_training_lock bash scripts/max_quality_4090.sh
@@ -656,10 +798,6 @@ case "$cmd" in
     bash scripts/update_deps_lock.sh
     ;;
 
-  doctor)
-    bash scripts/doctor.sh
-    ;;
-
   train-all)
     # Image + video training, assumes data already collected.
     with_training_lock train_all_pipeline
@@ -667,12 +805,7 @@ case "$cmd" in
 
   train-all-types)
     # End-to-end: broad collection + image/video training + artifact checks.
-    if skip_collection_if_training; then
-      exit 1
-    fi
-    "$0" collect-diverse
-    with_training_lock train_all_pipeline
-    validate_train_artifacts
+    run_full_pipeline
     ;;
 
   autocollect)

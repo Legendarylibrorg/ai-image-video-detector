@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import os
 from pathlib import Path
@@ -91,16 +92,22 @@ def _sha256(path: Path) -> str:
 
 
 def load_existing_video_hashes(out: Path) -> set[str]:
-    seen: set[str] = set()
+    paths: list[Path] = []
     for split in ("train", "val"):
         for cls in ("ai", "real"):
             split_dir = out / split / cls
             if not split_dir.exists():
                 continue
             for path in split_dir.glob("*"):
-                if not path.is_file():
-                    continue
-                seen.add(_sha256(path))
+                if path.is_file():
+                    paths.append(path)
+    seen: set[str] = set()
+    if not paths:
+        return seen
+    max_workers = min(8, max(1, (os.cpu_count() or 4) // 2))
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        for digest in ex.map(_sha256, paths):
+            seen.add(digest)
     return seen
 
 
@@ -111,14 +118,14 @@ def main():
     ap.add_argument("--val-per-class", type=int, default=60)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--mode", choices=["snapshot", "per-file"], default="snapshot")
-    ap.add_argument("--snapshot-max-workers", type=int, default=1)
+    ap.add_argument("--snapshot-max-workers", type=int, default=4)
     ap.add_argument("--chunk-size", type=int, default=20)
-    ap.add_argument("--sleep-ms", type=int, default=120)
+    ap.add_argument("--sleep-ms", type=int, default=40)
     ap.add_argument("--jitter-ms", type=int, default=80)
-    ap.add_argument("--chunk-pause-ms", type=int, default=1000)
-    ap.add_argument("--repo-cooldown-ms", type=int, default=3000)
-    ap.add_argument("--repo-base-pause-ms", type=int, default=2200)
-    ap.add_argument("--repo-jitter-ms", type=int, default=1800)
+    ap.add_argument("--chunk-pause-ms", type=int, default=250)
+    ap.add_argument("--repo-cooldown-ms", type=int, default=12000)
+    ap.add_argument("--repo-base-pause-ms", type=int, default=150)
+    ap.add_argument("--repo-jitter-ms", type=int, default=150)
     ap.add_argument("--copy-sleep-ms", type=int, default=15)
     ap.add_argument("--retries", type=int, default=5)
     ap.add_argument("--min-video-bytes", type=int, default=100000)

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
 import unittest
 
-from _support import ROOT
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class MaxAccuracyV2Tests(unittest.TestCase):

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 import subprocess
 import unittest
 
-from _support import ROOT
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class DoShTests(unittest.TestCase):
@@ -47,6 +49,55 @@ class DoShTests(unittest.TestCase):
         self.assertIn("--max-per-source-class\n3000\n", out)
         self.assertIn("--max-per-source-split-class\n1000\n", out)
         self.assertIn("--hardneg-fraction\n0.25\n", out)
+
+    def test_usage_lists_simple_aliases(self) -> None:
+        out = self.run_bash("source scripts/do.sh; print_usage")
+        self.assertIn("pipeline", out)
+        self.assertIn("run", out)
+        self.assertIn("smoke", out)
+        self.assertIn("check", out)
+
+    def test_pipeline_stage_is_resumable(self) -> None:
+        out = self.run_bash(
+            "tmpdir=$(mktemp -d); "
+            "source scripts/do.sh; "
+            "PIPELINE_STAGE_DIR=\"$tmpdir\"; "
+            "call_file=\"$tmpdir/calls\"; "
+            "run_pipeline_stage sample bash -lc 'echo first >> \"$0\"' \"$call_file\"; "
+            "run_pipeline_stage sample bash -lc 'echo second >> \"$0\"' \"$call_file\"; "
+            "wc -l < \"$call_file\""
+        )
+        self.assertEqual(out.strip().splitlines()[-1].strip(), "1")
+
+    def test_pipeline_stage_retries_before_success(self) -> None:
+        out = self.run_bash(
+            "tmpdir=$(mktemp -d); "
+            "source scripts/do.sh; "
+            "PIPELINE_STAGE_DIR=\"$tmpdir\"; "
+            "PIPELINE_MAX_ATTEMPTS=3; "
+            "PIPELINE_RETRY_SLEEP_SEC=0; "
+            "attempt_file=\"$tmpdir/attempts\"; "
+            "run_pipeline_stage retry bash -lc "
+            "'count=0; "
+            "[[ -f \"$0\" ]] && count=$(cat \"$0\"); "
+            "count=$((count + 1)); "
+            "printf \"%s\\n\" \"$count\" > \"$0\"; "
+            "[[ \"$count\" -ge 2 ]]' "
+            "\"$attempt_file\"; "
+            "cat \"$attempt_file\""
+        )
+        self.assertEqual(out.strip().splitlines()[-1], "2")
+
+    def test_diverse_profile_emits_rate_limit_tuned_flags(self) -> None:
+        out = self.run_bash(
+            "source scripts/do.sh; "
+            "print_diverse_common_args; "
+            "print_diverse_discovery_args"
+        )
+        self.assertIn("--repo-base-pause-ms\n150\n", out)
+        self.assertIn("--repo-cooldown-ms\n15000\n", out)
+        self.assertIn("--transient-error-cooldown-ms\n2500\n", out)
+        self.assertIn("--hf-query-pause-ms\n900\n", out)
 
 
 if __name__ == "__main__":

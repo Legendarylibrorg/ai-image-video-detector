@@ -272,13 +272,17 @@ def discover_hf_sources(
     min_likes: int,
     min_quality_score: float,
     print_top_n: int,
+    query_pause_ms: int = 0,
+    token: str | None = None,
 ) -> List[str]:
     if HfApi is None:
         print("warning_hf_discovery_unavailable reason=huggingface_hub_missing")
         return []
-    api = HfApi()
+    api = HfApi(token=token)
     found: List[Tuple[str, float, int, int]] = []
-    for q in queries:
+    for idx, q in enumerate(queries, start=1):
+        if idx > 1 and int(query_pause_ms) > 0:
+            time.sleep(int(query_pause_ms) / 1000.0)
         try:
             matches = api.list_datasets(search=q, limit=per_query_limit, sort="downloads", direction=-1)
         except Exception as e:
@@ -313,6 +317,26 @@ def discover_hf_sources(
 def likely_rate_limited(msg: str) -> bool:
     low = msg.lower()
     return any(k in low for k in ["429", "too many requests", "rate limit", "ratelimit", "5 min"])
+
+
+def likely_transient_hf_error(msg: str) -> bool:
+    low = msg.lower()
+    return any(
+        k in low
+        for k in [
+            "timed out",
+            "timeout",
+            "connection reset",
+            "connection aborted",
+            "temporarily unavailable",
+            "service unavailable",
+            "bad gateway",
+            "gateway timeout",
+            "internal server error",
+            "remoteprotocolerror",
+            "connectionerror",
+        ]
+    )
 
 
 SPLITS = ("train", "val", "test")
@@ -507,6 +531,8 @@ def build_source_list(args) -> List[str]:
                 min_likes=args.hf_min_likes,
                 min_quality_score=args.hf_min_quality_score,
                 print_top_n=args.hf_print_top,
+                query_pause_ms=args.hf_query_pause_ms,
+                token=os.environ.get(args.token_env),
             )
             if cache_path:
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -548,6 +574,7 @@ def main():
     ap.add_argument("--hf-min-likes", type=int, default=2)
     ap.add_argument("--hf-min-quality-score", type=float, default=1.7)
     ap.add_argument("--hf-print-top", type=int, default=15)
+    ap.add_argument("--hf-query-pause-ms", type=int, default=0, help="Pause between HF discovery queries to stay under page limits")
     ap.add_argument("--hf-cache-file", default="", help="Optional file path to cache discovered HF source ids")
     ap.add_argument("--hf-cache-only-if-present", action="store_true", default=True, help="If cache file exists, use it and skip live HF discovery calls")
     ap.add_argument("--no-hf-cache-only-if-present", dest="hf_cache_only_if_present", action="store_false")
@@ -561,6 +588,7 @@ def main():
     ap.add_argument("--repo-base-pause-ms", type=int, default=900, help="Base pause between HF repositories")
     ap.add_argument("--repo-jitter-ms", type=int, default=900, help="Extra random pause between HF repositories")
     ap.add_argument("--repo-cooldown-ms", type=int, default=45000, help="Cooldown after rate-limit or repeated source failures")
+    ap.add_argument("--transient-error-cooldown-ms", type=int, default=3000, help="Short cooldown after repeated transient HF failures")
     ap.add_argument("--max-consecutive-failures", type=int, default=2, help="Cooldown trigger for consecutive source failures")
     ap.add_argument("--token-env", default="HF_TOKEN")
     ap.add_argument("--discover-only", action="store_true", default=False, help="Only run HF discovery/cache update and exit")
@@ -704,12 +732,22 @@ def main():
             except TypeError:
                 ds = load_dataset(src, streaming=args.streaming, cache_dir=(args.cache_dir or None))
         except Exception as e:
-            print(f"skip_source={src} reason={e}")
-            consecutive_source_failures += 1
-            if likely_rate_limited(str(e)) or consecutive_source_failures >= args.max_consecutive_failures:
-                cooldown = args.repo_cooldown_ms
-                print(f"cooldown_ms={cooldown} reason=source_failure")
+            msg = str(e)
+            print(f"skip_source={src} reason={msg}")
+            if likely_rate_limited(msg):
+                cooldown = int(args.repo_cooldown_ms)
+                print(f"cooldown_ms={cooldown} reason=rate_limited")
                 time.sleep(cooldown / 1000.0)
+                consecutive_source_failures = 0
+            elif likely_transient_hf_error(msg):
+                consecutive_source_failures += 1
+                if consecutive_source_failures >= args.max_consecutive_failures:
+                    cooldown = int(args.transient_error_cooldown_ms)
+                    print(f"cooldown_ms={cooldown} reason=transient_failures")
+                    if cooldown > 0:
+                        time.sleep(cooldown / 1000.0)
+                    consecutive_source_failures = 0
+            else:
                 consecutive_source_failures = 0
             continue
         consecutive_source_failures = 0
