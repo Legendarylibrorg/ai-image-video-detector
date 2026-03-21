@@ -103,6 +103,35 @@ class DoShTests(unittest.TestCase):
         self.assertIn("--transient-error-cooldown-ms\n2500\n", out)
         self.assertIn("--hf-query-pause-ms\n900\n", out)
 
+    def test_prepare_training_image_data_works_without_copy_flag(self) -> None:
+        out = self.run_bash(
+            "tmpdir=$(mktemp -d); "
+            "source scripts/do.sh; "
+            "ensure_env(){ :; }; "
+            "python(){ python3 \"$@\"; }; "
+            "DATA_DIR=\"$tmpdir/data_best\"; "
+            "NEW_DATA_DST=\"$tmpdir/data_new/train\"; "
+            "TRAIN_READY_DATA_DIR=\"$tmpdir/training_data\"; "
+            "mkdir -p \"$tmpdir/data_best/train/ai\" \"$tmpdir/data_best/train/real\" "
+            "\"$tmpdir/data_best/val/ai\" \"$tmpdir/data_best/val/real\" "
+            "\"$tmpdir/data_best/test/ai\" \"$tmpdir/data_best/test/real\" "
+            "\"$tmpdir/data_new/train/ai\" \"$tmpdir/data_new/train/real\"; "
+            "touch \"$tmpdir/data_best/train/ai/base_ai.jpg\" "
+            "\"$tmpdir/data_best/train/real/base_real.jpg\" "
+            "\"$tmpdir/data_best/val/ai/val_ai.jpg\" "
+            "\"$tmpdir/data_best/val/real/val_real.jpg\" "
+            "\"$tmpdir/data_best/test/ai/test_ai.jpg\" "
+            "\"$tmpdir/data_best/test/real/test_real.jpg\" "
+            "\"$tmpdir/data_new/train/ai/inc_ai.jpg\" "
+            "\"$tmpdir/data_new/train/real/inc_real.jpg\"; "
+            "prepare_training_image_data >/dev/null; "
+            "[[ -f \"$tmpdir/training_data/train/ai/base_ai.jpg\" ]] && "
+            "[[ -f \"$tmpdir/training_data/train/ai/inc_ai.jpg\" ]] && "
+            "[[ -f \"$tmpdir/training_data/train/real/inc_real.jpg\" ]] && "
+            "echo ok"
+        )
+        self.assertEqual(out.strip().splitlines()[-1], "ok")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -588,16 +588,17 @@ prepare_training_image_data() {
   local incremental_root=""
   incremental_root="$(resolve_incremental_image_root)"
   local out_root="${TRAIN_READY_DATA_DIR:-./.local/training_data}"
-  local -a copy_arg=()
+  local -a cmd=(
+    python scripts/prepare_training_data.py
+    --base "$base_root"
+    --incremental "$incremental_root"
+    --out "$out_root"
+  )
   if [[ "${TRAIN_DATA_COPY_ONLY:-0}" == "1" ]]; then
-    copy_arg=(--copy)
+    cmd+=(--copy)
   fi
   ensure_env
-  python scripts/prepare_training_data.py \
-    --base "$base_root" \
-    --incremental "$incremental_root" \
-    --out "$out_root" \
-    "${copy_arg[@]}"
+  "${cmd[@]}"
   require_image_training_data "$out_root"
   PREPARED_IMAGE_DATA_DIR="$out_root"
 }
