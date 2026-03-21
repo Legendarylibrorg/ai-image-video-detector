@@ -13,6 +13,8 @@ class SmokeRealSurfaceTests(unittest.TestCase):
         self.assertIn("scripts/build_best_dataset.py", text)
         self.assertIn("aid-train", text)
         self.assertIn("HF_TOKEN", text)
+        self.assertIn('VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"', text)
+        self.assertIn('source "$VENV_DIR/bin/activate"', text)
         self.assertIn("torch.cuda.is_available()", text)
         self.assertIn("dragonintelligence/CIFAKE-image-dataset", text)
 

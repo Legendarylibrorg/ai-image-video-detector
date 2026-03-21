@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
+VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 MIN_FREE_GB="${DOCTOR_MIN_FREE_GB:-40}"
 TOKEN_CHECK_TIMEOUT_SEC="${DOCTOR_TOKEN_CHECK_TIMEOUT_SEC:-12}"
 DOCTOR_REQUIRE_TOKEN="${DOCTOR_REQUIRE_TOKEN:-0}"
@@ -133,12 +134,12 @@ check_cache_paths() {
 }
 
 check_venv_and_deps() {
-  if [[ ! -x "$ROOT_DIR/.venv/bin/python" ]]; then
-    emit_warn "venv_missing path=$ROOT_DIR/.venv run=./local.sh setup"
+  if [[ ! -x "$VENV_DIR/bin/python" ]]; then
+    emit_warn "venv_missing path=$VENV_DIR run=./local.sh setup"
     return
   fi
-  emit_ok "venv_present path=$ROOT_DIR/.venv"
-  if "$ROOT_DIR/.venv/bin/python" - <<'PY' >/dev/null 2>&1
+  emit_ok "venv_present path=$VENV_DIR"
+  if "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1
 import datasets  # noqa: F401
 import huggingface_hub  # noqa: F401
 import PIL  # noqa: F401
@@ -162,14 +163,14 @@ check_hf_token() {
     return
   fi
   emit_ok "hf_token_present=1"
-  if [[ ! -x "$ROOT_DIR/.venv/bin/python" ]]; then
+  if [[ ! -x "$VENV_DIR/bin/python" ]]; then
     emit_warn "hf_token_validation_skipped reason=venv_missing"
     return
   fi
 
   local rc=0
   if command -v timeout >/dev/null 2>&1; then
-    timeout "${TOKEN_CHECK_TIMEOUT_SEC}s" "$ROOT_DIR/.venv/bin/python" - <<'PY' >/dev/null 2>&1 || rc=$?
+    timeout "${TOKEN_CHECK_TIMEOUT_SEC}s" "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1 || rc=$?
 import os
 from huggingface_hub import HfApi
 
@@ -177,7 +178,7 @@ token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
 HfApi().whoami(token=token)
 PY
   else
-    "$ROOT_DIR/.venv/bin/python" - <<'PY' >/dev/null 2>&1 || rc=$?
+    "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1 || rc=$?
 import os
 from huggingface_hub import HfApi
 
