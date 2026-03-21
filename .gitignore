@@ -5,12 +5,17 @@
 .venv/
 .pycache/
 __pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.pyc
 *.egg-info/
 build/
 dist/
 .env
 .env.*
+!.env.example
+!deploy/.env.example
 
 # Data and artifacts
 data/
@@ -25,6 +30,11 @@ data_new/
 incoming_review_queue/
 incoming_model_outputs/
 .local/
+*.pt
+*.pth
+*.safetensors
+*.ckpt
+*.onnx
 
 # Misc
 *.log
