@@ -9,7 +9,7 @@ from pathlib import Path
 
 def _walk_images(root: Path):
     for p in root.rglob("*"):
-        if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".bmp"}:
+        if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}:
             yield p
 
 

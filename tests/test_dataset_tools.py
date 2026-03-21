@@ -23,6 +23,16 @@ def write_stub(path: Path, payload: bytes = b"x") -> None:
 
 
 class DatasetToolsTests(unittest.TestCase):
+    def test_walk_images_includes_tiff_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tiff_path = root / "train" / "ai" / "sample.tiff"
+            write_stub(tiff_path)
+
+            walked = list(dataset_tools._walk_images(root))
+
+            self.assertEqual(walked, [tiff_path])
+
     def test_collection_status_reports_manifest_resume_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "data_best"
