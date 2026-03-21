@@ -1,7 +1,7 @@
 [project]
 name = "ai-image-detector"
 version = "0.1.0"
-description = "Advanced AI-generated image detector"
+description = "Linux pipeline for local AI image and video collection and PyTorch training"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
@@ -19,15 +19,8 @@ dependencies = [
 
 [project.scripts]
 aid-train = "ai_image_detector.train:main"
-aid-detect = "ai_image_detector.infer:main"
-aid-metadata = "ai_image_detector.metadata:main"
-aid-explain = "ai_image_detector.explain:main"
-aid-robust-eval = "ai_image_detector.robust_eval:main"
-aid-video-detect = "ai_image_detector.video:main"
 aid-video-train = "ai_image_detector.video_temporal:train_main"
-aid-video-detect-temporal = "ai_image_detector.video_temporal:infer_main"
 aid-dataset = "ai_image_detector.dataset_tools:main"
-aid-train-advanced = "ai_image_detector.train:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

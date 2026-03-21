@@ -5,6 +5,9 @@ This repository is for one job:
 - train detectors locally
 - rerun safely if a long setup stops partway through
 
+The commands below assume a local Linux machine with CUDA/PyTorch, such as an RTX 4090 box.
+The repo uses a local virtualenv at `./.venv`; `./local.sh setup` creates or reuses it and the pipeline runs from there.
+
 It is not a production serving repo in the current mode.
 
 ## Current Pipeline
@@ -73,7 +76,7 @@ sudo freshclam || true
 
 This creates or reuses a local virtualenv at `.venv` and installs the pinned Python dependency set from `requirements.lock`.
 
-4. Add your Hugging Face token to `.env`:
+4. During `./local.sh setup`, paste your Hugging Face token when prompted, or add it to `.env`:
 
 ```bash
 printf "HF_TOKEN='your_token_here'\n" >> .env
@@ -91,6 +94,12 @@ export HF_TOKEN='your_token_here'
 ./local.sh smoke
 ```
 
+If you want a tiny real Hugging Face collection plus real CUDA training smoke on a 4090-class box:
+
+```bash
+./local.sh smoke-real
+```
+
 6. Start the resumable pipeline:
 
 ```bash
@@ -100,12 +109,11 @@ export HF_TOKEN='your_token_here'
 Important notes:
 - `./local.sh setup` already tries `apt-get` automatically on supported Linux hosts and uses `sudo` when available.
 - Keep `sudo` on package-manager commands only. Run `./local.sh ...` and `bash scripts/...` as your normal user.
+- The repo-local virtualenv is `./.venv`. The setup and pipeline scripts create or reuse it instead of relying on a global Python install.
 - `./local.sh run` is resumable: completed stages are skipped, training locks are waited out, and transient failures are retried.
 - `./local.sh collect-status` shows the current collection/build state, recent source activity, and resume hints.
 
-### Startup commands
-
-Use these first:
+### Most people only need
 
 ```bash
 ./local.sh setup
@@ -114,7 +122,13 @@ Use these first:
 ./local.sh status
 ```
 
-Use these when you want more control:
+If you want the smallest real end-to-end validation on a tokenized CUDA box:
+
+```bash
+./local.sh smoke-real
+```
+
+Everything else is advanced/internal:
 
 ```bash
 ./local.sh collect
@@ -188,12 +202,12 @@ bash scripts/install_deps.sh
 
 ## Docs
 
-Use the docs for deeper explanations and lower-level reference:
+Use these only if you need more detail:
 
 - [docs/STARTUP.md](docs/STARTUP.md)
-  Full Linux startup flow, manual bootstrap, setup options, and troubleshooting.
+  Setup flow, manual bootstrap, setup options, and troubleshooting.
 - [docs/COMMANDS.md](docs/COMMANDS.md)
-  `./local.sh`, `scripts/do.sh`, wrappers, and lower-level command surfaces.
+  Main commands first, with advanced/internal entrypoints after that.
 - [docs/REFERENCE.md](docs/REFERENCE.md)
   Higher-level reference notes for datasets, training, evaluation, video, and pipeline modes.
 - [CONTRIBUTING.md](CONTRIBUTING.md)

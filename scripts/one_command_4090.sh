@@ -5,6 +5,9 @@ set -euo pipefail
 # Usage:
 #   bash scripts/one_command_4090.sh
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
 # Optimized defaults (speed/quality balance)
 export SKIP_SWEEP="${SKIP_SWEEP:-1}"
 export EPOCHS="${EPOCHS:-12}"
@@ -29,6 +32,7 @@ export VIDEO_JITTER_MS="${VIDEO_JITTER_MS:-80}"
 export VIDEO_CHUNK_PAUSE_MS="${VIDEO_CHUNK_PAUSE_MS:-1000}"
 export VIDEO_REPO_COOLDOWN_MS="${VIDEO_REPO_COOLDOWN_MS:-3000}"
 export VIDEO_RETRIES="${VIDEO_RETRIES:-5}"
+export VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 
 run_cmd() {
   if [[ "$DRY_RUN" == "1" ]]; then
@@ -38,22 +42,37 @@ run_cmd() {
   fi
 }
 
+activate_repo_venv() {
+  local activate_script="$VENV_DIR/bin/activate"
+  if [[ -f "$activate_script" ]]; then
+    # shellcheck disable=SC1090
+    source "$activate_script"
+    return 0
+  fi
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo "[DRY_RUN] source $activate_script"
+    return 0
+  fi
+  echo "missing_virtualenv_activate=$activate_script run=bash scripts/install_deps.sh" >&2
+  return 1
+}
+
 # 1) Optional system deps for Ubuntu hosts
 if command -v apt-get >/dev/null 2>&1; then
   if command -v sudo >/dev/null 2>&1; then
-    sudo apt-get update
-    sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
-    sudo freshclam || true
+    run_cmd "sudo apt-get update"
+    run_cmd "sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon"
+    run_cmd "sudo freshclam || true"
   else
-    apt-get update
-    apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
-    freshclam || true
+    run_cmd "apt-get update"
+    run_cmd "apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon"
+    run_cmd "freshclam || true"
   fi
 fi
 
 # 2) Python environment + package deps
 run_cmd "bash scripts/install_deps.sh"
-source .venv/bin/activate
+activate_repo_venv
 
 # 3) Optimized full training pipeline
 run_cmd "bash scripts/full_pipeline_4090.sh"

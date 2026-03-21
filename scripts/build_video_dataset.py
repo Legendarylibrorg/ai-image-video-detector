@@ -11,7 +11,7 @@ import time
 from typing import Dict, List
 
 from dataset_builder_common import configure_hf_cache_env, count_existing_split_classes, targets_met
-from hf_data import download_dataset_file, list_dataset_repo_files, snapshot_dataset_repo
+from hf_data import download_dataset_file, list_dataset_repo_files, normalize_hf_token, snapshot_dataset_repo
 
 hf_hub_download = download_dataset_file
 list_repo_files = list_dataset_repo_files
@@ -143,7 +143,7 @@ def main():
     if cache_dir is not None:
         print(f"hf_cache_dir={cache_dir}")
 
-    token = os.getenv(args.token_env)
+    token = normalize_hf_token(os.getenv(args.token_env))
     if token:
         print(f"using_token_env={args.token_env}")
     else:

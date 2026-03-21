@@ -22,9 +22,31 @@ run_cmd() {
 }
 
 load_env_file() {
-  if [[ -f "$ENV_FILE" ]]; then
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
+  if [[ ! -f "$ENV_FILE" ]]; then
+    return
+  fi
+  local -a env_names=()
+  local line=""
+  local name=""
+  local restore_script=""
+  while IFS= read -r line; do
+    case "$line" in
+      ''|\#*) continue ;;
+    esac
+    if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+      name="${line%%=*}"
+      env_names+=("$name")
+      if eval '[[ ${'"$name"'+x} && -n "${'"$name"'}" ]]'; then
+        restore_script+="$(eval "printf '%s=%q\n' '$name' \"\${$name}\"")"$'\n'
+      fi
+    fi
+  done < "$ENV_FILE"
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+  if [[ -n "$restore_script" ]]; then
+    eval "$restore_script"
   fi
 }
 
@@ -145,23 +167,15 @@ else
   echo "setup_stage=apt_deps status=skip_no_apt"
 fi
 
-if stage_done "python_deps"; then
-  echo "setup_stage=python_deps status=skip_done"
-else
-  echo "setup_stage=python_deps status=run"
-  run_cmd "bash scripts/install_deps.sh"
-  mark_stage_done "python_deps"
-  echo "setup_stage=python_deps status=done"
-fi
+echo "setup_stage=python_deps status=run"
+run_cmd "bash scripts/install_deps.sh"
+mark_stage_done "python_deps"
+echo "setup_stage=python_deps status=done"
 
-if stage_done "hf_token"; then
-  echo "setup_stage=hf_token status=skip_done"
-else
-  echo "setup_stage=hf_token status=run"
-  ensure_hf_token_ready
-  mark_stage_done "hf_token"
-  echo "setup_stage=hf_token status=done"
-fi
+echo "setup_stage=hf_token status=run"
+ensure_hf_token_ready
+mark_stage_done "hf_token"
+echo "setup_stage=hf_token status=done"
 
 if stage_done "pipeline_train_all_types"; then
   echo "setup_stage=pipeline_train_all_types status=skip_done"

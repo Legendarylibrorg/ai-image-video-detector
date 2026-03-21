@@ -1,42 +1,21 @@
 # Command Guide
 
 This guide collects the repo command surfaces in one place.
+The repo-local Python environment is `./.venv`, created or reused by `./local.sh setup`.
 
-## Pipeline at a glance
-
-On Linux, the normal local workflow is:
-
-```bash
-./local.sh setup
-./local.sh collect
-./local.sh collect-status
-./local.sh train
-```
-
-Or, if you want the resumable combined path:
+The default path below assumes Linux:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
 ./local.sh setup
-./local.sh smoke
 ./local.sh run
 ```
 
-What each stage does:
+## Pipeline at a glance
 
-- `setup`
-  Creates or reuses `.venv`, installs pinned Python deps, prepares local cache dirs, and runs a health check.
-- `collect`
-  Builds or refreshes the local datasets under `./data_best` and `./video_data`, and can ingest new labeled outputs into `./data_new`.
-- `collect-status`
-  Shows image/video collection counts, source-manifest state, and resume hints.
-- `train`
-  Prepares additive image training data under `./.local/training_data` and trains the image model, with video training added when video data is complete.
-- `run`
-  Executes the normal resumable collect-plus-train pipeline.
-
-## `./local.sh` commands
-
-Recommended first:
+The normal local workflow is:
 
 ```bash
 ./local.sh setup
@@ -45,7 +24,30 @@ Recommended first:
 ./local.sh status
 ```
 
-Full list:
+What each stage does:
+
+- `setup`
+  Creates or reuses `./.venv`, installs pinned Python deps, prepares local cache dirs, and runs a health check.
+- `smoke`
+  Runs a much smaller collection job for a quick sanity check before the full pipeline.
+- `run`
+  Executes the normal resumable collect-plus-train pipeline.
+- `status`
+  Shows the current pipeline state, key artifact paths, and training lock status.
+
+## `./local.sh` commands
+
+Recommended first:
+
+```bash
+./local.sh setup
+./local.sh smoke
+./local.sh smoke-real
+./local.sh run
+./local.sh status
+```
+
+Main surface:
 
 - `./local.sh setup`
   Bootstrap the local environment only.
@@ -53,6 +55,13 @@ Full list:
   Run the full collection and training pipeline with retries and resumable stages.
 - `./local.sh smoke`
   Run a much smaller collection job for a quick sanity check.
+- `./local.sh smoke-real`
+  Run a tiny real Hugging Face collection plus real CUDA training smoke. Requires `HF_TOKEN` and a CUDA GPU.
+- `./local.sh status`
+  Show training lock and key data and artifact paths.
+
+Advanced/internal commands:
+
 - `./local.sh check`
   Run the preflight check directly.
 - `./local.sh setup-full`
@@ -73,8 +82,6 @@ Full list:
   Run the malware scan directly.
 - `./local.sh deps-update`
   Refresh the locked dependency set.
-- `./local.sh status`
-  Show training lock and key data and artifact paths.
 
 ## Raw `scripts/do.sh` commands
 
@@ -82,6 +89,7 @@ Full list:
 bash scripts/do.sh pipeline
 bash scripts/do.sh run
 bash scripts/do.sh smoke
+bash scripts/do.sh smoke-real
 bash scripts/do.sh check
 bash scripts/do.sh doctor
 bash scripts/do.sh start

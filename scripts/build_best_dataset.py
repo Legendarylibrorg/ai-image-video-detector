@@ -27,6 +27,7 @@ from hf_data import (
     iter_source_examples,
     load_hf_dataset_source,
     load_latest_source_manifest,
+    normalize_hf_token,
     normalize_image_dataset_split,
 )
 from image_materialize import (
@@ -325,7 +326,7 @@ def main():
     random.seed(args.seed)
     rng = random.Random(args.seed + 17)
 
-    token = os.environ.get(args.token_env)
+    token = normalize_hf_token(os.environ.get(args.token_env))
     if token:
         print(f"using_token_env={args.token_env}")
     else:

@@ -4,13 +4,34 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
+VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 
 load_env_file() {
-  if [[ -f "$ENV_FILE" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
-    set +a
+  if [[ ! -f "$ENV_FILE" ]]; then
+    return
+  fi
+  local -a env_names=()
+  local line=""
+  local name=""
+  local restore_script=""
+  while IFS= read -r line; do
+    case "$line" in
+      ''|\#*) continue ;;
+    esac
+    if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+      name="${line%%=*}"
+      env_names+=("$name")
+      if eval '[[ ${'"$name"'+x} && -n "${'"$name"'}" ]]'; then
+        restore_script+="$(eval "printf '%s=%q\n' '$name' \"\${$name}\"")"$'\n'
+      fi
+    fi
+  done < "$ENV_FILE"
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+  if [[ -n "$restore_script" ]]; then
+    eval "$restore_script"
   fi
 }
 
@@ -117,8 +138,23 @@ run_array_cmd() {
   fi
 }
 
+activate_repo_venv() {
+  local activate_script="$VENV_DIR/bin/activate"
+  if [[ -f "$activate_script" ]]; then
+    # shellcheck disable=SC1090
+    source "$activate_script"
+    return 0
+  fi
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo "[DRY_RUN] source $activate_script"
+    return 0
+  fi
+  echo "missing_virtualenv_activate=$activate_script run=bash scripts/install_deps.sh" >&2
+  return 1
+}
+
 run_cmd "bash scripts/install_deps.sh"
-source .venv/bin/activate
+activate_repo_venv
 
 if [[ "$SKIP_DATA" != "1" ]]; then
   dataset_cmd=(
