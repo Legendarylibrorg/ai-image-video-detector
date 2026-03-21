@@ -2,6 +2,7 @@
 
 This guide collects the repo command surfaces in one place.
 The repo-local Python environment is `./.venv`, created or reused by `./local.sh setup`.
+That setup also installs `huggingface_hub` into the same venv.
 
 The default path below assumes Linux:
 

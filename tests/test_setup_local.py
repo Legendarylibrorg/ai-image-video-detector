@@ -73,6 +73,26 @@ class SetupLocalTests(unittest.TestCase):
         self.assertIn("token=from_hub_env", proc.stdout)
         self.assertIn("HF_TOKEN='from_hub_env'", proc.stdout)
 
+    def test_print_next_step_prefers_smoke_then_run(self) -> None:
+        proc = self.run_bash(
+            "source scripts/setup_local.sh; "
+            "HF_TOKEN='from_env'; "
+            "HUGGINGFACE_HUB_TOKEN='from_env'; "
+            "print_next_step"
+        )
+
+        self.assertIn("setup_next=run ./local.sh smoke, then ./local.sh run", proc.stdout)
+
+    def test_install_python_deps_upgrades_toolchain_by_default(self) -> None:
+        proc = self.run_bash(
+            "source scripts/setup_local.sh; "
+            "run_setup_step_with_retry(){ printf 'upgrade=%s cmd=%s\\n' "
+            "\"${UPGRADE_TOOLCHAIN:-}\" \"$*\"; }; "
+            "install_python_deps"
+        )
+
+        self.assertIn("upgrade=1 cmd=python_deps bash scripts/install_deps.sh", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
