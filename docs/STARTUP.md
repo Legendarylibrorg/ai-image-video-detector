@@ -2,6 +2,30 @@
 
 This guide expands the startup path from the main README.
 
+## What the Linux pipeline does
+
+The repo is now organized around a local Linux pipeline:
+
+1. setup a pinned Python environment in `./.venv`
+2. collect image and video data locally
+3. curate image data into `./data_best`
+4. fold in incremental image data from `./data_new` when present
+5. prepare additive training data in `./.local/training_data`
+6. train local image and optional video models
+7. keep setup, collection, and training resumable through files under `./.local`
+
+The main operator commands are:
+
+```bash
+./local.sh setup
+./local.sh collect
+./local.sh collect-status
+./local.sh train
+./local.sh run
+```
+
+Use `./local.sh run` when you want the normal collect-plus-train path. Use `./local.sh collect` and `./local.sh train` when you want tighter control over each stage.
+
 ## Where `sudo` is needed
 
 Use `sudo` for Linux package-manager commands such as `apt-get` and `freshclam`:
@@ -49,14 +73,20 @@ What `setup` does:
 - copies `.env.example` to `.env` if needed
 - installs Linux packages when `apt-get` is available
 - creates or reuses `.venv`
-- installs pinned Python dependencies
+- installs pinned Python dependencies from `requirements.lock`
 - prepares local cache directories
 - runs `doctor` in non-strict mode so a missing `HF_TOKEN` is a warning instead of a hard failure
 
 4. Add your Hugging Face token to `.env`:
 
 ```bash
-HF_TOKEN='your_token_here'
+printf "HF_TOKEN='your_token_here'\n" >> .env
+```
+
+If you only want it for the current shell session:
+
+```bash
+export HF_TOKEN='your_token_here'
 ```
 
 5. Run the small validation path:
@@ -77,6 +107,22 @@ HF_TOKEN='your_token_here'
 - transient stage failures are retried automatically
 - collection defaults are tuned for authenticated Hugging Face limits and cache-first reuse
 
+What `run` does in practice:
+- runs image collection into `./data_best`
+- ingests new labeled outputs into `./data_new` when present
+- runs video collection into `./video_data`
+- prepares additive image training data in `./.local/training_data`
+- trains the image model
+- includes video training when a complete video dataset is already present
+
+You can inspect collection state at any time with:
+
+```bash
+./local.sh collect-status
+```
+
+That prints JSON with current dataset counts, source manifest state, and resume hints.
+
 ## One-command startup
 
 If you want setup plus full collection and training in one command:
@@ -88,7 +134,7 @@ HF_TOKEN='your_token_here' ./local.sh setup-full
 `setup-full`:
 - installs Linux packages when `apt-get` is available
 - creates or reuses `.venv`
-- installs pinned Python dependencies
+- installs pinned Python dependencies from `requirements.lock`
 - validates or prompts for `HF_TOKEN`
 - runs the full collection and training pipeline
 - retries automatically if a stage fails
@@ -120,6 +166,12 @@ bash scripts/install_deps.sh
 ./local.sh check
 ```
 
+`bash scripts/install_deps.sh`:
+- creates or reuses `.venv`
+- installs the pinned dependency set from `requirements.lock`
+- installs the local package in editable mode
+- uses the CUDA PyTorch wheel index on Linux when `nvidia-smi` is available
+
 ## Setup options
 
 - `SETUP_INSTALL_SYSTEM_DEPS`
@@ -145,6 +197,18 @@ Dependency lock workflow:
 - install pinned deps with `bash scripts/install_deps.sh`
 - refresh the lock with `./local.sh deps-update`
 - the install script skips reinstallation when `requirements.lock` and `pyproject.toml` are unchanged
+
+Collection and training data locations:
+- `./data_best`
+  Curated image dataset used as the main image training base.
+- `./data_new`
+  Incremental image data that will be merged into the next train path.
+- `./video_data`
+  Curated local video dataset.
+- `./.local/training_data`
+  Prepared additive image training dataset built from `./data_best` plus incremental inputs.
+- `./.local`
+  Cache, stage, and source-manifest state for resumable runs.
 
 Run pipeline controls:
 - `PIPELINE_MAX_ATTEMPTS`
@@ -174,6 +238,7 @@ Collection seems slow on first run:
 
 ```bash
 ./local.sh status
+./local.sh collect-status
 ./local.sh smoke
 ```
 

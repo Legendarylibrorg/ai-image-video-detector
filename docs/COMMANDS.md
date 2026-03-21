@@ -2,6 +2,38 @@
 
 This guide collects the repo command surfaces in one place.
 
+## Pipeline at a glance
+
+On Linux, the normal local workflow is:
+
+```bash
+./local.sh setup
+./local.sh collect
+./local.sh collect-status
+./local.sh train
+```
+
+Or, if you want the resumable combined path:
+
+```bash
+./local.sh setup
+./local.sh smoke
+./local.sh run
+```
+
+What each stage does:
+
+- `setup`
+  Creates or reuses `.venv`, installs pinned Python deps, prepares local cache dirs, and runs a health check.
+- `collect`
+  Builds or refreshes the local datasets under `./data_best` and `./video_data`, and can ingest new labeled outputs into `./data_new`.
+- `collect-status`
+  Shows image/video collection counts, source-manifest state, and resume hints.
+- `train`
+  Prepares additive image training data under `./.local/training_data` and trains the image model, with video training added when video data is complete.
+- `run`
+  Executes the normal resumable collect-plus-train pipeline.
+
 ## `./local.sh` commands
 
 Recommended first:
