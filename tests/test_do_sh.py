@@ -56,6 +56,7 @@ class DoShTests(unittest.TestCase):
         self.assertIn("pipeline", out)
         self.assertIn("run", out)
         self.assertIn("smoke", out)
+        self.assertIn("smoke-real", out)
         self.assertIn("collection-status", out)
         self.assertIn("check", out)
         self.assertIn("train-existing", out)
@@ -105,6 +106,36 @@ class DoShTests(unittest.TestCase):
         self.assertIn("--transient-error-cooldown-ms\n2500\n", out)
         self.assertIn("--hf-query-pause-ms\n900\n", out)
 
+    def test_collect_fast_data_builds_args_without_mapfile(self) -> None:
+        out = self.run_bash(
+            "source scripts/do.sh; "
+            "run_image_dataset_build(){ printf '%q\\n' \"$@\"; }; "
+            "FAST_HF_QUERIES='query one,query two'; "
+            "collect_fast_data"
+        )
+        self.assertIn("./data_best_fast", out)
+        self.assertIn("query\\ one\\,query\\ two", out)
+        self.assertIn("--hf-only", out)
+        self.assertIn("--require-full-targets", out)
+
+    def test_collect_diverse_image_data_builds_cached_args_without_mapfile(self) -> None:
+        out = self.run_bash(
+            "tmpdir=$(mktemp -d); "
+            "source scripts/do.sh; "
+            "run_image_dataset_builder(){ printf 'builder:%q\\n' \"$@\"; }; "
+            "run_malware_scan(){ printf 'scan:%q\\n' \"$@\"; }; "
+            "run_repo_python(){ printf 'python:%q\\n' \"$@\"; }; "
+            "DIVERSE_SKIP_DISCOVERY=1; "
+            "DIVERSE_HF_CACHE_FILE=\"$tmpdir/cache.txt\"; "
+            "printf 'repo/name\\n' > \"$DIVERSE_HF_CACHE_FILE\"; "
+            "collect_diverse_image_data"
+        )
+        self.assertIn("builder:./data_best", out)
+        self.assertIn("builder:--sources-file", out)
+        self.assertIn("builder:", out)
+        self.assertIn("python:scripts/audit_diversity.py", out)
+        self.assertIn("scan:./data_best", out)
+
     def test_prepare_training_image_data_works_without_copy_flag(self) -> None:
         out = self.run_bash(
             "tmpdir=$(mktemp -d); "
@@ -133,6 +164,31 @@ class DoShTests(unittest.TestCase):
             "echo ok"
         )
         self.assertEqual(out.strip().splitlines()[-1], "ok")
+
+    def test_load_env_file_preserves_explicit_env_overrides(self) -> None:
+        out = self.run_bash(
+            "tmpenv=$(mktemp); "
+            "printf 'MALWARE_SCAN=1\\nFAST_HF_ONLY=1\\n' > \"$tmpenv\"; "
+            "ENV_FILE=\"$tmpenv\"; "
+            "MALWARE_SCAN=0; "
+            "FAST_HF_ONLY=0; "
+            "source scripts/do.sh; "
+            "load_env_file; "
+            "printf '%s %s\\n' \"$MALWARE_SCAN\" \"$FAST_HF_ONLY\""
+        )
+        self.assertEqual(out.strip().splitlines()[-1], "0 0")
+
+    def test_load_env_file_uses_env_file_when_override_is_empty_string(self) -> None:
+        out = self.run_bash(
+            "tmpenv=$(mktemp); "
+            "printf 'HF_TOKEN=from_file\\n' > \"$tmpenv\"; "
+            "ENV_FILE=\"$tmpenv\"; "
+            "HF_TOKEN=''; "
+            "source scripts/do.sh; "
+            "load_env_file; "
+            "printf '%s\\n' \"$HF_TOKEN\""
+        )
+        self.assertEqual(out.strip().splitlines()[-1], "from_file")
 
 
 if __name__ == "__main__":

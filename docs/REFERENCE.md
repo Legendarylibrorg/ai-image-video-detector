@@ -8,10 +8,11 @@ This file keeps the README short and startup-focused while collecting the broade
 - trains local detectors
 - supports resumable setup and pipeline runs
 - stays in training-only mode; production serving is intentionally disabled
+- targets a simple local CUDA + PyTorch workflow, especially on RTX 4090-class hardware
 
 ## Current pipeline shape
 
-The current Linux pipeline is:
+The current pipeline is:
 
 1. setup a local pinned environment in `./.venv`
 2. collect and curate image data into `./data_best`
@@ -66,49 +67,17 @@ Video training writes artifacts such as:
 - `last_video.pt`
 - `epoch_video_XXX.pt`
 
-## Core workflows
+## Pipeline tools
 
-Train a model:
-
-```bash
-aid-train --data ./data --epochs 12 --img-size 256 --out ./artifacts
-```
-
-Resume training:
+The packaged CLI surface is intentionally small:
 
 ```bash
-aid-train --data ./data --out ./artifacts --epochs 12 --resume ./artifacts/last.pt --save-every 1
+aid-train
+aid-video-train
+aid-dataset
 ```
 
-Run prediction:
-
-```bash
-aid-detect --model ./artifacts/best.pt --image ./example.jpg --json
-```
-
-Run explainability:
-
-```bash
-aid-explain --model ./artifacts/best.pt --image ./example.jpg --out ./artifacts/explain --grid 8 --top-k 8
-```
-
-Run robustness evaluation:
-
-```bash
-aid-robust-eval --data ./data --model ./artifacts/best.pt --out ./artifacts/robust_eval.json
-```
-
-Train the temporal video model:
-
-```bash
-aid-video-train --data ./video_data --out ./video_artifacts --epochs 8 --frames 24 --img-size 224
-```
-
-Run video inference:
-
-```bash
-aid-video-detect-temporal --model ./video_artifacts/best_video.pt --video ./sample.mp4
-```
+Those commands exist to support the local pipeline scripts, not to turn this repo into a broad general-purpose app surface.
 
 ## Pipeline entrypoints
 
@@ -142,13 +111,13 @@ For deeper command coverage, see [COMMANDS.md](COMMANDS.md).
 
 ## Performance-oriented paths
 
-Quality-first pipeline:
+Quality-first 4090 pipeline:
 
 ```bash
 bash scripts/max_quality_4090.sh
 ```
 
-Full optimized pipeline:
+Full 4090-oriented pipeline:
 
 ```bash
 bash scripts/full_pipeline_4090.sh

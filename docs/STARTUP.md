@@ -2,6 +2,9 @@
 
 This guide expands the startup path from the main README.
 
+This guide assumes a Linux machine and keeps the setup commands explicit without burying the main path.
+The repo uses a pinned local virtualenv at `./.venv` for its Python dependencies and runtime.
+
 ## What the pipeline does
 
 The repo is now organized around a local pipeline:
@@ -46,8 +49,21 @@ bash scripts/do.sh pipeline
 ```
 
 Those should run as your normal user so the workspace, caches, and `.venv` stay owned by the right account.
+`./local.sh setup` creates or reuses that repo-local venv, and the pipeline scripts use it instead of the system Python.
 
-## Recommended startup flow
+## Recommended Flow
+
+If you want the shortest path, use:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
+./local.sh setup
+./local.sh run
+```
+
+Then come back to the detailed steps only if you need them.
 
 1. Enter the repo:
 
@@ -77,7 +93,7 @@ What `setup` does:
 - prepares local cache directories
 - runs `doctor` in non-strict mode so a missing `HF_TOKEN` is a warning instead of a hard failure
 
-4. Add your Hugging Face token to `.env`:
+4. During `./local.sh setup`, paste your Hugging Face token when prompted, or add it to `.env`:
 
 ```bash
 printf "HF_TOKEN='your_token_here'\n" >> .env

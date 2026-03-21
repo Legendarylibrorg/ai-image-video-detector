@@ -12,19 +12,26 @@ run_do() {
 
 print_usage() {
   cat <<'EOF'
-usage: ./local.sh [setup|run|smoke|collect|collect-status|train|retrain|continuous|check|status|scan [paths...]|deps-update]
+usage: ./local.sh [setup|run|status|smoke|smoke-real]
 
-recommended:
+linux quick start:
+  sudo apt-get update && sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
+  ./local.sh setup
+  ./local.sh run
+
+repo environment:
+  ./local.sh setup creates or reuses ./.venv
+  repo commands run inside that repo-local venv
+  do not use sudo for repo commands
+
+main pipeline commands:
   ./local.sh setup    # bootstrap deps and local env
   ./local.sh smoke    # quick collection sanity check
+  ./local.sh smoke-real # tiny real HF + CUDA smoke on a tokenized GPU box
   ./local.sh run      # resumable collect + train pipeline
-  ./local.sh train    # train on collected data already on disk
-  ./local.sh retrain  # merge fresh data and benchmark-gate a retrain
-  ./local.sh continuous # continuous collect + retrain loop
-  ./local.sh check    # preflight validation
-  ./local.sh collect-status # collection/build status and resume summary
+  ./local.sh status   # current pipeline and artifact summary
 
-aliases:
+advanced aliases still work:
   init/bootstrap -> setup
   pipeline       -> run
   refresh        -> retrain
@@ -32,7 +39,7 @@ aliases:
   quick          -> smoke
   doctor         -> check
   setup-full     -> bootstrap + full pipeline
-  start          -> advanced quality-first preset
+  start          -> 4090 quality-first preset
 EOF
 }
 
@@ -48,6 +55,9 @@ case "$cmd" in
     ;;
   smoke|quick|collect-fast)
     run_do smoke "$@"
+    ;;
+  smoke-real)
+    run_do smoke-real "$@"
     ;;
   collect)
     run_do collect-diverse "$@"

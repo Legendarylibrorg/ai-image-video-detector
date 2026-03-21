@@ -10,13 +10,35 @@ SETUP_STAGE_DIR="${SETUP_STAGE_DIR:-$ROOT_DIR/.local/stages}"
 SETUP_FORCE_STAGES="${SETUP_FORCE_STAGES:-0}"
 SETUP_INSTALL_SYSTEM_DEPS="${SETUP_INSTALL_SYSTEM_DEPS:-1}"
 SETUP_SKIP_DOCTOR="${SETUP_SKIP_DOCTOR:-0}"
+SETUP_PROMPT_FOR_HF_TOKEN="${SETUP_PROMPT_FOR_HF_TOKEN:-1}"
+SETUP_ALLOW_STDIN_TOKEN="${SETUP_ALLOW_STDIN_TOKEN:-0}"
 
 load_env_file() {
-  if [[ -f "$ENV_FILE" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
-    set +a
+  if [[ ! -f "$ENV_FILE" ]]; then
+    return
+  fi
+  local -a env_names=()
+  local line=""
+  local name=""
+  local restore_script=""
+  while IFS= read -r line; do
+    case "$line" in
+      ''|\#*) continue ;;
+    esac
+    if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+      name="${line%%=*}"
+      env_names+=("$name")
+      if eval '[[ ${'"$name"'+x} && -n "${'"$name"'}" ]]'; then
+        restore_script+="$(eval "printf '%s=%q\n' '$name' \"\${$name}\"")"$'\n'
+      fi
+    fi
+  done < "$ENV_FILE"
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+  if [[ -n "$restore_script" ]]; then
+    eval "$restore_script"
   fi
 }
 
@@ -54,6 +76,23 @@ save_hf_token_env() {
   fi
 }
 
+current_hf_token() {
+  if [[ -n "${HF_TOKEN:-}" ]]; then
+    printf "%s\n" "$HF_TOKEN"
+    return
+  fi
+  if [[ -n "${HUGGINGFACE_HUB_TOKEN:-}" ]]; then
+    printf "%s\n" "$HUGGINGFACE_HUB_TOKEN"
+    return
+  fi
+}
+
+set_hf_token_vars() {
+  local token="$1"
+  export HF_TOKEN="$token"
+  export HUGGINGFACE_HUB_TOKEN="$token"
+}
+
 ensure_env_file() {
   if [[ -f "$ENV_FILE" ]]; then
     echo "setup_stage=env_file status=skip_exists file=$ENV_FILE"
@@ -68,10 +107,47 @@ ensure_env_file() {
 }
 
 persist_env_hf_token_if_present() {
-  if [[ -z "${HF_TOKEN:-}" ]]; then
+  local token=""
+  token="$(current_hf_token)"
+  if [[ -z "$token" ]]; then
     return
   fi
-  save_hf_token_env "$HF_TOKEN"
+  set_hf_token_vars "$token"
+  save_hf_token_env "$token"
+  echo "setup_stage=env_token status=done file=$ENV_FILE"
+}
+
+prompt_for_hf_token_if_missing() {
+  local token=""
+  token="$(current_hf_token)"
+  if [[ -n "$token" ]]; then
+    return
+  fi
+  if [[ "$SETUP_PROMPT_FOR_HF_TOKEN" != "1" ]]; then
+    echo "setup_stage=env_token status=skip_opt_out"
+    return
+  fi
+  if [[ ! -t 0 && "$SETUP_ALLOW_STDIN_TOKEN" != "1" ]]; then
+    echo "setup_stage=env_token status=skip_noninteractive"
+    return
+  fi
+
+  local entered=""
+  echo "Hugging Face token can be saved to .env during setup."
+  if [[ -t 0 ]]; then
+    printf "Enter HF_TOKEN now (input hidden, press Enter to skip): "
+    read -r -s entered
+    echo
+  else
+    printf "Enter HF_TOKEN now (press Enter to skip): "
+    read -r entered || true
+  fi
+  if [[ -z "$entered" ]]; then
+    echo "setup_stage=env_token status=skip_empty"
+    return
+  fi
+  set_hf_token_vars "$entered"
+  save_hf_token_env "$entered"
   echo "setup_stage=env_token status=done file=$ENV_FILE"
 }
 
@@ -134,17 +210,23 @@ run_doctor() {
 
 print_next_step() {
   load_env_file
-  local token="${HF_TOKEN:-${HUGGINGFACE_HUB_TOKEN:-}}"
+  local token=""
+  token="$(current_hf_token)"
   if [[ -n "$token" ]]; then
     echo "setup_next=run ./local.sh collect-fast or ./local.sh collect"
   else
-    echo "setup_next=edit .env and set HF_TOKEN before ./local.sh collect-fast or ./local.sh setup-full"
+    echo "setup_next=rerun ./local.sh setup to add HF_TOKEN, or edit .env before ./local.sh collect-fast or ./local.sh setup-full"
   fi
 }
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
 
 ensure_env_file
 load_env_file
 persist_env_hf_token_if_present
+prompt_for_hf_token_if_missing
 install_system_deps
 ensure_python3
 prepare_local_dirs

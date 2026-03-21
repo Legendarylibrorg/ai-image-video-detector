@@ -1,9 +1,19 @@
+read_cmd_output_into_array() {
+  local array_name="$1"
+  shift
+  local line=""
+  eval "$array_name=()"
+  while IFS= read -r line; do
+    eval "$array_name+=(\"\$line\")"
+  done < <("$@")
+}
+
 run_image_dataset_builder() {
   local out="$1"
   local query_csv="$2"
   shift 2
   local -a query_args=()
-  mapfile -t query_args < <(print_hf_query_args "$query_csv")
+  read_cmd_output_into_array query_args print_hf_query_args "$query_csv"
   run_repo_python scripts/build_best_dataset.py \
     --out "$out" \
     "$@" \
@@ -16,7 +26,7 @@ run_image_dataset_discovery() {
   local query_csv="$3"
   shift 3
   local -a query_args=()
-  mapfile -t query_args < <(print_hf_query_args "$query_csv")
+  read_cmd_output_into_array query_args print_hf_query_args "$query_csv"
   run_repo_python_with_timeout "$timeout_sec" scripts/build_best_dataset.py \
     --out "$out" \
     "$@" \
@@ -194,7 +204,7 @@ collect_image_data() {
   local out="${DATA_DIR:-./data_best}"
   local query_csv="${BEST_DS_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}"
   local -a build_args=()
-  mapfile -t build_args < <(print_image_collection_args best)
+  read_cmd_output_into_array build_args print_image_collection_args best
   run_image_dataset_build "$out" "$query_csv" "${build_args[@]}"
 }
 
@@ -202,7 +212,7 @@ collect_fast_data() {
   local out="${DATA_DIR:-./data_best_fast}"
   local query_csv="${FAST_HF_QUERIES:-${BEST_DS_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}}"
   local -a build_args=()
-  mapfile -t build_args < <(print_image_collection_args fast)
+  read_cmd_output_into_array build_args print_image_collection_args fast
   run_image_dataset_build "$out" "$query_csv" "${build_args[@]}"
 }
 
@@ -278,7 +288,7 @@ print_diverse_audit_args() {
 audit_image_dataset() {
   local out="${1:-${DATA_DIR:-./data_best}}"
   local -a audit_args=()
-  mapfile -t audit_args < <(print_diverse_audit_args 1)
+  read_cmd_output_into_array audit_args print_diverse_audit_args 1
   run_repo_python scripts/audit_diversity.py \
     --data "$out" \
     "${audit_args[@]}"
@@ -295,10 +305,10 @@ collect_diverse_image_data() {
   local -a full_args=()
   local -a audit_args=()
 
-  mapfile -t common_args < <(print_diverse_common_args)
+  read_cmd_output_into_array common_args print_diverse_common_args
   full_args=("${common_args[@]}")
-  mapfile -t discover_args < <(print_diverse_discovery_args)
-  mapfile -t audit_args < <(print_diverse_audit_args)
+  read_cmd_output_into_array discover_args print_diverse_discovery_args
+  read_cmd_output_into_array audit_args print_diverse_audit_args
 
   if [[ "${DIVERSE_SKIP_DISCOVERY:-0}" != "1" ]]; then
     if ! run_image_dataset_discovery "$timeout_sec" "$out" "$query_csv" "${common_args[@]}" "${discover_args[@]}"; then
@@ -345,7 +355,7 @@ print_video_collection_args() {
 
 collect_video_data() {
   local -a video_args=()
-  mapfile -t video_args < <(print_video_collection_args)
+  read_cmd_output_into_array video_args print_video_collection_args
   run_repo_python scripts/build_video_dataset.py "${video_args[@]}"
   run_malware_scan "${VIDEO_OUT:-./video_data}"
 }

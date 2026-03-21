@@ -1,9 +1,29 @@
 load_env_file() {
-  if [[ -f "$ENV_FILE" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
-    set +a
+  if [[ ! -f "$ENV_FILE" ]]; then
+    return
+  fi
+  local -a env_names=()
+  local line=""
+  local name=""
+  local restore_script=""
+  while IFS= read -r line; do
+    case "$line" in
+      ''|\#*) continue ;;
+    esac
+    if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+      name="${line%%=*}"
+      env_names+=("$name")
+      if eval '[[ ${'"$name"'+x} && -n "${'"$name"'}" ]]'; then
+        restore_script+="$(eval "printf '%s=%q\n' '$name' \"\${$name}\"")"$'\n'
+      fi
+    fi
+  done < "$ENV_FILE"
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+  if [[ -n "$restore_script" ]]; then
+    eval "$restore_script"
   fi
 }
 
@@ -11,9 +31,15 @@ ensure_env() {
   if [[ "$ENV_READY" == "1" ]]; then
     return
   fi
-  bash scripts/install_deps.sh
+  local venv_dir="${VENV_DIR:-$ROOT_DIR/.venv}"
+  # Keep dependency bootstrap chatter off stdout so status commands can stay machine-readable.
+  bash scripts/install_deps.sh >&2
+  if [[ ! -f "$venv_dir/bin/activate" ]]; then
+    echo "missing_virtualenv_activate=$venv_dir/bin/activate run=bash scripts/install_deps.sh" >&2
+    return 1
+  fi
   # shellcheck disable=SC1091
-  source .venv/bin/activate
+  source "$venv_dir/bin/activate"
   ENV_READY=1
 }
 
@@ -138,7 +164,7 @@ run_collection_command() {
 }
 
 print_usage() {
-  echo "usage: bash scripts/do.sh [pipeline|run|smoke|check|start|start-v2|collect|collect-diverse|collect-fast|collect-image|collect-video|collection-status|ingest|scan [paths...]|train|train-existing|train-image|train-video|train-all|retrain|continuous|train-all-types|deps-update|doctor|status]"
+  echo "usage: bash scripts/do.sh [pipeline|run|smoke|smoke-real|check|start|start-v2|collect|collect-diverse|collect-fast|collect-image|collect-video|collection-status|ingest|scan [paths...]|train|train-existing|train-image|train-video|train-all|retrain|continuous|train-all-types|deps-update|doctor|status]"
 }
 
 run_doctor_check() {

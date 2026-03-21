@@ -13,6 +13,8 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("[docs/STARTUP.md](docs/STARTUP.md)", text)
         self.assertIn("[docs/COMMANDS.md](docs/COMMANDS.md)", text)
         self.assertIn("[docs/REFERENCE.md](docs/REFERENCE.md)", text)
+        self.assertIn("local Linux machine", text)
+        self.assertIn("local virtualenv at `./.venv`", text)
         self.assertIn("sudo apt-get update", text)
         self.assertIn("./local.sh setup", text)
         self.assertIn("./local.sh run", text)
@@ -26,6 +28,15 @@ class DocsSurfaceTests(unittest.TestCase):
             text,
         )
         self.assertIn("Do not use `sudo` for repo commands", text)
+        self.assertIn("pinned local virtualenv at `./.venv`", text)
+
+    def test_commands_doc_starts_with_linux_quick_start(self) -> None:
+        text = (ROOT / "docs" / "COMMANDS.md").read_text(encoding="utf-8")
+        self.assertIn("The default path below assumes Linux", text)
+        self.assertIn("repo-local Python environment is `./.venv`", text)
+        self.assertIn("sudo apt-get update", text)
+        self.assertIn("./local.sh setup", text)
+        self.assertIn("./local.sh run", text)
 
 
 if __name__ == "__main__":

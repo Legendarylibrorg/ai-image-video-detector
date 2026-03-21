@@ -6,6 +6,7 @@ set -euo pipefail
 #   bash scripts/do.sh pipeline
 #   bash scripts/do.sh run
 #   bash scripts/do.sh smoke
+#   bash scripts/do.sh smoke-real
 #   bash scripts/do.sh check
 #   bash scripts/do.sh start
 #   bash scripts/do.sh start-v2
@@ -57,6 +58,10 @@ case "$cmd" in
 
   smoke)
     run_simple_collection_smoke
+    ;;
+
+  smoke-real)
+    bash scripts/smoke_real_stack.sh
     ;;
 
   check|doctor)

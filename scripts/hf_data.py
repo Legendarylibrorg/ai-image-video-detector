@@ -38,6 +38,11 @@ def write_noncomment_lines(path: Path, items: Sequence[str]) -> None:
     path.write_text(text + ("\n" if text else ""), encoding="utf-8")
 
 
+def normalize_hf_token(token: str | None) -> str | None:
+    cleaned = (token or "").strip()
+    return cleaned or None
+
+
 def load_hf_dataset_source(
     source_id: str,
     *,
@@ -46,6 +51,7 @@ def load_hf_dataset_source(
     cache_dir: str | None = None,
     preferred_splits: Sequence[str] = PREFERRED_SPLITS,
 ) -> LoadedDatasetSource:
+    token = normalize_hf_token(token)
     kwargs = {
         "streaming": bool(streaming),
         "cache_dir": cache_dir or None,
@@ -163,7 +169,7 @@ def snapshot_dataset_repo(
     return snapshot_download(
         repo_id=repo_id,
         repo_type="dataset",
-        token=token,
+        token=normalize_hf_token(token),
         allow_patterns=list(allow_patterns or []),
         resume_download=True,
         max_workers=max(1, int(max_workers)),
@@ -174,13 +180,13 @@ def snapshot_dataset_repo(
 def list_dataset_repo_files(repo_id: str, *, token: str | None = None) -> list[str]:
     from huggingface_hub import list_repo_files
 
-    return list_repo_files(repo_id, repo_type="dataset", token=token)
+    return list_repo_files(repo_id, repo_type="dataset", token=normalize_hf_token(token))
 
 
 def download_dataset_file(repo_id: str, filename: str, *, token: str | None = None) -> str:
     from huggingface_hub import hf_hub_download
 
-    return hf_hub_download(repo_id=repo_id, repo_type="dataset", filename=filename, token=token)
+    return hf_hub_download(repo_id=repo_id, repo_type="dataset", filename=filename, token=normalize_hf_token(token))
 
 
 def load_latest_source_manifest(path: Path) -> dict[str, dict]:
