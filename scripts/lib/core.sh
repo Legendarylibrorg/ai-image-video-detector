@@ -1,0 +1,199 @@
+load_env_file() {
+  if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+  fi
+}
+
+ensure_env() {
+  if [[ "$ENV_READY" == "1" ]]; then
+    return
+  fi
+  bash scripts/install_deps.sh
+  # shellcheck disable=SC1091
+  source .venv/bin/activate
+  ENV_READY=1
+}
+
+is_training_active() {
+  [[ -f "$TRAIN_LOCK" ]]
+}
+
+stage_file() {
+  local stage="$1"
+  echo "$PIPELINE_STAGE_DIR/${stage}.done"
+}
+
+stage_done() {
+  local stage="$1"
+  if [[ "$PIPELINE_FORCE_STAGES" == "1" ]]; then
+    return 1
+  fi
+  [[ -f "$(stage_file "$stage")" ]]
+}
+
+mark_stage_done() {
+  local stage="$1"
+  mkdir -p "$PIPELINE_STAGE_DIR"
+  printf "%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$(stage_file "$stage")"
+}
+
+wait_for_training_to_finish() {
+  local reason="${1:-pipeline}"
+  while is_training_active; do
+    echo "${reason}: training lock present ($TRAIN_LOCK), sleeping ${PIPELINE_WAIT_FOR_TRAINING_SEC}s"
+    sleep "$PIPELINE_WAIT_FOR_TRAINING_SEC"
+  done
+}
+
+acquire_training_lock() {
+  mkdir -p "$(dirname "$TRAIN_LOCK")"
+  if ( set -o noclobber; printf "%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$TRAIN_LOCK" ) 2>/dev/null; then
+    return 0
+  fi
+  echo "training lock active path=$TRAIN_LOCK"
+  return 1
+}
+
+release_training_lock() {
+  rm -f "$TRAIN_LOCK"
+}
+
+with_training_lock() {
+  if ! acquire_training_lock; then
+    return 1
+  fi
+  local status=0
+  trap 'release_training_lock' EXIT INT TERM
+  if "$@"; then
+    status=0
+  else
+    status=$?
+  fi
+  release_training_lock
+  trap - EXIT INT TERM
+  return "$status"
+}
+
+run_with_retry() {
+  local label="$1"
+  shift
+  local attempt=1
+  while true; do
+    echo "pipeline_step=${label} status=run attempt=${attempt}/${PIPELINE_MAX_ATTEMPTS}"
+    if "$@"; then
+      echo "pipeline_step=${label} status=done"
+      return 0
+    fi
+    if [[ "$attempt" -ge "$PIPELINE_MAX_ATTEMPTS" ]]; then
+      echo "pipeline_step=${label} status=failed attempts=$attempt"
+      return 1
+    fi
+    echo "pipeline_step=${label} status=retry sleep_sec=${PIPELINE_RETRY_SLEEP_SEC}"
+    sleep "$PIPELINE_RETRY_SLEEP_SEC"
+    attempt=$((attempt + 1))
+  done
+}
+
+run_stage_once() {
+  local stage="$1"
+  shift
+  local status=0
+  if stage_done "$stage"; then
+    echo "pipeline_stage=${stage} status=skip_done"
+    return 0
+  fi
+  if "$@"; then
+    status=0
+  else
+    status=$?
+  fi
+  if [[ "$status" -ne 0 ]]; then
+    return "$status"
+  fi
+  mark_stage_done "$stage"
+}
+
+run_pipeline_stage() {
+  local stage="$1"
+  shift
+  run_with_retry "$stage" run_stage_once "$stage" "$@"
+}
+
+skip_collection_if_training() {
+  if is_training_active; then
+    echo "collection skipped because training is active (lock: $TRAIN_LOCK)."
+    return 0
+  fi
+  return 1
+}
+
+run_collection_command() {
+  if skip_collection_if_training; then
+    return 0
+  fi
+  "$@"
+}
+
+print_usage() {
+  echo "usage: bash scripts/do.sh [pipeline|run|smoke|check|start|start-v2|collect|collect-diverse|collect-fast|collect-image|collect-video|ingest|scan [paths...]|train|train-existing|train-image|train-video|train-all|retrain|continuous|train-all-types|deps-update|doctor|status]"
+}
+
+run_doctor_check() {
+  bash scripts/doctor.sh "$@"
+}
+
+run_malware_scan() {
+  if [[ "${MALWARE_SCAN:-1}" != "1" ]]; then
+    echo "malware_scan=disabled"
+    return 0
+  fi
+  local -a targets=("$@")
+  if [[ "${#targets[@]}" -eq 0 ]]; then
+    targets=("${DATA_DIR:-./data_best}" "${NEW_DATA_DST:-./data_new/train}" "${VIDEO_OUT:-./video_data}" "${MODEL_OUTPUTS_SRC:-./incoming_model_outputs}")
+  fi
+  bash scripts/malware_scan.sh "${targets[@]}"
+}
+
+print_hf_query_args() {
+  local query_csv="$1"
+  IFS=',' read -r -a _queries <<< "$query_csv"
+  local q=""
+  for q in "${_queries[@]}"; do
+    q="$(echo "$q" | xargs)"
+    [[ -z "$q" ]] && continue
+    printf "%s\n" --hf-query "$q"
+  done
+}
+
+print_cli_flag() {
+  printf "%s\n" "$1"
+}
+
+print_cli_flag_value() {
+  printf "%s\n%s\n" "$1" "$2"
+}
+
+print_cli_flag_value_from_env() {
+  local flag="$1"
+  local env_name="$2"
+  local default="$3"
+  print_cli_flag_value "$flag" "${!env_name:-$default}"
+}
+
+print_cli_flag_values_from_csv() {
+  local flag="$1"
+  local csv="${2:-}"
+  local -a values=()
+  local value=""
+  [[ -z "$csv" ]] && return 0
+  IFS=',' read -r -a values <<< "$csv"
+  for value in "${values[@]}"; do
+    value="$(echo "$value" | xargs)"
+    [[ -z "$value" ]] && continue
+    print_cli_flag_value "$flag" "$value"
+  done
+}
+
