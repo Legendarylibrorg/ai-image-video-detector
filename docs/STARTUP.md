@@ -1,10 +1,10 @@
-# Linux Startup Guide
+# Startup Guide
 
 This guide expands the startup path from the main README.
 
-## What the Linux pipeline does
+## What the pipeline does
 
-The repo is now organized around a local Linux pipeline:
+The repo is now organized around a local pipeline:
 
 1. setup a pinned Python environment in `./.venv`
 2. collect image and video data locally
