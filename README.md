@@ -7,9 +7,9 @@ This repository is for one job:
 
 It is not a production serving repo in the current mode.
 
-## Current Linux Pipeline
+## Current Pipeline
 
-On a Linux machine, the repo now runs a local-first pipeline with a pinned `.venv`, Hugging Face dataset ingestion, resumable collection, additive training-data preparation, and local PyTorch training.
+The repo now runs a local-first pipeline with a pinned `.venv`, Hugging Face dataset ingestion, resumable collection, additive training-data preparation, and local PyTorch training.
 
 The normal flow is:
 
@@ -49,9 +49,7 @@ Important local directories:
 
 ## Startup
 
-Linux is the best-supported host.
-
-### Linux quick start
+### Quick start
 
 1. Enter the repo:
 
@@ -59,7 +57,7 @@ Linux is the best-supported host.
 cd /path/to/image-spam
 ```
 
-2. Install system packages if your machine does not already have them. These are the commands that normally need `sudo`:
+2. Install the required system packages:
 
 ```bash
 sudo apt-get update
@@ -136,7 +134,7 @@ If you want setup plus the full collect-and-train flow in one command:
 HF_TOKEN='your_token_here' ./local.sh setup-full
 ```
 
-### Manual Linux bootstrap
+### Manual bootstrap
 
 Only use this if you do not want `./local.sh setup`:
 
