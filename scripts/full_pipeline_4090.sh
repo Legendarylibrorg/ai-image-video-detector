@@ -5,35 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
-
-load_env_file() {
-  if [[ ! -f "$ENV_FILE" ]]; then
-    return
-  fi
-  local -a env_names=()
-  local line=""
-  local name=""
-  local restore_script=""
-  while IFS= read -r line; do
-    case "$line" in
-      ''|\#*) continue ;;
-    esac
-    if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
-      name="${line%%=*}"
-      env_names+=("$name")
-      if eval '[[ ${'"$name"'+x} && -n "${'"$name"'}" ]]'; then
-        restore_script+="$(eval "printf '%s=%q\n' '$name' \"\${$name}\"")"$'\n'
-      fi
-    fi
-  done < "$ENV_FILE"
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
-  if [[ -n "$restore_script" ]]; then
-    eval "$restore_script"
-  fi
-}
+source "$ROOT_DIR/scripts/lib/env.sh"
 
 load_env_file
 

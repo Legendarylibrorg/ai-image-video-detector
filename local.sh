@@ -12,43 +12,51 @@ run_do() {
 
 print_usage() {
   cat <<'EOF'
-usage: ./local.sh [setup|run|status|smoke|smoke-real]
+usage: ./local.sh [setup|deps|doctor|run|status|smoke|smoke-real]
 
-linux quick start:
-  sudo apt-get update && sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
+linux setup:
+  1. sudo apt-get update
+  2. sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
+  3. sudo freshclam || true
+  4. ./local.sh setup
+  5. ./local.sh run
+  6. ./local.sh status
+
+repo dependency install:
   ./local.sh setup
-  ./local.sh run
-
-repo environment:
-  ./local.sh setup creates or reuses ./.venv
+  creates or reuses ./.venv and installs pinned Python deps
   repo commands run inside that repo-local venv
   do not use sudo for repo commands
 
+manual linux fallback:
+  python3 -m venv .venv
+  ./local.sh deps
+  ./local.sh doctor
+  printf "HF_TOKEN='your_token_here'\n" >> .env
+  ./local.sh smoke
+  ./local.sh run
+  ./local.sh status
+
 main pipeline commands:
   ./local.sh setup    # bootstrap deps and local env
-  ./local.sh smoke    # quick collection sanity check
-  ./local.sh smoke-real # tiny real HF + CUDA smoke on a tokenized GPU box
   ./local.sh run      # resumable collect + train pipeline
   ./local.sh status   # current pipeline and artifact summary
 
-advanced aliases still work:
-  init/bootstrap -> setup
-  pipeline       -> run
-  refresh        -> retrain
-  autocollect    -> continuous
-  quick          -> smoke
-  doctor         -> check
-  setup-full     -> bootstrap + full pipeline
-  start          -> 4090 quality-first preset
+optional validation:
+  ./local.sh smoke      # quick collection sanity check
+  ./local.sh smoke-real # tiny real HF + CUDA smoke on a tokenized GPU box
 EOF
 }
 
 case "$cmd" in
   setup|init|bootstrap)
-    bash scripts/setup_local.sh
+    SETUP_RUN_PIPELINE=0 bash scripts/setup_linux.sh
+    ;;
+  deps)
+    bash scripts/install_deps.sh
     ;;
   setup-full)
-    bash scripts/setup_linux.sh
+    SETUP_RUN_PIPELINE=1 bash scripts/setup_linux.sh
     ;;
   run|pipeline)
     run_do pipeline "$@"

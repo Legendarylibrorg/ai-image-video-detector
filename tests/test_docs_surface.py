@@ -18,7 +18,10 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("huggingface_hub", text)
         self.assertIn("sudo apt-get update", text)
         self.assertIn("./local.sh setup", text)
+        self.assertIn("./local.sh deps", text)
+        self.assertIn("./local.sh doctor", text)
         self.assertIn("./local.sh run", text)
+        self.assertNotIn("Everything else is advanced/internal", text)
         self.assertNotIn("## Advanced Reference", text)
 
     def test_startup_doc_marks_sudo_only_for_system_commands(self) -> None:
@@ -30,6 +33,9 @@ class DocsSurfaceTests(unittest.TestCase):
         )
         self.assertIn("Do not use `sudo` for repo commands", text)
         self.assertIn("pinned local virtualenv at `./.venv`", text)
+        self.assertIn("./local.sh deps", text)
+        self.assertIn("./local.sh doctor", text)
+        self.assertNotIn("## Setup options", text)
 
     def test_commands_doc_starts_with_linux_quick_start(self) -> None:
         text = (ROOT / "docs" / "COMMANDS.md").read_text(encoding="utf-8")
@@ -38,7 +44,10 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("huggingface_hub", text)
         self.assertIn("sudo apt-get update", text)
         self.assertIn("./local.sh setup", text)
+        self.assertIn("./local.sh deps", text)
+        self.assertIn("./local.sh doctor", text)
         self.assertIn("./local.sh run", text)
+        self.assertNotIn("## Raw `scripts/do.sh` commands", text)
 
 
 if __name__ == "__main__":

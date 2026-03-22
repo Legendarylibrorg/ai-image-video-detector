@@ -14,119 +14,8 @@ SETUP_PROMPT_FOR_HF_TOKEN="${SETUP_PROMPT_FOR_HF_TOKEN:-1}"
 SETUP_ALLOW_STDIN_TOKEN="${SETUP_ALLOW_STDIN_TOKEN:-0}"
 SETUP_MAX_ATTEMPTS="${SETUP_MAX_ATTEMPTS:-3}"
 SETUP_RETRY_SLEEP_SEC="${SETUP_RETRY_SLEEP_SEC:-10}"
-
-load_env_file() {
-  if [[ ! -f "$ENV_FILE" ]]; then
-    return
-  fi
-  local -a env_names=()
-  local line=""
-  local name=""
-  local restore_script=""
-  while IFS= read -r line; do
-    case "$line" in
-      ''|\#*) continue ;;
-    esac
-    if [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
-      name="${line%%=*}"
-      env_names+=("$name")
-      if eval '[[ ${'"$name"'+x} && -n "${'"$name"'}" ]]'; then
-        restore_script+="$(eval "printf '%s=%q\n' '$name' \"\${$name}\"")"$'\n'
-      fi
-    fi
-  done < "$ENV_FILE"
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
-  if [[ -n "$restore_script" ]]; then
-    eval "$restore_script"
-  fi
-}
-
-stage_file() {
-  local stage="$1"
-  echo "$SETUP_STAGE_DIR/${stage}.done"
-}
-
-stage_done() {
-  local stage="$1"
-  if [[ "$SETUP_FORCE_STAGES" == "1" ]]; then
-    return 1
-  fi
-  [[ -f "$(stage_file "$stage")" ]]
-}
-
-mark_stage_done() {
-  local stage="$1"
-  mkdir -p "$SETUP_STAGE_DIR"
-  printf "%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$(stage_file "$stage")"
-}
-
-run_setup_step_with_retry() {
-  local stage="$1"
-  shift
-  local attempt=1
-  while true; do
-    echo "setup_stage=$stage status=run attempt=$attempt/$SETUP_MAX_ATTEMPTS"
-    if "$@"; then
-      echo "setup_stage=$stage status=done"
-      return 0
-    fi
-    if [[ "$attempt" -ge "$SETUP_MAX_ATTEMPTS" ]]; then
-      echo "setup_stage=$stage status=failed attempts=$attempt"
-      return 1
-    fi
-    echo "setup_stage=$stage status=retry sleep_sec=$SETUP_RETRY_SLEEP_SEC"
-    sleep "$SETUP_RETRY_SLEEP_SEC"
-    attempt=$((attempt + 1))
-  done
-}
-
-save_hf_token_env() {
-  local token="$1"
-  mkdir -p "$(dirname "$ENV_FILE")"
-  if [[ -f "$ENV_FILE" ]]; then
-    if grep -q '^HF_TOKEN=' "$ENV_FILE"; then
-      sed -i.bak "s|^HF_TOKEN=.*$|HF_TOKEN='$token'|" "$ENV_FILE"
-      rm -f "${ENV_FILE}.bak"
-    else
-      printf "\nHF_TOKEN='%s'\n" "$token" >> "$ENV_FILE"
-    fi
-  else
-    printf "HF_TOKEN='%s'\n" "$token" > "$ENV_FILE"
-  fi
-}
-
-current_hf_token() {
-  if [[ -n "${HF_TOKEN:-}" ]]; then
-    printf "%s\n" "$HF_TOKEN"
-    return
-  fi
-  if [[ -n "${HUGGINGFACE_HUB_TOKEN:-}" ]]; then
-    printf "%s\n" "$HUGGINGFACE_HUB_TOKEN"
-    return
-  fi
-}
-
-set_hf_token_vars() {
-  local token="$1"
-  export HF_TOKEN="$token"
-  export HUGGINGFACE_HUB_TOKEN="$token"
-}
-
-ensure_env_file() {
-  if [[ -f "$ENV_FILE" ]]; then
-    echo "setup_stage=env_file status=skip_exists file=$ENV_FILE"
-    return
-  fi
-  if [[ ! -f "$ENV_EXAMPLE_FILE" ]]; then
-    echo "setup_stage=env_file status=skip_missing_example file=$ENV_EXAMPLE_FILE"
-    return
-  fi
-  cp "$ENV_EXAMPLE_FILE" "$ENV_FILE"
-  echo "setup_stage=env_file status=done file=$ENV_FILE"
-}
+source "$ROOT_DIR/scripts/lib/env.sh"
+source "$ROOT_DIR/scripts/lib/setup_common.sh"
 
 persist_env_hf_token_if_present() {
   local token=""
@@ -173,14 +62,6 @@ prompt_for_hf_token_if_missing() {
   echo "setup_stage=env_token status=done file=$ENV_FILE"
 }
 
-ensure_python3() {
-  if command -v python3 >/dev/null 2>&1; then
-    return
-  fi
-  echo "setup_fail: python3_missing install_python3_and_retry=1"
-  exit 1
-}
-
 install_system_deps() {
   if [[ "$SETUP_INSTALL_SYSTEM_DEPS" != "1" ]]; then
     echo "setup_stage=system_deps status=skip_opt_out"
@@ -198,24 +79,19 @@ install_system_deps() {
   echo "setup_stage=system_deps status=run"
   if command -v sudo >/dev/null 2>&1; then
     sudo apt-get update
-    sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
     sudo freshclam || true
   else
     apt-get update
-    apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
+    env DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
     freshclam || true
   fi
   mark_stage_done "bootstrap_apt_deps"
   echo "setup_stage=system_deps status=done"
 }
 
-prepare_local_dirs() {
-  mkdir -p "$ROOT_DIR/.local" "$ROOT_DIR/.local/hf"
-  echo "setup_stage=local_dirs status=done"
-}
-
 install_python_deps() {
-  UPGRADE_TOOLCHAIN="${UPGRADE_TOOLCHAIN:-1}" run_setup_step_with_retry python_deps bash scripts/install_deps.sh
+  UPGRADE_TOOLCHAIN="${UPGRADE_TOOLCHAIN:-0}" run_setup_step_with_retry python_deps bash scripts/install_deps.sh
 }
 
 run_doctor() {
