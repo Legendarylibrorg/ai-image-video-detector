@@ -29,6 +29,7 @@ class SetupLocalTests(unittest.TestCase):
                 f"ENV_FILE='{env_file}'; "
                 "HF_TOKEN=''; "
                 "HUGGINGFACE_HUB_TOKEN=''; "
+                "SETUP_PROMPT_FOR_HF_TOKEN=1; "
                 "SETUP_ALLOW_STDIN_TOKEN=1; "
                 "prompt_for_hf_token_if_missing; "
                 "printf 'token=%s\\n' \"$HF_TOKEN\"; "
@@ -54,6 +55,15 @@ class SetupLocalTests(unittest.TestCase):
             )
 
         self.assertIn("setup_stage=env_token status=skip_opt_out", proc.stdout)
+
+    def test_setup_local_defaults_to_nonblocking_token_behavior(self) -> None:
+        proc = self.run_bash(
+            "source scripts/setup_local.sh; "
+            "printf 'prompt=%s attempts=%s sleep=%s\\n' "
+            "\"$SETUP_PROMPT_FOR_HF_TOKEN\" \"$SETUP_MAX_ATTEMPTS\" \"$SETUP_RETRY_SLEEP_SEC\""
+        )
+
+        self.assertIn("prompt=0 attempts=2 sleep=5", proc.stdout)
 
     def test_persist_env_hf_token_if_present_uses_hub_token_env(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

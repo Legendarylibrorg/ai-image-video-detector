@@ -24,12 +24,16 @@ class LocalShTests(unittest.TestCase):
         self.assertIn("linux setup", out.lower())
         self.assertIn("sudo apt-get update", out)
         self.assertIn("./local.sh setup", out)
+        self.assertIn("printf \"HF_TOKEN='your_token_here'\\n\" >> .env", out)
+        self.assertIn("./local.sh smoke", out)
+        self.assertIn("python3 -m venv .venv", out)
+        self.assertIn("source .venv/bin/activate", out)
         self.assertIn("./local.sh deps", out)
         self.assertIn("./local.sh doctor", out)
-        self.assertIn("./local.sh smoke", out)
         self.assertIn("./local.sh smoke-real", out)
         self.assertIn("./local.sh run", out)
         self.assertIn("./local.sh status", out)
+        self.assertIn("does not pause to prompt for HF_TOKEN by default", out)
         self.assertIn("repo-local venv", out.lower())
         self.assertNotIn("advanced aliases still work", out.lower())
         self.assertNotIn("detect <image>", out)
@@ -55,6 +59,23 @@ class LocalShTests(unittest.TestCase):
         self.assertIn("[DRY_RUN] bash scripts/install_deps.sh", out)
         self.assertIn("[DRY_RUN] bash scripts/doctor.sh", out)
         self.assertIn("setup_status=ready", out)
+
+    def test_hidden_venv_command_creates_custom_venv(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            venv_dir = Path(tmpdir) / "repo-venv"
+            proc = subprocess.run(
+                ["bash", "./local.sh", "venv"],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "VENV_DIR": str(venv_dir)},
+            )
+
+        self.assertIn("venv_status=", proc.stdout)
+        self.assertIn(str(venv_dir), proc.stdout)
 
     def test_deps_command_runs_install_script(self) -> None:
         proc = subprocess.run(

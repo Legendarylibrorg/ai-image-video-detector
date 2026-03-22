@@ -12,4 +12,4 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-bash scripts/setup_linux.sh
+HF_SETUP_REQUIRE_TOKEN="${HF_SETUP_REQUIRE_TOKEN:-0}" SETUP_RUN_PIPELINE=1 bash scripts/setup_linux.sh
