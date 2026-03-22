@@ -24,6 +24,7 @@ set -euo pipefail
 #   bash scripts/do.sh train-all-types
 #   bash scripts/do.sh deps-update
 #   bash scripts/do.sh doctor
+#   bash scripts/do.sh preflight
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -51,8 +52,15 @@ load_env_file
 cmd="${1:-start}"
 shift || true
 
+case ",$GPU_REQUIRED_CMDS," in
+  *,"$cmd",*)
+    require_gpu_ready
+    ;;
+esac
+
 case "$cmd" in
   pipeline|run)
+    run_preflight_check
     run_full_pipeline
     ;;
 
@@ -61,7 +69,12 @@ case "$cmd" in
     ;;
 
   smoke-real)
+    run_preflight_check
     bash scripts/smoke_real_stack.sh
+    ;;
+
+  preflight)
+    run_preflight_check
     ;;
 
   check|doctor)
@@ -70,11 +83,13 @@ case "$cmd" in
 
   start)
     # Full, best-quality pipeline.
+    run_preflight_check
     with_training_lock bash scripts/max_quality_4090.sh
     ;;
 
   start-v2)
     # Max-accuracy v2 pipeline with domain calibration + refinement loops.
+    run_preflight_check
     with_training_lock bash scripts/max_accuracy_v2.sh
     ;;
 

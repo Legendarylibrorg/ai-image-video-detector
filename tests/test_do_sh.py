@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import tempfile
 import subprocess
 import unittest
 
@@ -189,6 +190,43 @@ class DoShTests(unittest.TestCase):
             "printf '%s\\n' \"$HF_TOKEN\""
         )
         self.assertEqual(out.strip().splitlines()[-1], "from_file")
+
+    def test_wait_for_training_to_finish_clears_stale_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "training.lock"
+            lock_path.write_text("old\n", encoding="utf-8")
+            out = self.run_bash(
+                f"source scripts/do.sh; "
+                f"TRAIN_LOCK='{lock_path}'; "
+                "TRAIN_LOCK_STALE_SEC=0; "
+                "wait_for_training_to_finish test; "
+                f"[[ ! -f '{lock_path}' ]] && echo cleared"
+            )
+
+        self.assertIn("training_lock=stale_cleared", out)
+        self.assertEqual(out.strip().splitlines()[-1], "cleared")
+
+    def test_preflight_command_requires_gpu(self) -> None:
+        proc = subprocess.run(
+            ["bash", "scripts/do.sh", "preflight"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("doctor_fail: nvidia_smi_missing gpu_required=1", proc.stdout)
+
+    def test_run_command_fails_fast_when_gpu_missing(self) -> None:
+        proc = subprocess.run(
+            ["bash", "scripts/do.sh", "run"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("gpu_required=1 reason=nvidia_smi_missing", proc.stderr)
 
 
 if __name__ == "__main__":

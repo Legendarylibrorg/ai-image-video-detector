@@ -4,26 +4,37 @@ This guide collects the repo command surfaces in one place.
 The repo-local Python environment is `./.venv`, created or reused by `./local.sh setup`.
 That setup also installs `huggingface_hub`, the `hf` CLI, and the repo CLI commands into the same venv.
 
-The default path below assumes Linux:
+The basic Linux command path is:
 
 ```bash
-./local.sh setup
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
+git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
+cd ai-image-video-detector
+python3 -m venv .venv
+source .venv/bin/activate
+./local.sh deps
+./local.sh doctor
 printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh smoke
 ./local.sh run
 ./local.sh status
 ```
 
-One-line install without downloading a zip:
+Shortcut installers:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
-cd ai-image-video-detector
+```
+
+```bash
+./local.sh setup
 ```
 
 ## Pipeline at a glance
 
-The normal local workflow is the default path above.
+The normal local workflow is the basic Linux path above.
 
 What each stage does:
 
@@ -38,7 +49,7 @@ What each stage does:
 
 ## `./local.sh` commands
 
-Recommended first: use the same default path above.
+Recommended first: use the same basic Linux path above.
 
 Manual fallback:
 

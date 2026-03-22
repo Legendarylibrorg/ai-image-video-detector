@@ -21,7 +21,7 @@ class LocalShTests(unittest.TestCase):
         )
 
         out = proc.stdout
-        self.assertIn("linux setup", out.lower())
+        self.assertIn("basic linux commands inside the repo", out.lower())
         self.assertIn("sudo apt-get update", out)
         self.assertIn("./local.sh setup", out)
         self.assertIn("printf \"HF_TOKEN='your_token_here'\\n\" >> .env", out)
@@ -30,6 +30,7 @@ class LocalShTests(unittest.TestCase):
         self.assertIn("source .venv/bin/activate", out)
         self.assertIn("./local.sh deps", out)
         self.assertIn("./local.sh doctor", out)
+        self.assertIn("./local.sh smoke-real", out)
         self.assertIn("./local.sh smoke-real", out)
         self.assertIn("./local.sh run", out)
         self.assertIn("./local.sh status", out)

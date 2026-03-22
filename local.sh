@@ -17,26 +17,21 @@ usage: ./local.sh [setup|deps|doctor|run|status|smoke|smoke-real]
 one-line install:
   curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
 
-linux setup:
-  fast path:
-    ./local.sh setup
-    printf "HF_TOKEN='your_token_here'\n" >> .env
-    ./local.sh smoke
-    ./local.sh run
-    ./local.sh status
+basic linux commands inside the repo:
+  1. sudo apt-get update
+  2. sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+  3. sudo freshclam || true
+  4. python3 -m venv .venv
+  5. source .venv/bin/activate
+  6. ./local.sh deps
+  7. ./local.sh doctor
+  8. printf "HF_TOKEN='your_token_here'\n" >> .env
+  9. ./local.sh smoke
+ 10. ./local.sh run
+ 11. ./local.sh status
 
-  step by step:
-    1. sudo apt-get update
-    2. sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
-    3. sudo freshclam || true
-    4. python3 -m venv .venv
-    5. source .venv/bin/activate
-    6. ./local.sh deps
-    7. ./local.sh doctor
-    8. printf "HF_TOKEN='your_token_here'\n" >> .env
-    9. ./local.sh smoke
-   10. ./local.sh run
-   11. ./local.sh status
+shortcut inside the repo:
+  ./local.sh setup
 
 repo dependency install:
   ./local.sh setup

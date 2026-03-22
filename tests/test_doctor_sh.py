@@ -49,6 +49,27 @@ class DoctorShTests(unittest.TestCase):
         self.assertIn("doctor_ok: hf_token_validation=ok", proc.stdout)
         self.assertNotIn("doctor_warn: venv_missing", proc.stdout)
 
+    def test_doctor_can_require_gpu_and_clamav(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "DOCTOR_REQUIRE_GPU": "1",
+                "DOCTOR_REQUIRE_CLAMAV": "1",
+                "DOCTOR_REQUIRE_TOKEN": "0",
+            }
+        )
+        proc = subprocess.run(
+            ["bash", "scripts/doctor.sh"],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("doctor_fail: nvidia_smi_missing gpu_required=1", proc.stdout)
+        self.assertIn("doctor_fail: clamscan_missing clamav_required=1", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
