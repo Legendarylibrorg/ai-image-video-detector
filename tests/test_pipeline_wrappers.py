@@ -67,6 +67,29 @@ class PipelineWrapperTests(unittest.TestCase):
         self.assertIn(f"[DRY_RUN] source {missing_venv / 'bin' / 'activate'}", proc.stdout)
         self.assertIn("[DRY_RUN] bash scripts/full_pipeline_4090.sh", proc.stdout)
 
+    def test_one_command_start_dry_run_runs_pipeline_mode(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "DRY_RUN": "1",
+                "SETUP_INSTALL_SYSTEM_DEPS": "0",
+                "SETUP_PROMPT_FOR_HF_TOKEN": "0",
+                "HF_SETUP_REQUIRE_TOKEN": "0",
+            }
+        )
+        proc = subprocess.run(
+            ["bash", "scripts/one_command_start.sh"],
+            cwd=ROOT,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertIn("setup_stage=pipeline_train_all_types status=run", proc.stdout)
+        self.assertIn("[DRY_RUN] bash scripts/do.sh train-all-types", proc.stdout)
+        self.assertIn("setup_status=complete", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

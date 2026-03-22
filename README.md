@@ -16,17 +16,14 @@ The repo now runs one simple local pipeline:
 
 1. `./local.sh setup`
    Creates or reuses `./.venv`, installs the pinned Python dependencies, and runs a health check.
-2. `./local.sh run`
+2. `printf "HF_TOKEN='your_token_here'\n" >> .env`
+   Adds the Hugging Face token when you want authenticated collection.
+3. `./local.sh smoke`
+   Runs the quick sanity check before the full run.
+4. `./local.sh run`
    Runs the resumable collect-plus-train pipeline.
-3. `./local.sh status`
+5. `./local.sh status`
    Shows the current pipeline state and key artifact paths.
-
-Optional validation:
-
-```bash
-./local.sh smoke
-./local.sh smoke-real
-```
 
 Important local directories:
 
@@ -55,70 +52,38 @@ Important local directories:
 
 ### Quick start
 
-1. Enter the repo:
+If you are starting from scratch on Linux, use this:
 
 ```bash
-cd /path/to/image-spam
-```
-
-2. Install the required Linux system packages:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
-```
-
-3. Install the repo Python environment and pinned dependencies:
-
-```bash
-./local.sh setup
-```
-
-This creates or reuses a local virtualenv at `.venv`, installs the pinned Python dependency set from `requirements.lock`, installs `huggingface_hub`, and keeps the runtime inside that repo-local venv.
-
-4. During `./local.sh setup`, paste your Hugging Face token when prompted, or add it to `.env`:
-
-```bash
+curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
+cd ai-image-video-detector
 printf "HF_TOKEN='your_token_here'\n" >> .env
-```
-
-If you only want it for the current shell session instead of writing `.env`:
-
-```bash
-export HF_TOKEN='your_token_here'
-```
-
-5. Start the resumable pipeline:
-
-```bash
+./local.sh smoke
 ./local.sh run
-```
-
-6. Check status if you want a quick confirmation:
-
-```bash
 ./local.sh status
 ```
 
-Important notes:
-- `./local.sh setup` already tries `apt-get` automatically on supported Linux hosts and uses `sudo` when available.
-- Keep `sudo` on package-manager commands only. Run `./local.sh ...` and `bash scripts/...` as your normal user.
-- The repo-local virtualenv is `./.venv`. The setup and pipeline scripts create or reuse it instead of relying on a global Python install.
-- `huggingface_hub` is installed into that same repo-local venv during setup.
-- `./local.sh setup` retries dependency install and health checks automatically so it can finish cleanly after transient failures.
-- `./local.sh run` is resumable: completed stages are skipped, training locks are waited out, and transient failures are retried.
-- `./local.sh collect-status` shows the current collection/build state, recent source activity, and resume hints.
-
-### Manual Linux fallback
-
-If `./local.sh setup` does not finish cleanly, run the Linux steps one by one:
+If you already have the repo checked out, use this:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
+./local.sh setup
+printf "HF_TOKEN='your_token_here'\n" >> .env
+./local.sh smoke
+./local.sh run
+./local.sh status
+```
+
+If `./local.sh setup` does not finish cleanly, use this step-by-step Linux fallback:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 python3 -m venv .venv
+source .venv/bin/activate
 ./local.sh deps
 ./local.sh doctor
 printf "HF_TOKEN='your_token_here'\n" >> .env
@@ -127,31 +92,30 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh status
 ```
 
-What those fallback commands do:
+What each broken-out command does:
+- `python3 -m venv .venv`
+  Creates the repo-local virtualenv.
+- `source .venv/bin/activate`
+  Activates the repo-local virtualenv in your shell.
 - `./local.sh deps`
-  Creates or reuses `./.venv` and installs the pinned Python dependencies.
+  Installs the pinned Python dependency set from `requirements.lock`, including `huggingface_hub`.
+  Also installs the repo CLI commands and the `hf` CLI into `./.venv`.
 - `./local.sh doctor`
-  Checks disk space, cache paths, venv health, core deps, and your Hugging Face token state.
+  Checks disk space, cache paths, venv health, core deps, and token state.
+- `./local.sh smoke`
+  Runs the smaller sanity path before the full pipeline.
 
-### Most people only need
+Important notes:
+- `./local.sh setup` already tries `apt-get` automatically on supported Linux hosts and uses `sudo` when available.
+- `./local.sh setup` does not stop to prompt for `HF_TOKEN` by default. Add the token to `.env` after setup, then run `./local.sh smoke` or `./local.sh run`.
+- Keep `sudo` on package-manager commands only. Run `./local.sh ...` and `bash scripts/...` as your normal user.
+- The repo-local virtualenv is `./.venv`. The setup and pipeline scripts create or reuse it instead of relying on a global Python install.
+- `huggingface_hub`, the `hf` CLI, and the repo CLI commands are installed into that same repo-local venv during setup.
+- `./local.sh setup` retries dependency install and health checks automatically so it can finish cleanly after transient failures.
+- `./local.sh run` is resumable: completed stages are skipped, training locks are waited out, and transient failures are retried.
+- `./local.sh collect-status` shows the current collection/build state, recent source activity, and resume hints.
 
-```bash
-sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
-./local.sh setup
-./local.sh run
-./local.sh status
-```
-
-Optional validation:
-
-```bash
-./local.sh smoke
-./local.sh smoke-real
-```
-
-Everything else is internal support for the pipeline and is intentionally not part of the normal startup path.
+`./local.sh smoke-real` is the optional real Hugging Face + CUDA validation path. Everything else is internal support for the pipeline and is intentionally not part of the normal startup path.
 
 ## Docs
 

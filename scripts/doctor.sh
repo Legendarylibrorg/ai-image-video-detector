@@ -113,6 +113,8 @@ check_venv_and_deps() {
   fi
   emit_ok "venv_present path=$VENV_DIR"
   if "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1
+import ai_image_detector  # noqa: F401
+import cv2  # noqa: F401
 import datasets  # noqa: F401
 import huggingface_hub  # noqa: F401
 import PIL  # noqa: F401
@@ -122,6 +124,20 @@ PY
     emit_ok "core_python_deps=ok"
   else
     emit_warn "core_python_deps=missing_or_partial run=./local.sh setup"
+  fi
+
+  local cli
+  local cli_missing=0
+  for cli in hf aid-train aid-video-train aid-dataset; do
+    if [[ -x "$VENV_DIR/bin/$cli" ]]; then
+      emit_ok "cli_ready name=$cli"
+    else
+      cli_missing=1
+      emit_warn "cli_missing name=$cli run=./local.sh deps"
+    fi
+  done
+  if [[ "$cli_missing" == "0" ]]; then
+    emit_ok "core_cli_deps=ok"
   fi
 }
 

@@ -2,31 +2,28 @@
 
 This guide collects the repo command surfaces in one place.
 The repo-local Python environment is `./.venv`, created or reused by `./local.sh setup`.
-That setup also installs `huggingface_hub` into the same venv.
+That setup also installs `huggingface_hub`, the `hf` CLI, and the repo CLI commands into the same venv.
 
 The default path below assumes Linux:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
 ./local.sh setup
+printf "HF_TOKEN='your_token_here'\n" >> .env
+./local.sh smoke
 ./local.sh run
 ./local.sh status
+```
+
+One-line install without downloading a zip:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
+cd ai-image-video-detector
 ```
 
 ## Pipeline at a glance
 
-The normal local workflow is:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
-./local.sh setup
-./local.sh run
-./local.sh status
-```
+The normal local workflow is the default path above.
 
 What each stage does:
 
@@ -41,18 +38,16 @@ What each stage does:
 
 ## `./local.sh` commands
 
-Recommended first:
-
-```bash
-./local.sh setup
-./local.sh run
-./local.sh status
-```
+Recommended first: use the same default path above.
 
 Manual fallback:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
 python3 -m venv .venv
+source .venv/bin/activate
 ./local.sh deps
 ./local.sh doctor
 ./local.sh smoke
@@ -73,6 +68,7 @@ Main surface:
   Bootstrap the local environment only.
 - `./local.sh deps`
   Install the pinned Python dependencies into `./.venv` without running the full setup wrapper.
+  This also installs the repo CLI commands and the `hf` CLI in that venv.
 - `./local.sh doctor`
   Run the health check directly.
 - `./local.sh run`
@@ -94,7 +90,7 @@ Use `sudo` only for Linux package-manager commands such as:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 ```
 

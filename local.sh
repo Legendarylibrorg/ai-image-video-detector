@@ -14,28 +14,37 @@ print_usage() {
   cat <<'EOF'
 usage: ./local.sh [setup|deps|doctor|run|status|smoke|smoke-real]
 
+one-line install:
+  curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
+
 linux setup:
-  1. sudo apt-get update
-  2. sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
-  3. sudo freshclam || true
-  4. ./local.sh setup
-  5. ./local.sh run
-  6. ./local.sh status
+  fast path:
+    ./local.sh setup
+    printf "HF_TOKEN='your_token_here'\n" >> .env
+    ./local.sh smoke
+    ./local.sh run
+    ./local.sh status
+
+  step by step:
+    1. sudo apt-get update
+    2. sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+    3. sudo freshclam || true
+    4. python3 -m venv .venv
+    5. source .venv/bin/activate
+    6. ./local.sh deps
+    7. ./local.sh doctor
+    8. printf "HF_TOKEN='your_token_here'\n" >> .env
+    9. ./local.sh smoke
+   10. ./local.sh run
+   11. ./local.sh status
 
 repo dependency install:
   ./local.sh setup
   creates or reuses ./.venv and installs pinned Python deps
+  installs the repo CLI commands and Hugging Face CLI in that venv
+  does not pause to prompt for HF_TOKEN by default
   repo commands run inside that repo-local venv
   do not use sudo for repo commands
-
-manual linux fallback:
-  python3 -m venv .venv
-  ./local.sh deps
-  ./local.sh doctor
-  printf "HF_TOKEN='your_token_here'\n" >> .env
-  ./local.sh smoke
-  ./local.sh run
-  ./local.sh status
 
 main pipeline commands:
   ./local.sh setup    # bootstrap deps and local env
@@ -48,9 +57,29 @@ optional validation:
 EOF
 }
 
+create_repo_venv() {
+  local root_dir
+  local venv_dir
+  root_dir="$(pwd)"
+  venv_dir="${VENV_DIR:-$root_dir/.venv}"
+  if [[ -x "$venv_dir/bin/python" ]]; then
+    echo "venv_status=ready path=$venv_dir"
+    return 0
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "venv_fail=python3_missing install_python3_and_retry=1" >&2
+    return 1
+  fi
+  python3 -m venv "$venv_dir"
+  echo "venv_status=created path=$venv_dir"
+}
+
 case "$cmd" in
   setup|init|bootstrap)
     SETUP_RUN_PIPELINE=0 bash scripts/setup_linux.sh
+    ;;
+  venv)
+    create_repo_venv
     ;;
   deps)
     bash scripts/install_deps.sh

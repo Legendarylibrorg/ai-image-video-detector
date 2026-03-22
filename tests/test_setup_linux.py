@@ -131,7 +131,7 @@ class SetupLinuxTests(unittest.TestCase):
             )
 
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assertIn("DEBIAN_FRONTEND=noninteractive apt-get install -y", proc.stdout)
+        self.assertIn("DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates git python3", proc.stdout)
 
 
 if __name__ == "__main__":
