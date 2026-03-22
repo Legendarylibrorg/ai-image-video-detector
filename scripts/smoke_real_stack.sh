@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 WORKDIR="${SMOKE_REAL_WORKDIR:-$(mktemp -d "${TMPDIR:-/tmp}/aid-real-smoke.XXXXXX")}"
 KEEP_WORKDIR="${SMOKE_REAL_KEEP_WORKDIR:-0}"
@@ -17,6 +18,7 @@ TEST_PER_CLASS="${SMOKE_REAL_TEST_PER_CLASS:-2}"
 IMG_SIZE="${SMOKE_REAL_IMG_SIZE:-128}"
 BATCH_SIZE="${SMOKE_REAL_BATCH_SIZE:-4}"
 EPOCHS="${SMOKE_REAL_EPOCHS:-1}"
+source "$ROOT_DIR/scripts/lib/env.sh"
 
 cleanup() {
   if [[ "$KEEP_WORKDIR" == "1" ]]; then
@@ -26,16 +28,6 @@ cleanup() {
   rm -rf "$WORKDIR"
 }
 trap cleanup EXIT
-
-load_env_file() {
-  local env_file="${ENV_FILE:-$ROOT_DIR/.env}"
-  if [[ -f "$env_file" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$env_file"
-    set +a
-  fi
-}
 
 load_env_file
 

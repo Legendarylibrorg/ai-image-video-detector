@@ -12,20 +12,21 @@ It is not a production serving repo in the current mode.
 
 ## Current Pipeline
 
-The repo now runs a local-first pipeline with a pinned `.venv`, Hugging Face dataset ingestion, resumable collection, additive training-data preparation, and local PyTorch training.
-
-The normal flow is:
+The repo now runs one simple local pipeline:
 
 1. `./local.sh setup`
-   Installs system dependencies when available, creates or reuses `.venv`, refreshes the packaging toolchain, installs the pinned Python dependency set from `requirements.lock`, prepares local cache directories, retries flaky setup steps automatically, and runs a health check.
-2. `./local.sh collect` or `./local.sh run`
-   Collects image and video data locally. Image collection uses `datasets` and `huggingface_hub`, normalizes labels, filters low-quality or duplicate samples, and writes a curated dataset under `./data_best`. Video collection writes into `./video_data`.
-3. Incremental inputs are merged when present
-   Fresh labeled samples or ingested outputs under `./data_new` are folded into the next train path instead of forcing a full rebuild.
-4. `./local.sh train` or the train stage in `./local.sh run`
-   Prepares additive training data in `./.local/training_data` from `./data_best` plus any incremental inputs, then trains the image model. Video training is included when a complete video dataset is already present.
-5. Status and resume support stay local
-   Setup stages, pipeline stages, and per-source collection state are written under `./.local` so long runs can be resumed safely.
+   Creates or reuses `./.venv`, installs the pinned Python dependencies, and runs a health check.
+2. `./local.sh run`
+   Runs the resumable collect-plus-train pipeline.
+3. `./local.sh status`
+   Shows the current pipeline state and key artifact paths.
+
+Optional validation:
+
+```bash
+./local.sh smoke
+./local.sh smoke-real
+```
 
 Important local directories:
 
@@ -60,7 +61,7 @@ Important local directories:
 cd /path/to/image-spam
 ```
 
-2. Install the required system packages:
+2. Install the required Linux system packages:
 
 ```bash
 sudo apt-get update
@@ -68,13 +69,13 @@ sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav 
 sudo freshclam || true
 ```
 
-3. Bootstrap the repo as your normal user:
+3. Install the repo Python environment and pinned dependencies:
 
 ```bash
 ./local.sh setup
 ```
 
-This creates or reuses a local virtualenv at `.venv`, refreshes the packaging toolchain, and installs the pinned Python dependency set from `requirements.lock`, including `huggingface_hub`.
+This creates or reuses a local virtualenv at `.venv`, installs the pinned Python dependency set from `requirements.lock`, installs `huggingface_hub`, and keeps the runtime inside that repo-local venv.
 
 4. During `./local.sh setup`, paste your Hugging Face token when prompted, or add it to `.env`:
 
@@ -88,22 +89,16 @@ If you only want it for the current shell session instead of writing `.env`:
 export HF_TOKEN='your_token_here'
 ```
 
-5. Run a quick sanity check:
-
-```bash
-./local.sh smoke
-```
-
-If you want a tiny real Hugging Face collection plus real CUDA training smoke on a 4090-class box:
-
-```bash
-./local.sh smoke-real
-```
-
-6. Start the resumable pipeline:
+5. Start the resumable pipeline:
 
 ```bash
 ./local.sh run
+```
+
+6. Check status if you want a quick confirmation:
+
+```bash
+./local.sh status
 ```
 
 Important notes:
@@ -115,101 +110,57 @@ Important notes:
 - `./local.sh run` is resumable: completed stages are skipped, training locks are waited out, and transient failures are retried.
 - `./local.sh collect-status` shows the current collection/build state, recent source activity, and resume hints.
 
-### Most people only need
+### Manual Linux fallback
 
-```bash
-./local.sh setup
-./local.sh smoke
-./local.sh run
-./local.sh status
-```
-
-If you want the smallest real end-to-end validation on a tokenized CUDA box:
-
-```bash
-./local.sh smoke-real
-```
-
-Everything else is advanced/internal:
-
-```bash
-./local.sh collect
-./local.sh collect-status
-./local.sh train
-./local.sh retrain
-./local.sh continuous
-./local.sh check
-./local.sh setup-full
-```
-
-### One-command startup
-
-If you want setup plus the full collect-and-train flow in one command:
-
-```bash
-HF_TOKEN='your_token_here' ./local.sh setup-full
-```
-
-### Manual bootstrap
-
-Only use this if you do not want `./local.sh setup`:
+If `./local.sh setup` does not finish cleanly, run the Linux steps one by one:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 python3 -m venv .venv
-source .venv/bin/activate
-bash scripts/install_deps.sh
-./local.sh check
-```
-
-`bash scripts/install_deps.sh`:
-- creates or reuses `.venv`
-- installs pinned dependencies from `requirements.lock`
-- installs the repo itself in editable mode with `pip install -e .`
-- uses the CUDA PyTorch wheel index on Linux when `nvidia-smi` is present
-
-### Startup troubleshooting
-
-If setup stopped:
-
-```bash
-./local.sh setup-full
-```
-
-If collection seems slow:
-
-```bash
-./local.sh status
-./local.sh collect-status
+./local.sh deps
+./local.sh doctor
+printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh smoke
+./local.sh run
+./local.sh status
 ```
 
-If you only want to retrain:
+What those fallback commands do:
+- `./local.sh deps`
+  Creates or reuses `./.venv` and installs the pinned Python dependencies.
+- `./local.sh doctor`
+  Checks disk space, cache paths, venv health, core deps, and your Hugging Face token state.
+
+### Most people only need
 
 ```bash
-./local.sh train
-./local.sh retrain
+sudo apt-get update
+sudo apt-get install -y python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
+./local.sh setup
+./local.sh run
+./local.sh status
 ```
 
-If you changed dependencies:
+Optional validation:
 
 ```bash
-./local.sh deps-update
-bash scripts/install_deps.sh
+./local.sh smoke
+./local.sh smoke-real
 ```
 
-`./local.sh deps-update` refreshes `requirements.lock`. `bash scripts/install_deps.sh` then applies that lock into `.venv`.
+Everything else is internal support for the pipeline and is intentionally not part of the normal startup path.
 
 ## Docs
 
 Use these only if you need more detail:
 
 - [docs/STARTUP.md](docs/STARTUP.md)
-  Setup flow, manual bootstrap, setup options, and troubleshooting.
+  Setup flow and Linux startup details.
 - [docs/COMMANDS.md](docs/COMMANDS.md)
-  Main commands first, with advanced/internal entrypoints after that.
+  The small public command surface.
 - [docs/REFERENCE.md](docs/REFERENCE.md)
   Higher-level reference notes for datasets, training, evaluation, video, and pipeline modes.
 - [CONTRIBUTING.md](CONTRIBUTING.md)

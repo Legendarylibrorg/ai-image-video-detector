@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import textwrap
 import unittest
 
 
@@ -79,6 +80,58 @@ class SetupLinuxTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("[DRY_RUN] validate_hf_token", proc.stdout)
         self.assertNotIn("hf_token_status=missing_noninteractive", proc.stdout)
+
+    def test_setup_linux_ready_by_default_without_pipeline_stage(self) -> None:
+        proc = self.run_setup_linux(
+            extra_env={
+                "HF_SETUP_REQUIRE_TOKEN": "0",
+                "SETUP_INSTALL_SYSTEM_DEPS": "0",
+                "SETUP_PROMPT_FOR_HF_TOKEN": "0",
+            }
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("setup_status=ready", proc.stdout)
+        self.assertNotIn("setup_stage=pipeline_train_all_types status=run", proc.stdout)
+
+    def test_setup_linux_runs_pipeline_only_when_requested(self) -> None:
+        proc = self.run_setup_linux(
+            extra_env={
+                "SETUP_RUN_PIPELINE": "1",
+                "HF_SETUP_REQUIRE_TOKEN": "0",
+                "SETUP_INSTALL_SYSTEM_DEPS": "0",
+                "SETUP_PROMPT_FOR_HF_TOKEN": "0",
+            }
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("setup_stage=pipeline_train_all_types status=run", proc.stdout)
+        self.assertIn("[DRY_RUN] bash scripts/do.sh train-all-types", proc.stdout)
+        self.assertIn("setup_status=complete", proc.stdout)
+
+    def test_setup_linux_dry_run_uses_noninteractive_apt_install(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bin_dir = Path(tmpdir)
+            for name in ("apt-get", "sudo"):
+                path = bin_dir / name
+                path.write_text(
+                    textwrap.dedent(
+                        """\
+                        #!/usr/bin/env bash
+                        exit 0
+                        """
+                    ),
+                    encoding="utf-8",
+                )
+                path.chmod(0o755)
+
+            proc = self.run_setup_linux(
+                extra_env={
+                    "SETUP_INSTALL_SYSTEM_DEPS": "1",
+                    "PATH": f"{bin_dir}:{os.environ['PATH']}",
+                }
+            )
+
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("DEBIAN_FRONTEND=noninteractive apt-get install -y", proc.stdout)
 
 
 if __name__ == "__main__":

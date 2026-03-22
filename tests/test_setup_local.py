@@ -83,11 +83,22 @@ class SetupLocalTests(unittest.TestCase):
 
         self.assertIn("setup_next=run ./local.sh smoke, then ./local.sh run", proc.stdout)
 
-    def test_install_python_deps_upgrades_toolchain_by_default(self) -> None:
+    def test_install_python_deps_skips_toolchain_upgrade_by_default(self) -> None:
         proc = self.run_bash(
             "source scripts/setup_local.sh; "
             "run_setup_step_with_retry(){ printf 'upgrade=%s cmd=%s\\n' "
             "\"${UPGRADE_TOOLCHAIN:-}\" \"$*\"; }; "
+            "install_python_deps"
+        )
+
+        self.assertIn("upgrade=0 cmd=python_deps bash scripts/install_deps.sh", proc.stdout)
+
+    def test_install_python_deps_allows_explicit_toolchain_upgrade(self) -> None:
+        proc = self.run_bash(
+            "source scripts/setup_local.sh; "
+            "run_setup_step_with_retry(){ printf 'upgrade=%s cmd=%s\\n' "
+            "\"${UPGRADE_TOOLCHAIN:-}\" \"$*\"; }; "
+            "UPGRADE_TOOLCHAIN=1; "
             "install_python_deps"
         )
 

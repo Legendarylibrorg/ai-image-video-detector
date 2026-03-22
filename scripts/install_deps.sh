@@ -18,6 +18,10 @@ hash_cmd() {
   shasum -a 256
 }
 
+pip_cmd() {
+  PIP_DISABLE_PIP_VERSION_CHECK=1 python -m pip --progress-bar off "$@"
+}
+
 deps_fingerprint() {
   {
     if [[ -f "$LOCK_FILE" ]]; then
@@ -35,12 +39,6 @@ fi
 
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
-if [[ "$UPGRADE_TOOLCHAIN" == "1" ]]; then
-  if ! python -m pip install --upgrade pip setuptools wheel; then
-    echo "warning_toolchain_upgrade_failed using_existing_versions=1"
-  fi
-fi
-
 deps_fp="$(deps_fingerprint)"
 if [[ "$UPGRADE_TOOLCHAIN" != "1" && -f "$DEPS_STAMP_FILE" && "$(cat "$DEPS_STAMP_FILE")" == "$deps_fp" ]]; then
   if python - <<'PY' >/dev/null 2>&1
@@ -57,27 +55,33 @@ PY
   fi
 fi
 
+if [[ "$UPGRADE_TOOLCHAIN" == "1" ]]; then
+  if ! pip_cmd install --quiet --retries 1 --timeout 15 --upgrade pip setuptools wheel; then
+    echo "warning_toolchain_upgrade_failed using_existing_versions=1"
+  fi
+fi
+
 if [[ -s "$LOCK_FILE" ]]; then
   tmp_lock_no_torch="$(mktemp)"
   grep -Ev '^(torch==|torchvision==)' "$LOCK_FILE" > "$tmp_lock_no_torch"
-  pip install -r "$tmp_lock_no_torch"
+  pip_cmd install -r "$tmp_lock_no_torch"
   rm -f "$tmp_lock_no_torch"
 
   torch_ver="$(grep -E '^torch==' "$LOCK_FILE" | head -n1 | cut -d= -f3 || true)"
   tv_ver="$(grep -E '^torchvision==' "$LOCK_FILE" | head -n1 | cut -d= -f3 || true)"
   if [[ -n "$torch_ver" && -n "$tv_ver" ]]; then
     if [[ "$(uname -s)" == "Linux" ]] && command -v nvidia-smi >/dev/null 2>&1; then
-      pip install "torch==$torch_ver" "torchvision==$tv_ver" --index-url "$TORCH_CUDA_INDEX_URL"
+      pip_cmd install "torch==$torch_ver" "torchvision==$tv_ver" --index-url "$TORCH_CUDA_INDEX_URL"
     else
-      pip install "torch==$torch_ver" "torchvision==$tv_ver"
+      pip_cmd install "torch==$torch_ver" "torchvision==$tv_ver"
     fi
   fi
 
   # Install the local package without re-resolving dependencies from pyproject.
-  pip install -e . --no-deps --no-build-isolation
+  pip_cmd install -e . --no-deps --no-build-isolation
 else
   echo "deps_lock=missing file=$LOCK_FILE fallback=pyproject_resolve"
-  pip install --upgrade --upgrade-strategy eager -e .
+  pip_cmd install --upgrade --upgrade-strategy eager -e .
 fi
 
 if ! python - <<'PY' >/dev/null 2>&1
@@ -94,5 +98,5 @@ if ! command -v hf >/dev/null 2>&1; then
   exit 1
 fi
 
-python -m pip check
+pip_cmd check
 printf "%s\n" "$deps_fp" > "$DEPS_STAMP_FILE"
