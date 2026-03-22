@@ -16,6 +16,8 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("local Linux machine", text)
         self.assertIn("local virtualenv at `./.venv`", text)
         self.assertIn("curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash", text)
+        self.assertIn("git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git", text)
+        self.assertIn("cd ai-image-video-detector", text)
         self.assertIn("huggingface_hub", text)
         self.assertIn("sudo apt-get update", text)
         self.assertIn("curl ca-certificates git python3", text)
@@ -40,6 +42,8 @@ class DocsSurfaceTests(unittest.TestCase):
             text,
         )
         self.assertIn("curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash", text)
+        self.assertIn("git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git", text)
+        self.assertIn("cd ai-image-video-detector", text)
         self.assertIn("Do not use `sudo` for repo commands", text)
         self.assertIn("pinned local virtualenv at `./.venv`", text)
         self.assertIn("python3 -m venv .venv", text)
@@ -55,10 +59,12 @@ class DocsSurfaceTests(unittest.TestCase):
 
     def test_commands_doc_starts_with_linux_quick_start(self) -> None:
         text = (ROOT / "docs" / "COMMANDS.md").read_text(encoding="utf-8")
-        self.assertIn("The default path below assumes Linux", text)
+        self.assertIn("The basic Linux command path is", text)
         self.assertIn("repo-local Python environment is `./.venv`", text)
         self.assertIn("huggingface_hub", text)
         self.assertIn("curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash", text)
+        self.assertIn("git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git", text)
+        self.assertIn("cd ai-image-video-detector", text)
         self.assertIn("sudo apt-get update", text)
         self.assertIn("curl ca-certificates git python3", text)
         self.assertIn("./local.sh setup", text)

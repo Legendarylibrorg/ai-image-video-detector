@@ -9,6 +9,8 @@ VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 MIN_FREE_GB="${DOCTOR_MIN_FREE_GB:-40}"
 TOKEN_CHECK_TIMEOUT_SEC="${DOCTOR_TOKEN_CHECK_TIMEOUT_SEC:-12}"
 DOCTOR_REQUIRE_TOKEN="${DOCTOR_REQUIRE_TOKEN:-0}"
+DOCTOR_REQUIRE_GPU="${DOCTOR_REQUIRE_GPU:-0}"
+DOCTOR_REQUIRE_CLAMAV="${DOCTOR_REQUIRE_CLAMAV:-0}"
 
 ok_count=0
 warn_count=0
@@ -59,16 +61,36 @@ check_disk_space() {
 
 check_gpu() {
   if ! command -v nvidia-smi >/dev/null 2>&1; then
-    emit_warn "nvidia_smi_missing gpu_check_skipped=1"
+    if [[ "$DOCTOR_REQUIRE_GPU" == "1" ]]; then
+      emit_fail "nvidia_smi_missing gpu_required=1"
+    else
+      emit_warn "nvidia_smi_missing gpu_check_skipped=1"
+    fi
     return
   fi
   local gpu_line
   gpu_line="$(nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader 2>/dev/null | head -n 1 || true)"
   if [[ -z "$gpu_line" ]]; then
-    emit_warn "gpu_query_failed"
+    if [[ "$DOCTOR_REQUIRE_GPU" == "1" ]]; then
+      emit_fail "gpu_query_failed gpu_required=1"
+    else
+      emit_warn "gpu_query_failed"
+    fi
     return
   fi
   emit_ok "gpu=$gpu_line"
+}
+
+check_clamav() {
+  if ! command -v clamscan >/dev/null 2>&1; then
+    if [[ "$DOCTOR_REQUIRE_CLAMAV" == "1" ]]; then
+      emit_fail "clamscan_missing clamav_required=1"
+    else
+      emit_warn "clamscan_missing"
+    fi
+    return
+  fi
+  emit_ok "clamscan_ready=1"
 }
 
 check_cache_paths() {
@@ -189,6 +211,7 @@ check_gpu
 check_cache_paths
 check_venv_and_deps
 check_hf_token
+check_clamav
 
 echo "doctor_summary ok=$ok_count warn=$warn_count fail=$fail_count"
 if (( fail_count > 0 )); then

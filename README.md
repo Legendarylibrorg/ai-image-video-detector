@@ -50,38 +50,16 @@ Important local directories:
 
 ## Startup
 
-### Quick start
+### Basic Linux commands
 
-If you are starting from scratch on Linux, use this:
+Use this exact Linux sequence:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
+git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
 cd ai-image-video-detector
-printf "HF_TOKEN='your_token_here'\n" >> .env
-./local.sh smoke
-./local.sh run
-./local.sh status
-```
-
-If you already have the repo checked out, use this:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
-./local.sh setup
-printf "HF_TOKEN='your_token_here'\n" >> .env
-./local.sh smoke
-./local.sh run
-./local.sh status
-```
-
-If `./local.sh setup` does not finish cleanly, use this step-by-step Linux fallback:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
 python3 -m venv .venv
 source .venv/bin/activate
 ./local.sh deps
@@ -90,6 +68,29 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh smoke
 ./local.sh run
 ./local.sh status
+```
+
+If you already have the repo checked out, start here instead:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+./local.sh deps
+./local.sh doctor
+printf "HF_TOKEN='your_token_here'\n" >> .env
+./local.sh smoke
+./local.sh run
+./local.sh status
+```
+
+Optional shortcuts:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
+```
+
+```bash
+./local.sh setup
 ```
 
 What each broken-out command does:

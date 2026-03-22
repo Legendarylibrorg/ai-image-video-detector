@@ -5,6 +5,49 @@ This guide expands the startup path from the main README.
 This guide assumes a Linux machine and breaks startup into system deps, repo deps, then the pipeline.
 The repo uses a pinned local virtualenv at `./.venv` for its Python dependencies and runtime.
 
+## Basic Linux commands
+
+Use this exact Linux sequence:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
+git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
+cd ai-image-video-detector
+python3 -m venv .venv
+source .venv/bin/activate
+./local.sh deps
+./local.sh doctor
+printf "HF_TOKEN='your_token_here'\n" >> .env
+./local.sh smoke
+./local.sh run
+./local.sh status
+```
+
+If you already have the repo checked out, start at:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+./local.sh deps
+./local.sh doctor
+printf "HF_TOKEN='your_token_here'\n" >> .env
+./local.sh smoke
+./local.sh run
+./local.sh status
+```
+
+Optional shortcuts:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
+```
+
+```bash
+./local.sh setup
+```
+
 ## What the pipeline does
 
 The repo is organized around one local pipeline:
@@ -13,21 +56,12 @@ The repo is organized around one local pipeline:
 2. run the resumable collect-plus-train pipeline
 3. check status and rerun safely if needed
 
-The main operator commands are:
+The main operator commands after setup are:
 
 ```bash
-./local.sh setup
-printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh smoke
 ./local.sh run
 ./local.sh status
-```
-
-One-line install without downloading a zip:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
-cd ai-image-video-detector
 ```
 
 Use `./local.sh run` for the normal path. `./local.sh smoke` is the quick check before the full run.
@@ -57,84 +91,10 @@ It does not stop to prompt for `HF_TOKEN` by default.
 
 ## Recommended Flow
 
-If you want the shortest path, use:
-
-```bash
-./local.sh setup
-printf "HF_TOKEN='your_token_here'\n" >> .env
-./local.sh smoke
-./local.sh run
-./local.sh status
-```
-
-Then come back to the detailed steps only if you need them.
-
-1. Enter the repo if you are already working from a clone:
-
-```bash
-cd ai-image-video-detector
-```
-
-2. Install system packages if needed:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
-```
-
-3. Create the repo-local virtualenv:
-
-```bash
-python3 -m venv .venv
-```
-
-4. Activate the repo-local virtualenv:
-
-```bash
-source .venv/bin/activate
-```
-
-5. Install the pinned Python dependencies:
-
-```bash
-./local.sh deps
-```
-
-6. Check the repo environment:
-
-```bash
-./local.sh doctor
-```
-
-7. Add your Hugging Face token:
-
-```bash
-printf "HF_TOKEN='your_token_here'\n" >> .env
-```
-
-If you only want it for the current shell session:
+If you only want the token for the current shell session:
 
 ```bash
 export HF_TOKEN='your_token_here'
-```
-
-8. Run the smaller sanity check first:
-
-```bash
-./local.sh smoke
-```
-
-9. Run the normal resumable pipeline:
-
-```bash
-./local.sh run
-```
-
-10. Check status if you want a quick confirmation:
-
-```bash
-./local.sh status
 ```
 
 ## Manual Linux fallback

@@ -1,5 +1,8 @@
 source "$ROOT_DIR/scripts/lib/env.sh"
 
+TRAIN_LOCK_STALE_SEC="${TRAIN_LOCK_STALE_SEC:-7200}"
+GPU_REQUIRED_CMDS="${GPU_REQUIRED_CMDS:-run,pipeline,start,start-v2,smoke-real}"
+
 ensure_env() {
   if [[ "$ENV_READY" == "1" ]]; then
     return
@@ -18,6 +21,32 @@ ensure_env() {
 
 is_training_active() {
   [[ -f "$TRAIN_LOCK" ]]
+}
+
+lock_file_age_sec() {
+  local path="$1"
+  [[ -f "$path" ]] || return 1
+  local now
+  local mtime
+  now="$(date +%s)"
+  if stat -f %m "$path" >/dev/null 2>&1; then
+    mtime="$(stat -f %m "$path")"
+  else
+    mtime="$(stat -c %Y "$path")"
+  fi
+  echo $((now - mtime))
+}
+
+clear_stale_training_lock_if_needed() {
+  [[ -f "$TRAIN_LOCK" ]] || return 1
+  local age_sec
+  age_sec="$(lock_file_age_sec "$TRAIN_LOCK" || echo 0)"
+  if [[ "$age_sec" =~ ^[0-9]+$ ]] && (( age_sec >= TRAIN_LOCK_STALE_SEC )); then
+    echo "training_lock=stale_cleared path=$TRAIN_LOCK age_sec=$age_sec threshold_sec=$TRAIN_LOCK_STALE_SEC"
+    rm -f "$TRAIN_LOCK"
+    return 0
+  fi
+  return 1
 }
 
 stage_file() {
@@ -42,6 +71,7 @@ mark_stage_done() {
 wait_for_training_to_finish() {
   local reason="${1:-pipeline}"
   while is_training_active; do
+    clear_stale_training_lock_if_needed && continue
     echo "${reason}: training lock present ($TRAIN_LOCK), sleeping ${PIPELINE_WAIT_FOR_TRAINING_SEC}s"
     sleep "$PIPELINE_WAIT_FOR_TRAINING_SEC"
   done
@@ -49,6 +79,7 @@ wait_for_training_to_finish() {
 
 acquire_training_lock() {
   mkdir -p "$(dirname "$TRAIN_LOCK")"
+  clear_stale_training_lock_if_needed || true
   if ( set -o noclobber; printf "%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$TRAIN_LOCK" ) 2>/dev/null; then
     return 0
   fi
@@ -142,6 +173,26 @@ print_usage() {
 
 run_doctor_check() {
   bash scripts/doctor.sh "$@"
+}
+
+run_preflight_check() {
+  DOCTOR_REQUIRE_TOKEN="${DOCTOR_REQUIRE_TOKEN:-1}" \
+  DOCTOR_REQUIRE_GPU="${DOCTOR_REQUIRE_GPU:-1}" \
+  DOCTOR_REQUIRE_CLAMAV="${DOCTOR_REQUIRE_CLAMAV:-1}" \
+  bash scripts/doctor.sh "$@"
+}
+
+require_gpu_ready() {
+  if ! command -v nvidia-smi >/dev/null 2>&1; then
+    echo "gpu_required=1 reason=nvidia_smi_missing run=./local.sh doctor" >&2
+    return 1
+  fi
+  local gpu_line
+  gpu_line="$(nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader 2>/dev/null | head -n 1 || true)"
+  if [[ -z "$gpu_line" ]]; then
+    echo "gpu_required=1 reason=gpu_query_failed run=./local.sh doctor" >&2
+    return 1
+  fi
 }
 
 run_malware_scan() {
