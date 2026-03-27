@@ -26,7 +26,14 @@ def model_runtime_spec(
     img_size: int,
     metadata_feature_dim: int = 0,
 ) -> dict[str, object]:
-    feature_dim = 256 if backbone == "tiny" else (1408 if backbone == "effb2" else 1280)
+    if backbone == "tiny":
+        feature_dim = 256
+    elif backbone == "effb2":
+        feature_dim = 1408
+    elif backbone == "convnext_tiny":
+        feature_dim = 768
+    else:
+        feature_dim = 1280
     metadata_hidden = 64 if metadata_feature_dim > 0 else 0
     fusion_hidden_1 = 768 if feature_dim >= 1280 else 512
     fusion_hidden_2 = 192 if feature_dim >= 1280 else 128
@@ -153,6 +160,20 @@ class EfficientBackbone(nn.Module):
         return self.pool(x).flatten(1)
 
 
+class ConvNeXtBackbone(nn.Module):
+    def __init__(self, pretrained: bool = True):
+        super().__init__()
+        weights = models.ConvNeXt_Tiny_Weights.IMAGENET1K_V1 if pretrained else None
+        model = models.convnext_tiny(weights=weights)
+        self.features = model.features
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.out_dim = 768
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.features(x)
+        return self.pool(x).flatten(1)
+
+
 class AdvancedAIDetector(nn.Module):
     def __init__(self, backbone: str = "tiny", pretrained_backbone: bool = True, metadata_feature_dim: int = 0):
         super().__init__()
@@ -163,6 +184,10 @@ class AdvancedAIDetector(nn.Module):
             self.rgb_branch = TinyBackbone(in_ch=3)
             self.fft_branch = TinyBackbone(in_ch=3)
             self.noise_branch = TinyBackbone(in_ch=3)
+        elif backbone == "convnext_tiny":
+            self.rgb_branch = ConvNeXtBackbone(pretrained=pretrained_backbone)
+            self.fft_branch = ConvNeXtBackbone(pretrained=pretrained_backbone)
+            self.noise_branch = ConvNeXtBackbone(pretrained=pretrained_backbone)
         elif backbone == "effb0":
             self.rgb_branch = EfficientBackbone("b0", pretrained=pretrained_backbone)
             self.fft_branch = EfficientBackbone("b0", pretrained=pretrained_backbone)

@@ -4,27 +4,24 @@ import argparse
 from copy import deepcopy
 from datetime import datetime, timezone
 import json
-import os
 from pathlib import Path
-import random
-import shutil
-import subprocess
 from typing import Any
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from sklearn.metrics import average_precision_score, balanced_accuracy_score, confusion_matrix, precision_recall_fscore_support, roc_auc_score
-from torchvision import datasets, transforms
+from torchvision import datasets
 
-from .checkpoints import load_checkpoint, save_safetensors_checkpoint
-from .data import MetadataImageFolder, make_loaders
+from .checkpoints import load_checkpoint, save_safetensors_checkpoint, save_training_checkpoint
+from .data import MetadataImageFolder, build_loader_kwargs, make_eval_transform, make_loaders, unpack_image_batch
 from .metrics import find_best_threshold, fit_temperature, full_metric_report, sigmoid
 from .model import build_model, model_runtime_spec
+from .release_tools import write_timestamped_release
+from .runtime import build_adamw, configure_torch_runtime, git_commit, seed_all
 
 
 def _path_tags(path: str) -> dict[str, str]:
@@ -89,15 +86,20 @@ class BinaryClassificationLoss(nn.Module):
         targets = targets.float()
         if self.kind == "ce":
             logits_2c = torch.stack((torch.zeros_like(logits), logits), dim=1)
-            return F.cross_entropy(logits_2c, targets.long(), weight=self.class_weights)
+            target_probs = torch.stack((1.0 - targets, targets), dim=1)
+            log_probs = F.log_softmax(logits_2c, dim=1)
+            weighted_targets = target_probs * self.class_weights.unsqueeze(0)
+            normalizer = weighted_targets.sum(dim=1).clamp(min=1e-6)
+            losses = -(weighted_targets * log_probs).sum(dim=1) / normalizer
+            return losses.mean()
 
-        sample_weights = torch.where(targets > 0.5, self.ai_weight, self.real_weight)
+        sample_weights = (targets * self.ai_weight) + ((1.0 - targets) * self.real_weight)
         bce = F.binary_cross_entropy_with_logits(logits, targets, reduction="none")
         if self.kind == "bce":
             return (bce * sample_weights).sum() / sample_weights.sum().clamp(min=1e-6)
 
         probs = torch.sigmoid(logits)
-        pt = torch.where(targets > 0.5, probs, 1.0 - probs)
+        pt = (targets * probs) + ((1.0 - targets) * (1.0 - probs))
         focal = (1.0 - pt).pow(self.gamma)
         weighted = focal * bce * sample_weights
         return weighted.sum() / sample_weights.sum().clamp(min=1e-6)
@@ -105,6 +107,33 @@ class BinaryClassificationLoss(nn.Module):
 
 def _binary_targets(y: torch.Tensor, ai_idx: int) -> torch.Tensor:
     return (y == ai_idx).float()
+
+
+def _apply_label_smoothing(targets: torch.Tensor, smoothing: float) -> torch.Tensor:
+    smoothing = float(max(0.0, min(0.499, smoothing)))
+    if smoothing <= 0.0:
+        return targets
+    return targets * (1.0 - smoothing) + (0.5 * smoothing)
+
+
+def _mixup_batch(
+    x: torch.Tensor,
+    targets: torch.Tensor,
+    metadata_features: torch.Tensor | None,
+    alpha: float,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    alpha = float(max(0.0, alpha))
+    if alpha <= 0.0 or x.shape[0] < 2:
+        return x, targets, metadata_features
+    lam = float(np.random.beta(alpha, alpha))
+    index = torch.randperm(x.shape[0], device=x.device)
+    mixed_x = (lam * x) + ((1.0 - lam) * x[index])
+    mixed_targets = (lam * targets) + ((1.0 - lam) * targets[index])
+    if metadata_features is None:
+        mixed_metadata = None
+    else:
+        mixed_metadata = (lam * metadata_features) + ((1.0 - lam) * metadata_features[index])
+    return mixed_x, mixed_targets, mixed_metadata
 
 
 class EMA:
@@ -204,14 +233,10 @@ def evaluate(
     offset = 0
     with torch.no_grad():
         for batch in loader:
-            metadata_features = None
-            if len(batch) == 3:
-                x, metadata_features, y = batch
-            else:
-                x, y = batch
+            x, metadata_features, y = unpack_image_batch(batch)
             x = x.to(device, non_blocking=True)
             if metadata_features is not None:
-                metadata_features = metadata_features.to(device, non_blocking=True)
+                metadata_features = metadata_features.to(device=device, dtype=x.dtype, non_blocking=True)
             y = y.to(device, non_blocking=True)
             y_bin = _binary_targets(y, ai_idx)
             if device.type == "cuda":
@@ -241,15 +266,6 @@ def evaluate(
         paths_all,
     )
 
-
-def _git_commit() -> str:
-    try:
-        out = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True)
-        return out.strip()
-    except Exception:
-        return "unknown"
-
-
 def _dataset_counts(root: Path) -> dict[str, dict[str, int]]:
     out: dict[str, dict[str, int]] = {}
     for split in ("train", "val", "test"):
@@ -273,8 +289,10 @@ def main():
     ap.add_argument("--ema-decay", type=float, default=0.999)
     ap.add_argument("--loss", choices=["ce", "bce", "focal"], default="ce")
     ap.add_argument("--focal-gamma", type=float, default=2.0)
-    ap.add_argument("--backbone", choices=["tiny", "effb0", "effb2"], default="tiny")
+    ap.add_argument("--backbone", choices=["tiny", "effb0", "effb2", "convnext_tiny"], default="tiny")
     ap.add_argument("--no-pretrained-backbone", action="store_true")
+    ap.add_argument("--mixup-alpha", type=float, default=0.2, help="Beta(alpha, alpha) mixup strength; 0 disables")
+    ap.add_argument("--label-smoothing", type=float, default=0.02, help="Binary label smoothing applied after mixup")
     ap.add_argument("--amp", action="store_true", default=True)
     ap.add_argument("--no-amp", dest="amp", action="store_false")
     ap.add_argument("--grad-accum", type=int, default=1)
@@ -304,30 +322,9 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     data_root = Path(args.data)
 
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(args.seed)
-    if args.deterministic:
-        torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
-        try:
-            torch.use_deterministic_algorithms(True, warn_only=True)
-        except Exception:
-            pass
-
+    seed_all(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if device.type == "cuda":
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
-        if not args.deterministic:
-            torch.backends.cudnn.benchmark = True
-        torch.set_float32_matmul_precision("high")
-
-    if args.num_workers < 0:
-        cpu = os.cpu_count() or 8
-        args.num_workers = min(12, max(4, cpu // 2))
+    configure_torch_runtime(device, args.deterministic)
     train_loader, val_loader, classes, class_to_idx, val_samples, train_distribution, val_distribution, class_weight_map, metadata_dim = make_loaders(
         args.data,
         args.img_size,
@@ -340,7 +337,7 @@ def main():
 
     run_config = {
         "args": vars(args),
-        "git_commit": _git_commit(),
+        "git_commit": git_commit(),
         "dataset_counts": _dataset_counts(data_root),
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "runtime_spec": model_runtime_spec(
@@ -370,7 +367,7 @@ def main():
             model = torch.compile(model, mode="reduce-overhead")
         except Exception as exc:
             print(f"compile_disabled reason={exc}")
-    opt = AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    opt = build_adamw(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, device=device)
     sched = CosineAnnealingLR(opt, T_max=max(args.epochs, 1), eta_min=args.lr * 0.05)
     loss_fn: nn.Module = BinaryClassificationLoss(
         kind=args.loss,
@@ -409,7 +406,8 @@ def main():
         _load_matching_state_dict(init_ckpt)
 
     def _save_train_ckpt(path: Path, epoch: int) -> None:
-        torch.save(
+        save_training_checkpoint(
+            path,
             {
                 "epoch": epoch,
                 "state_dict": model.state_dict(),
@@ -429,9 +427,7 @@ def main():
                 "metadata_feature_dim": metadata_dim,
                 "use_metadata_features": bool(args.use_metadata_features),
             },
-            path,
         )
-        (out / "latest_checkpoint.txt").write_text(path.name, encoding="utf-8")
 
     resume_path = Path(args.resume) if args.resume else (out / "last.pt")
     if resume_path.exists():
@@ -459,18 +455,21 @@ def main():
             step_idx = 0
             skipped_batches = 0
             for batch in train_loader:
-                metadata_features = None
-                if len(batch) == 3:
-                    x, metadata_features, y = batch
-                else:
-                    x, y = batch
+                x, metadata_features, y = unpack_image_batch(batch)
                 x = x.to(device, non_blocking=True)
                 if metadata_features is not None:
-                    metadata_features = metadata_features.to(device, non_blocking=True)
+                    metadata_features = metadata_features.to(device=device, dtype=x.dtype, non_blocking=True)
                 y = y.to(device, non_blocking=True)
                 y_bin = _binary_targets(y, ai_idx)
                 if device.type == "cuda":
                     x = x.to(memory_format=torch.channels_last)
+                x, y_bin, metadata_features = _mixup_batch(
+                    x,
+                    y_bin,
+                    metadata_features,
+                    args.mixup_alpha,
+                )
+                y_bin = _apply_label_smoothing(y_bin, args.label_smoothing)
                 with torch.amp.autocast("cuda", enabled=use_amp):
                     logits = model(x, metadata_features=metadata_features)
                     loss = loss_fn(logits, y_bin) / grad_accum
@@ -692,18 +691,14 @@ def main():
             eval_model = eval_model.to(memory_format=torch.channels_last)
         eval_model.eval()
 
-        test_tf = transforms.Compose([
-            transforms.Resize((args.img_size, args.img_size)),
-            transforms.ToTensor(),
-        ])
+        test_tf = make_eval_transform(args.img_size)
         test_dataset_cls = MetadataImageFolder if bool(best.get("use_metadata_features", False)) else datasets.ImageFolder
         test_ds = test_dataset_cls(test_dir, transform=test_tf)
         test_loader = DataLoader(
             test_ds,
             batch_size=args.batch_size,
             shuffle=False,
-            num_workers=args.num_workers,
-            pin_memory=bool(torch.cuda.is_available()),
+            **build_loader_kwargs(num_workers=args.num_workers),
         )
         test_ai_idx = int(test_ds.class_to_idx["ai"])
         test_loss_fn = BinaryClassificationLoss(
@@ -718,14 +713,10 @@ def main():
         test_labels: list[float] = []
         with torch.no_grad():
             for batch in test_loader:
-                metadata_features = None
-                if len(batch) == 3:
-                    x, metadata_features, y = batch
-                else:
-                    x, y = batch
+                x, metadata_features, y = unpack_image_batch(batch)
                 x = x.to(device, non_blocking=True)
                 if metadata_features is not None:
-                    metadata_features = metadata_features.to(device, non_blocking=True)
+                    metadata_features = metadata_features.to(device=device, dtype=x.dtype, non_blocking=True)
                 y = y.to(device, non_blocking=True)
                 y_bin = _binary_targets(y, test_ai_idx)
                 if device.type == "cuda":
@@ -748,25 +739,20 @@ def main():
         print(f"saved test metrics to {out / 'test_metrics.json'}")
 
     if args.export_release and (out / "best.safetensors").exists():
-        rel = out / "releases" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        rel.mkdir(parents=True, exist_ok=True)
-        preferred_release = out / "best.safetensors"
-        for name in (
-            "best_metrics.json",
-            "best_group_metrics.json",
-            "calibration.json",
-            "test_metrics.json",
-            "config.json",
-            "inference_spec.json",
-            "best_checkpoint.txt",
-            "best_model_summary.json",
-        ):
-            src = out / name
-            if src.exists():
-                shutil.copy2(src, rel / name)
-        if preferred_release.exists():
-            shutil.copy2(preferred_release, rel / preferred_release.name)
-        (out / "latest_release.txt").write_text(str(rel), encoding="utf-8")
+        rel = write_timestamped_release(
+            out,
+            (
+                "best_metrics.json",
+                "best_group_metrics.json",
+                "calibration.json",
+                "test_metrics.json",
+                "config.json",
+                "inference_spec.json",
+                "best_checkpoint.txt",
+                "best_model_summary.json",
+            ),
+            preferred_artifact="best.safetensors",
+        )
         print(f"saved release bundle to {rel}")
 
     print(f"saved best model to {out / 'best.safetensors'} with best_auc={best_auc:.4f}")

@@ -64,6 +64,19 @@ def save_safetensors_checkpoint(path: str | Path, checkpoint: Mapping[str, Any])
     save_file(tensors, str(out), metadata=meta)
 
 
+def save_training_checkpoint(
+    path: str | Path,
+    checkpoint: Mapping[str, Any],
+    *,
+    latest_name: str = "latest_checkpoint.txt",
+) -> None:
+    torch = _torch()
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(dict(checkpoint), out)
+    (out.parent / latest_name).write_text(out.name, encoding="utf-8")
+
+
 def load_safetensors_checkpoint(path: str | Path, map_location: Any = None) -> dict[str, Any]:
     from safetensors import safe_open
     from safetensors.torch import load_file

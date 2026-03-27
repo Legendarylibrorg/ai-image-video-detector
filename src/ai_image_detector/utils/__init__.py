@@ -1,6 +1,7 @@
-from .jsonio import read_json_dict, read_nonempty_lines, write_json_dict
+from .jsonio import git_commit, read_json_dict, read_nonempty_lines, write_json_dict
 
 __all__ = [
+    "git_commit",
     "read_json_dict",
     "read_nonempty_lines",
     "write_json_dict",

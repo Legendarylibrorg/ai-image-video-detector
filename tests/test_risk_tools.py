@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import unittest
 
-from _support import ROOT  # noqa: F401
 from ai_image_detector.risk_tools import apply_risk_tools
 
 

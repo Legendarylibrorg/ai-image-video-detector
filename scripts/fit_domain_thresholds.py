@@ -7,8 +7,9 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image
-from torchvision import datasets, transforms
+from torchvision import datasets
 
+from ai_image_detector.data import make_eval_transform
 from ai_image_detector.domain import DOMAIN_NAMES, classify_domain
 from ai_image_detector.ensemble import EnsembleDetector, load_models, metadata_features_from_paths
 from ai_image_detector.metrics import find_best_threshold, full_metric_report
@@ -32,7 +33,7 @@ def main() -> None:
 
     ds = datasets.ImageFolder(Path(args.data) / "val")
     ai_idx = int(ds.class_to_idx["ai"])
-    tf = transforms.Compose([transforms.Resize((loaded.img_size, loaded.img_size)), transforms.ToTensor()])
+    tf = make_eval_transform(loaded.img_size)
 
     probs: dict[str, list[float]] = {d: [] for d in DOMAIN_NAMES}
     labels: dict[str, list[int]] = {d: [] for d in DOMAIN_NAMES}

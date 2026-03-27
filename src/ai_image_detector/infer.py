@@ -6,8 +6,8 @@ from pathlib import Path
 
 import torch
 from PIL import Image
-from torchvision import transforms
 
+from .data import make_eval_transform
 from .decision import combined_risk, decide_label, image_ood_score
 from .domain import classify_domain, load_domain_config, resolve_domain_threshold
 from .ensemble import EnsembleDetector, load_models
@@ -43,10 +43,7 @@ def main():
     domain_cfg = load_domain_config(args.domain_config)
     tools_cfg = load_tools_config(args.tools_config)
 
-    tf = transforms.Compose([
-        transforms.Resize((loaded.img_size, loaded.img_size)),
-        transforms.ToTensor(),
-    ])
+    tf = make_eval_transform(loaded.img_size)
 
     image_path = Path(args.image)
     image_bytes = image_path.read_bytes()

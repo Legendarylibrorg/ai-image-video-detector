@@ -5,11 +5,10 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 import shutil
-import subprocess
 from typing import Any
 
 from release_selection import build_public_model_manifest, select_public_model
-from script_support import iter_member_dirs, read_json_dict, read_nonempty_lines, resolve_preferred_checkpoint, write_json_dict
+from script_support import git_commit, iter_member_dirs, read_json_dict, read_nonempty_lines, resolve_preferred_checkpoint, write_json_dict
 
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
@@ -21,11 +20,6 @@ CLASSES = ("ai", "real")
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    write_json_dict(path, payload, indent=2)
-
 
 def _count_files(root: Path, splits: tuple[str, ...], exts: set[str]) -> dict[str, dict[str, int]]:
     counts: dict[str, dict[str, int]] = {}
@@ -50,13 +44,6 @@ def _disk_free_gb(root: Path) -> float:
     except Exception:
         return -1.0
     return round(usage.free / (1024 ** 3), 2)
-
-
-def _git_commit() -> str:
-    try:
-        return subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True).strip()
-    except Exception:
-        return "unknown"
 
 
 def _selected_env() -> dict[str, str]:
@@ -100,7 +87,7 @@ def write_dataset_report(args: argparse.Namespace) -> int:
 
     qa_summary = {
         "generated_at": _now(),
-        "git_commit": _git_commit(),
+        "git_commit": git_commit(),
         "disk_free_gb": _disk_free_gb(Path(".")),
         "paths": {
             "data": str(data_root.resolve()),
@@ -128,7 +115,7 @@ def write_dataset_report(args: argparse.Namespace) -> int:
 
     provenance = {
         "generated_at": _now(),
-        "git_commit": _git_commit(),
+        "git_commit": git_commit(),
         "hf_discovery_sources": {
             "cache_file": str(cache_file.resolve()),
             "count": len(hf_sources),
@@ -139,8 +126,8 @@ def write_dataset_report(args: argparse.Namespace) -> int:
         "training_data_report": training_data_report,
     }
 
-    _write_json(Path(args.out), qa_summary)
-    _write_json(Path(args.provenance_out), provenance)
+    write_json_dict(Path(args.out), qa_summary, indent=2)
+    write_json_dict(Path(args.provenance_out), provenance, indent=2)
     return 0
 
 
@@ -216,7 +203,7 @@ def write_final_report(args: argparse.Namespace) -> int:
 
     final_summary = {
         "generated_at": _now(),
-        "git_commit": _git_commit(),
+        "git_commit": git_commit(),
         "disk_free_gb": _disk_free_gb(Path(".")),
         "datasets": {
             "data_root": str(data_root.resolve()),
@@ -243,7 +230,7 @@ def write_final_report(args: argparse.Namespace) -> int:
     run_manifest = {
         "schema": "ai-image-detector-run-manifest-v1",
         "generated_at": _now(),
-        "git_commit": _git_commit(),
+        "git_commit": git_commit(),
         "env": _selected_env(),
         "datasets": {
             "data": str(data_root.resolve()),
@@ -279,17 +266,17 @@ def write_final_report(args: argparse.Namespace) -> int:
         "release_bundle": str(release_bundle.resolve()) if release_bundle else None,
     }
 
-    _write_json(Path(args.summary_out), final_summary)
-    _write_json(Path(args.manifest_out), run_manifest)
-    _write_json(Path(args.thresholds_out), thresholds)
-    _write_json(Path(args.prod_manifest), prod_manifest)
+    write_json_dict(Path(args.summary_out), final_summary, indent=2)
+    write_json_dict(Path(args.manifest_out), run_manifest, indent=2)
+    write_json_dict(Path(args.thresholds_out), thresholds, indent=2)
+    write_json_dict(Path(args.prod_manifest), prod_manifest, indent=2)
     return 0
 
 
 def write_failure_report(args: argparse.Namespace) -> int:
     payload = {
         "generated_at": _now(),
-        "git_commit": _git_commit(),
+        "git_commit": git_commit(),
         "exit_code": int(args.exit_code),
         "stage": args.stage,
         "disk_free_gb": _disk_free_gb(Path(".")),
@@ -301,7 +288,7 @@ def write_failure_report(args: argparse.Namespace) -> int:
             "video_artifacts": str(Path(args.video_artifacts).resolve()),
         },
     }
-    _write_json(Path(args.out), payload)
+    write_json_dict(Path(args.out), payload, indent=2)
     return 0
 
 

@@ -3,26 +3,18 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-import random
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader, Subset
-from torchvision import datasets, transforms
+from torchvision import datasets
 
-from ai_image_detector.data import MetadataImageFolder
+from ai_image_detector.data import MetadataImageFolder, build_loader_kwargs, make_eval_transform, unpack_image_batch
 from ai_image_detector.ensemble import load_models, stack_model_logits
 from ai_image_detector.metrics import find_best_threshold, full_metric_report, roc_auc
-
-
-def _seed_all(seed: int) -> None:
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
+from ai_image_detector.runtime import seed_all
 
 
 def main() -> None:
@@ -40,7 +32,7 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=1337)
     args = ap.parse_args()
 
-    _seed_all(args.seed)
+    seed_all(args.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     loaded = load_models(args.model, device)
@@ -51,12 +43,7 @@ def main() -> None:
     dataset_cls = MetadataImageFolder if loaded.uses_metadata_features else datasets.ImageFolder
     ds = dataset_cls(
         val_dir,
-        transform=transforms.Compose(
-            [
-                transforms.Resize((loaded.img_size, loaded.img_size)),
-                transforms.ToTensor(),
-            ]
-        ),
+        transform=make_eval_transform(loaded.img_size),
     )
     if "ai" not in ds.class_to_idx:
         raise ValueError(f"Expected class 'ai' in val split, got {ds.class_to_idx}")
@@ -64,26 +51,21 @@ def main() -> None:
 
     if args.max_val_images > 0 and len(ds) > args.max_val_images:
         idxs = list(range(len(ds)))
-        random.Random(args.seed).shuffle(idxs)
+        np.random.default_rng(args.seed).shuffle(idxs)
         ds = Subset(ds, idxs[: args.max_val_images])
 
     dl = DataLoader(
         ds,
         batch_size=max(1, int(args.batch_size)),
         shuffle=False,
-        num_workers=max(0, int(args.num_workers)),
-        pin_memory=True,
+        **build_loader_kwargs(num_workers=args.num_workers),
     )
 
     logits_all: list[torch.Tensor] = []
     labels_all: list[torch.Tensor] = []
     with torch.no_grad():
         for batch in dl:
-            metadata_features = None
-            if len(batch) == 3:
-                x, metadata_features, y = batch
-            else:
-                x, y = batch
+            x, metadata_features, y = unpack_image_batch(batch)
             x = x.to(device, non_blocking=True)
             if metadata_features is not None:
                 metadata_features = metadata_features.to(device, non_blocking=True, dtype=x.dtype)

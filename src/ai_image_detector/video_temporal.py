@@ -3,22 +3,21 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import json
-import os
 from pathlib import Path
 import random
-import shutil
-import subprocess
 from typing import List, Tuple
 
 import cv2
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, Dataset
 from torchvision import models
-from .checkpoints import load_checkpoint, resolve_checkpoint_path, save_safetensors_checkpoint
+from .checkpoints import load_checkpoint, save_safetensors_checkpoint, save_training_checkpoint
+from .data import build_loader_kwargs
+from .release_tools import write_timestamped_release
+from .runtime import build_adamw, configure_torch_runtime, git_commit, seed_all
 
 
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
@@ -161,15 +160,6 @@ def _evaluate(model, loader, device):
             loss_sum += float(loss.item()) * y.numel()
     return loss_sum / max(total, 1), correct / max(total, 1)
 
-
-def _git_commit() -> str:
-    try:
-        out = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True)
-        return out.strip()
-    except Exception:
-        return "unknown"
-
-
 def train_main() -> None:
     ap = argparse.ArgumentParser(description="Train temporal video deepfake detector")
     ap.add_argument("--data", required=True, help="video_data with train/{ai,real}, val/{ai,real}")
@@ -196,19 +186,7 @@ def train_main() -> None:
     ap.add_argument("--no-export-release", dest="export_release", action="store_false")
     args = ap.parse_args()
 
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(args.seed)
-    if args.deterministic:
-        torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
-        try:
-            torch.use_deterministic_algorithms(True, warn_only=True)
-        except Exception:
-            pass
-
+    seed_all(args.seed)
     root = Path(args.data)
     train_samples = _collect_videos(root / "train")
     val_samples = _collect_videos(root / "val")
@@ -220,7 +198,7 @@ def train_main() -> None:
 
     config = {
         "args": vars(args),
-        "git_commit": _git_commit(),
+        "git_commit": git_commit(),
         "dataset_counts": {"train": len(train_samples), "val": len(val_samples)},
         "created_utc": datetime.now(timezone.utc).isoformat(),
     }
@@ -229,25 +207,13 @@ def train_main() -> None:
     train_ds = VideoDataset(train_samples, args.frames, args.img_size, augment=True)
     val_ds = VideoDataset(val_samples, args.frames, args.img_size, augment=False)
 
-    if args.num_workers <= 0:
-        cpu = os.cpu_count() or 8
-        args.num_workers = min(12, max(4, cpu // 2))
-
-    dl_kwargs = {"num_workers": args.num_workers, "pin_memory": True}
-    if args.num_workers > 0:
-        dl_kwargs["persistent_workers"] = True
-        dl_kwargs["prefetch_factor"] = 2
+    dl_kwargs = build_loader_kwargs(num_workers=args.num_workers, prefetch_factor=2)
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, **dl_kwargs)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, **dl_kwargs)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if device.type == "cuda":
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
-        if not args.deterministic:
-            torch.backends.cudnn.benchmark = True
-        torch.set_float32_matmul_precision("high")
+    configure_torch_runtime(device, args.deterministic)
     model = TemporalVideoDetector(pretrained_backbone=args.pretrained_backbone).to(device)
     if device.type == "cuda":
         model = model.to(memory_format=torch.channels_last)
@@ -256,11 +222,11 @@ def train_main() -> None:
             model = torch.compile(model, mode="reduce-overhead")
         except Exception as exc:
             print(f"compile_disabled reason={exc}")
-    opt = AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    opt = build_adamw(model.parameters(), lr=args.lr, weight_decay=1e-4, device=device)
     sched = CosineAnnealingLR(opt, T_max=max(args.epochs, 1), eta_min=args.lr * 0.1)
     loss_fn = nn.BCEWithLogitsLoss()
     use_amp = bool(args.amp and device.type == "cuda")
-    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     grad_accum = max(1, int(args.grad_accum))
 
     best_acc = -1.0
@@ -268,7 +234,8 @@ def train_main() -> None:
     start_epoch = 1
 
     def _save_train_ckpt(path: Path, epoch: int) -> None:
-        torch.save(
+        save_training_checkpoint(
+            path,
             {
                 "epoch": epoch,
                 "state_dict": model.state_dict(),
@@ -281,9 +248,7 @@ def train_main() -> None:
                 "frames": args.frames,
                 "pretrained_backbone": bool(args.pretrained_backbone),
             },
-            path,
         )
-        (out / "latest_checkpoint.txt").write_text(path.name, encoding="utf-8")
 
     resume_path = Path(args.resume) if args.resume else (out / "last_video.pt")
     if resume_path.exists():
@@ -309,7 +274,7 @@ def train_main() -> None:
             for x, y in train_loader:
                 x = x.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
-                with torch.cuda.amp.autocast(enabled=use_amp):
+                with torch.amp.autocast("cuda", enabled=use_amp):
                     logit = model(x)
                     loss = loss_fn(logit, y) / grad_accum
                 if not torch.isfinite(loss):
@@ -386,13 +351,11 @@ def train_main() -> None:
 
     best_release = out / "best_video.safetensors"
     if args.export_release and best_release.exists():
-        rel = out / "releases" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        rel.mkdir(parents=True, exist_ok=True)
-        for name in (best_release.name, "config.json", "best_video_checkpoint.txt", "best_video_metrics.json"):
-            src = out / name
-            if src.exists():
-                shutil.copy2(src, rel / name)
-        (out / "latest_release.txt").write_text(str(rel), encoding="utf-8")
+        rel = write_timestamped_release(
+            out,
+            ("config.json", "best_video_checkpoint.txt", "best_video_metrics.json"),
+            preferred_artifact=best_release,
+        )
         print(f"saved release bundle to {rel}")
 
     best_out = out / "best_video.safetensors"

@@ -86,6 +86,16 @@ class TrainingSurfaceTests(unittest.TestCase):
     def test_train_module_skips_degenerate_best_checkpoint_promotion(self) -> None:
         text = (ROOT / "src" / "ai_image_detector" / "train.py").read_text(encoding="utf-8")
         self.assertIn("def _promotion_status(report: dict[str, Any]) -> tuple[bool, str]:", text)
+        self.assertIn('choices=["tiny", "effb0", "effb2", "convnext_tiny"]', text)
+        self.assertIn("--mixup-alpha", text)
+        self.assertIn("--label-smoothing", text)
+        self.assertIn("configure_torch_runtime(device, args.deterministic)", text)
+        self.assertIn('"git_commit": git_commit()', text)
+        self.assertIn("build_adamw(model.parameters()", text)
+        self.assertIn("save_training_checkpoint(", text)
+        self.assertIn("build_loader_kwargs(num_workers=args.num_workers)", text)
+        self.assertIn("make_eval_transform(args.img_size)", text)
+        self.assertIn("unpack_image_batch", text)
         self.assertIn('return False, "no_operable_threshold"', text)
         self.assertIn('return False, "single_class_predictions"', text)
         self.assertIn('return False, "uninformative_balanced_threshold"', text)
@@ -96,6 +106,7 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertIn('raise RuntimeError("no_promotable_checkpoint")', text)
         self.assertNotIn('torch.save(ckpt, out / "best.pt")', text)
         self.assertIn('save_safetensors_checkpoint(out / "best.safetensors", ckpt)', text)
+        self.assertIn("write_timestamped_release(", text)
         self.assertIn('(out / "inference_spec.json").write_text', text)
         self.assertIn('runtime_spec": model_runtime_spec(', text)
         self.assertIn('(out / "best_checkpoint.txt").write_text(preferred_best.name', text)
@@ -131,6 +142,7 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertIn('run_member_train "$OUT_DIR/m2"', text)
         self.assertIn('run_member_train "$OUT_DIR/m3"', text)
         self.assertIn('run_member_train "$OUT_DIR/m4"', text)
+        self.assertIn("--backbone convnext_tiny", text)
         self.assertIn('--threshold-objective balanced', text)
         self.assertIn('"${common_args[@]}"', text)
 
@@ -149,9 +161,28 @@ class TrainingSurfaceTests(unittest.TestCase):
 
     def test_distill_script_stays_safetensors_only_for_best_artifacts(self) -> None:
         text = (ROOT / "scripts" / "train_distill.py").read_text(encoding="utf-8")
+        self.assertIn('choices=["tiny", "effb0", "convnext_tiny"]', text)
+        self.assertIn("--num-workers", text)
+        self.assertIn("--amp", text)
+        self.assertIn('"git_commit": git_commit()', text)
+        self.assertIn("build_loader_kwargs(num_workers=args.num_workers)", text)
+        self.assertIn("make_eval_transform(args.img_size)", text)
+        self.assertIn("build_adamw(student.parameters()", text)
+        self.assertIn("write_timestamped_release(", text)
+        self.assertIn('torch.amp.GradScaler("cuda", enabled=use_amp)', text)
         self.assertIn('save_safetensors_checkpoint(out / "best.safetensors", ckpt)', text)
         self.assertNotIn('--save-safetensors', text)
         self.assertNotIn('--no-save-safetensors', text)
+
+    def test_video_training_uses_shared_runtime_helpers(self) -> None:
+        text = (ROOT / "src" / "ai_image_detector" / "video_temporal.py").read_text(encoding="utf-8")
+        self.assertIn("configure_torch_runtime(device, args.deterministic)", text)
+        self.assertIn('"git_commit": git_commit()', text)
+        self.assertIn("build_loader_kwargs(num_workers=args.num_workers, prefetch_factor=2)", text)
+        self.assertIn("build_adamw(model.parameters()", text)
+        self.assertIn("save_training_checkpoint(", text)
+        self.assertIn("write_timestamped_release(", text)
+        self.assertIn('torch.amp.GradScaler("cuda", enabled=use_amp)', text)
 
     def test_continuous_training_runs_collection_before_retrain(self) -> None:
         text = (ROOT / "scripts" / "continuous_training.sh").read_text(encoding="utf-8")

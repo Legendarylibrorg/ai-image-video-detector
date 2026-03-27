@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
-import json
 import math
 import os
 from pathlib import Path
 import random
 import re
 import time
-from typing import Callable, DefaultDict, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, DefaultDict, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageFilter
 from build_best_dataset_policy import (
@@ -544,6 +543,14 @@ def main():
             streaming=loaded_source.streaming,
         )
 
+        def _extract_payload(ex: dict) -> tuple[object, object, str | None]:
+            decoded = open_example_image(ex, image_field)
+            return (
+                ex.get("_normalized_label"),
+                decoded,
+                None if decoded is not None else "decode_fail",
+            )
+
         loop_result = run_source_acceptance_loop(
             iter_source_examples(
                 normalized_source,
@@ -555,11 +562,7 @@ def main():
             max_unique_per_source=args.max_unique_per_source,
             global_rejects=global_rejects,
             try_accept_and_save=try_accept_and_save,
-            extract_payload=lambda ex: (
-                ex.get("_normalized_label"),
-                open_example_image(ex, image_field),
-                None if open_example_image(ex, image_field) is not None else "decode_fail",
-            ),
+            extract_payload=_extract_payload,
             source_name=src,
             source_counts=source_counts,
             source_split_counts=source_split_counts,

@@ -60,7 +60,7 @@ else
   run_member_train "$OUT_DIR/m1" --batch-size 64 --img-size 256 --lr 2e-4 --loss focal --focal-gamma 2.0 --backbone tiny --grad-accum 1
   run_member_train "$OUT_DIR/m2" --batch-size 40 --img-size 320 --lr 1.5e-4 --loss focal --focal-gamma 1.8 --backbone effb0 --grad-accum 1
   run_member_train "$OUT_DIR/m3" --batch-size 20 --img-size 384 --lr 1e-4 --loss focal --focal-gamma 2.2 --backbone effb0 --grad-accum 2
-  run_member_train "$OUT_DIR/m4" --batch-size 12 --img-size 320 --lr 8e-5 --loss focal --focal-gamma 2.2 --backbone effb2 --grad-accum 3
+  run_member_train "$OUT_DIR/m4" --batch-size 10 --img-size 320 --lr 8e-5 --loss focal --focal-gamma 2.2 --backbone convnext_tiny --grad-accum 3
 fi
 
 if [[ "$RUN_METADATA_MEMBER" == "1" ]]; then

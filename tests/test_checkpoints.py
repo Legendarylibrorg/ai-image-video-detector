@@ -41,14 +41,25 @@ class CheckpointsTests(unittest.TestCase):
 
         self.assertEqual(resolved, sft_path)
 
+    def test_save_training_checkpoint_updates_latest_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "last.pt"
+
+            checkpoints.save_training_checkpoint(path, {"epoch": 3})
+
+            self.assertTrue(path.exists())
+            self.assertEqual((Path(tmp) / "latest_checkpoint.txt").read_text(encoding="utf-8"), "last.pt")
+
     def test_train_module_does_not_call_torch_load_for_best_checkpoint_eval(self) -> None:
         train_text = (ROOT / "src" / "ai_image_detector" / "train.py").read_text(encoding="utf-8")
         self.assertIn("best = load_checkpoint(best_path, map_location=device)", train_text)
+        self.assertIn("save_training_checkpoint(", train_text)
         self.assertNotIn('torch.load(out / "best.pt"', train_text)
 
     def test_distill_script_uses_shared_checkpoint_loader_for_resume(self) -> None:
         distill_text = (ROOT / "scripts" / "train_distill.py").read_text(encoding="utf-8")
         self.assertIn("ckpt = torch.load(resume_path, map_location=device)", distill_text)
+        self.assertIn("save_training_checkpoint(", distill_text)
 
     def test_distill_script_writes_safetensors_and_summary_artifacts(self) -> None:
         distill_text = (ROOT / "scripts" / "train_distill.py").read_text(encoding="utf-8")
