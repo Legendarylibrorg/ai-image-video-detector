@@ -100,7 +100,7 @@ aid-train \
   --save-every 1
 
 for f in \
-  "$OUT_DIR/best.pt" \
+  "$OUT_DIR/best.safetensors" \
   "$OUT_DIR/last.pt" \
   "$OUT_DIR/config.json" \
   "$OUT_DIR/test_metrics.json"; do

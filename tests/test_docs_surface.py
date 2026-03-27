@@ -13,7 +13,14 @@ class DocsSurfaceTests(unittest.TestCase):
             self.assertFalse((ROOT / name).exists(), name)
 
     def test_stale_scripts_are_removed(self) -> None:
-        for name in ["continuous_collect.sh", "incremental_refresh.sh", "linux_worker.sh", "privacy_cleanup.sh"]:
+        for name in [
+            "continuous_collect.sh",
+            "incremental_refresh.sh",
+            "linux_worker.sh",
+            "privacy_cleanup.sh",
+            "fit_multimodal_fusion.py",
+            "build_large_dataset.py",
+        ]:
             self.assertFalse((ROOT / "scripts" / name).exists(), name)
 
     def test_env_example_does_not_override_collection_tuning_defaults(self) -> None:

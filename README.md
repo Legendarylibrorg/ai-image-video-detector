@@ -187,6 +187,7 @@ Important notes:
 - `./local.sh collect-status` shows the current collection/build state, recent source activity, and resume hints.
 - `./local.sh run` now also writes simple machine-readable reports:
   `./.local/reports/dataset_qa_summary.json`, `./.local/reports/dataset_provenance.json`, `./artifacts_ens/final_run_summary.json`, `./artifacts_ens/final_thresholds.json`, `./artifacts_ens/run_manifest.json`, `./artifacts_ens/prod_manifest.json`, `./artifacts_ens/domain_config.json`, and `./artifacts_ens/robust_eval.json`.
+- `./local.sh run` also exports a release-ready bundle under `./artifacts_ens/release` with the promoted model checkpoints plus the key eval sidecars you would want for sharing.
 
 `./local.sh smoke` is the tiny local end-to-end validation path. `./local.sh smoke-real` is the optional real Hugging Face + CUDA validation path.
 

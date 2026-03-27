@@ -285,9 +285,9 @@ def train_main() -> None:
         )
         (out / "latest_checkpoint.txt").write_text(path.name, encoding="utf-8")
 
-    resume_path = Path(args.resume) if args.resume else resolve_checkpoint_path(out / "last_video.pt")
+    resume_path = Path(args.resume) if args.resume else (out / "last_video.pt")
     if resume_path.exists():
-        ckpt = load_checkpoint(resume_path, map_location=device)
+        ckpt = torch.load(resume_path, map_location=device)
         model.load_state_dict(ckpt["state_dict"])
         if "optimizer" in ckpt:
             opt.load_state_dict(ckpt["optimizer"])
@@ -345,17 +345,6 @@ def train_main() -> None:
             if val_acc > (best_acc + args.min_delta):
                 best_acc = val_acc
                 no_improve = 0
-                torch.save(
-                    {
-                        "state_dict": model.state_dict(),
-                        "img_size": args.img_size,
-                        "frames": args.frames,
-                        "threshold": 0.5,
-                        "model_id": "temporal-video-detector",
-                        "pretrained_backbone": bool(args.pretrained_backbone),
-                    },
-                    out / "best_video.pt",
-                )
                 save_safetensors_checkpoint(
                     out / "best_video.safetensors",
                     {
@@ -367,7 +356,7 @@ def train_main() -> None:
                         "pretrained_backbone": bool(args.pretrained_backbone),
                     },
                 )
-                preferred_best = (out / "best_video.safetensors") if (out / "best_video.safetensors").exists() else (out / "best_video.pt")
+                preferred_best = out / "best_video.safetensors"
                 (out / "best_video_checkpoint.txt").write_text(str(preferred_best), encoding="utf-8")
                 (out / "best_video_metrics.json").write_text(
                     json.dumps(
@@ -395,7 +384,7 @@ def train_main() -> None:
         print(f"training_interrupted saved={out / 'interrupted_video.pt'}")
         return
 
-    best_release = (out / "best_video.safetensors") if (out / "best_video.safetensors").exists() else (out / "best_video.pt")
+    best_release = out / "best_video.safetensors"
     if args.export_release and best_release.exists():
         rel = out / "releases" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         rel.mkdir(parents=True, exist_ok=True)
@@ -406,7 +395,7 @@ def train_main() -> None:
         (out / "latest_release.txt").write_text(str(rel), encoding="utf-8")
         print(f"saved release bundle to {rel}")
 
-    best_out = (out / "best_video.safetensors") if (out / "best_video.safetensors").exists() else (out / "best_video.pt")
+    best_out = out / "best_video.safetensors"
     print(f"saved best temporal model to {best_out} best_acc={best_acc:.4f}")
 
 

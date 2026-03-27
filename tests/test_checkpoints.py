@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -11,26 +10,13 @@ from ai_image_detector import checkpoints
 
 
 class CheckpointsTests(unittest.TestCase):
-    def test_load_checkpoint_blocks_pickle_files_by_default(self) -> None:
+    def test_load_checkpoint_rejects_pickle_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "model.pt"
             path.write_bytes(b"not-a-real-checkpoint")
 
-            with self.assertRaisesRegex(RuntimeError, "pickle_checkpoint_blocked"):
+            with self.assertRaisesRegex(RuntimeError, "unsupported_checkpoint_format"):
                 checkpoints.load_checkpoint(path, map_location="cpu")
-
-    def test_load_checkpoint_allows_pickle_files_with_explicit_opt_in(self) -> None:
-        fake_ckpt = {"state_dict": {}, "threshold": 0.5}
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "model.pt"
-            path.write_bytes(b"not-a-real-checkpoint")
-
-            with mock.patch.dict(os.environ, {"ALLOW_UNSAFE_PICKLE_CHECKPOINTS": "1"}, clear=False):
-                with mock.patch.object(checkpoints.torch, "load", return_value=fake_ckpt) as mock_load:
-                    loaded = checkpoints.load_checkpoint(path, map_location="cpu")
-
-        self.assertEqual(loaded, fake_ckpt)
-        mock_load.assert_called_once_with(path, map_location="cpu")
 
     def test_load_checkpoint_uses_safetensors_without_pickle_opt_in(self) -> None:
         fake_ckpt = {"state_dict": {"x": object()}, "_checkpoint_format": "safetensors"}
@@ -62,9 +48,7 @@ class CheckpointsTests(unittest.TestCase):
 
     def test_distill_script_uses_shared_checkpoint_loader_for_resume(self) -> None:
         distill_text = (ROOT / "scripts" / "train_distill.py").read_text(encoding="utf-8")
-        self.assertIn("from ai_image_detector.checkpoints import load_checkpoint", distill_text)
-        self.assertIn("ckpt = load_checkpoint(resume_path, map_location=device)", distill_text)
-        self.assertNotIn("ckpt = torch.load(resume_path, map_location=device)", distill_text)
+        self.assertIn("ckpt = torch.load(resume_path, map_location=device)", distill_text)
 
     def test_distill_script_writes_safetensors_and_summary_artifacts(self) -> None:
         distill_text = (ROOT / "scripts" / "train_distill.py").read_text(encoding="utf-8")

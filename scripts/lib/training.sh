@@ -269,7 +269,6 @@ run_full_pipeline() {
 
 validate_train_artifacts() {
   local ens_dir="${ENS_OUT:-./artifacts_ens}"
-  local vid_best_pt="${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.pt"
   local vid_best_sft="${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.safetensors"
   local missing=0
   local video_required=0
@@ -304,7 +303,7 @@ validate_train_artifacts() {
       missing=1
     fi
   done
-  if [[ "$video_required" == "1" && ! -f "$vid_best_sft" && ! -f "$vid_best_pt" ]]; then
+  if [[ "$video_required" == "1" && ! -f "$vid_best_sft" ]]; then
     echo "missing_artifact=$vid_best_sft"
     missing=1
   elif [[ "$video_required" != "1" ]]; then

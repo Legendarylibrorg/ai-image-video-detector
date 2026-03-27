@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import average_precision_score, balanced_accuracy_score, confusion_matrix, precision_recall_fscore_support, roc_auc_score
 from torchvision import datasets, transforms
 
-from .checkpoints import load_checkpoint, resolve_checkpoint_path, save_safetensors_checkpoint
+from .checkpoints import load_checkpoint, save_safetensors_checkpoint
 from .data import MetadataImageFolder, make_loaders
 from .metrics import find_best_threshold, fit_temperature, full_metric_report, sigmoid
 from .model import build_model
@@ -296,8 +296,6 @@ def main():
     ap.add_argument("--deterministic", action="store_true", help="Enable deterministic behavior (slower)")
     ap.add_argument("--export-release", action="store_true", default=True)
     ap.add_argument("--no-export-release", dest="export_release", action="store_false")
-    ap.add_argument("--save-safetensors", action="store_true", default=True)
-    ap.add_argument("--no-save-safetensors", dest="save_safetensors", action="store_false")
     ap.add_argument("--use-metadata-features", action="store_true", help="Add metadata/file cues as a small auxiliary branch")
     ap.add_argument("--init-from", default="", help="Optional checkpoint to partially initialize from before training")
     args = ap.parse_args()
@@ -429,9 +427,9 @@ def main():
         )
         (out / "latest_checkpoint.txt").write_text(path.name, encoding="utf-8")
 
-    resume_path = Path(args.resume) if args.resume else resolve_checkpoint_path(out / "last.pt")
+    resume_path = Path(args.resume) if args.resume else (out / "last.pt")
     if resume_path.exists():
-        ckpt = load_checkpoint(resume_path, map_location=device)
+        ckpt = torch.load(resume_path, map_location=device)
         model.load_state_dict(ckpt["state_dict"])
         ema.shadow.load_state_dict(ckpt.get("ema_state_dict", ckpt["state_dict"]))
         if "optimizer" in ckpt:
@@ -445,7 +443,7 @@ def main():
         degenerate_epochs = int(ckpt.get("degenerate_epochs", degenerate_epochs))
         model_id = str(ckpt.get("model_id", model_id))
         start_epoch = int(ckpt.get("epoch", 0)) + 1
-        best_checkpoint_saved = bool(Path(out / "best.pt").exists() or Path(out / "best.safetensors").exists())
+        best_checkpoint_saved = bool(Path(out / "best.safetensors").exists())
         print(f"resumed_from={resume_path} start_epoch={start_epoch} best_auc={best_auc:.4f}")
 
     try:
@@ -609,10 +607,8 @@ def main():
                     "metadata_feature_dim": metadata_dim,
                     "use_metadata_features": bool(args.use_metadata_features),
                 }
-                torch.save(ckpt, out / "best.pt")
-                if args.save_safetensors:
-                    save_safetensors_checkpoint(out / "best.safetensors", ckpt)
-                preferred_best = (out / "best.safetensors") if (out / "best.safetensors").exists() else (out / "best.pt")
+                save_safetensors_checkpoint(out / "best.safetensors", ckpt)
+                preferred_best = out / "best.safetensors"
                 best_checkpoint_saved = True
                 (out / "best_checkpoint.txt").write_text(str(preferred_best), encoding="utf-8")
                 (out / "best_metrics.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -662,7 +658,7 @@ def main():
         raise RuntimeError("no_promotable_checkpoint")
 
     test_dir = data_root / "test"
-    best_path = resolve_checkpoint_path(out / "best.pt")
+    best_path = out / "best.safetensors"
     if test_dir.exists() and best_path.exists():
         best = load_checkpoint(best_path, map_location=device)
         eval_model = build_model(
@@ -730,10 +726,10 @@ def main():
         (out / "test_metrics.json").write_text(json.dumps(test_report, indent=2), encoding="utf-8")
         print(f"saved test metrics to {out / 'test_metrics.json'}")
 
-    if args.export_release and (out / "best.pt").exists():
+    if args.export_release and (out / "best.safetensors").exists():
         rel = out / "releases" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         rel.mkdir(parents=True, exist_ok=True)
-        preferred_release = (out / "best.safetensors") if (out / "best.safetensors").exists() else (out / "best.pt")
+        preferred_release = out / "best.safetensors"
         for name in (
             "best_metrics.json",
             "best_group_metrics.json",
@@ -751,7 +747,7 @@ def main():
         (out / "latest_release.txt").write_text(str(rel), encoding="utf-8")
         print(f"saved release bundle to {rel}")
 
-    print(f"saved best model to {out / 'best.pt'} with best_auc={best_auc:.4f}")
+    print(f"saved best model to {out / 'best.safetensors'} with best_auc={best_auc:.4f}")
 
 
 if __name__ == "__main__":

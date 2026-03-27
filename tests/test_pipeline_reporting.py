@@ -107,6 +107,7 @@ class PipelineReportingTests(unittest.TestCase):
             manifest_out = ens / "run_manifest.json"
             thresholds_out = ens / "final_thresholds.json"
             prod_manifest = ens / "prod_manifest.json"
+            release_bundle = ens / "release"
 
             subprocess.run(
                 [
@@ -139,6 +140,8 @@ class PipelineReportingTests(unittest.TestCase):
                     str(manifest_out),
                     "--thresholds-out",
                     str(thresholds_out),
+                    "--release-bundle",
+                    str(release_bundle),
                 ],
                 cwd=ROOT,
                 check=True,
@@ -155,12 +158,15 @@ class PipelineReportingTests(unittest.TestCase):
         self.assertEqual(summary["robust_eval"]["jpeg_q35"]["auc"], 0.88)
         self.assertEqual(summary["video_metrics"]["val_acc"], 0.88)
         self.assertEqual(summary["distilled_model"]["metrics"]["val_acc"], 0.87)
+        self.assertTrue(summary["release_bundle"].endswith("release"))
         self.assertEqual(thresholds["ensemble"], 0.55)
         self.assertEqual(thresholds["domain_thresholds"]["screenshot"], 0.6)
         self.assertEqual(len(prod["models"]), 4)
         self.assertTrue(prod["distilled_model"].endswith("best.safetensors"))
         self.assertTrue(prod["robust_eval"].endswith("robust_eval.json"))
+        self.assertTrue(prod["release_bundle"].endswith("release"))
         self.assertIn("preferred_checkpoints", manifest)
+        self.assertTrue(manifest["artifacts"]["release_bundle"].endswith("release"))
 
 
 if __name__ == "__main__":

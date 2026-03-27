@@ -11,22 +11,20 @@ prepare_training_image_data
 
 OUT_DIR="${METADATA_FINETUNE_OUT:-./artifacts_finetune_metadata}"
 BASE_CKPT="${METADATA_FINETUNE_BASE_CKPT:-}"
+BASE_CKPT_SEARCH_ROOT="${METADATA_FINETUNE_SEARCH_ROOT:-./artifacts_ens}"
 if [[ -z "$BASE_CKPT" ]]; then
-  for candidate in \
-    "./artifacts_ens/m1/best.safetensors" \
-    "./artifacts_ens/m1/best.pt" \
-    "./artifacts_ens/m2/best.safetensors" \
-    "./artifacts_ens/m2/best.pt"
-  do
-    if [[ -f "$candidate" ]]; then
-      BASE_CKPT="$candidate"
-      break
-    fi
+  shopt -s nullglob
+  declare -a metadata_candidates=("$BASE_CKPT_SEARCH_ROOT"/m*/best.safetensors)
+  shopt -u nullglob
+  for candidate in "${metadata_candidates[@]}"; do
+    [[ -f "$candidate" ]] || continue
+    BASE_CKPT="$candidate"
+    break
   done
 fi
 
 if [[ -z "$BASE_CKPT" || ! -f "$BASE_CKPT" ]]; then
-  echo "metadata_finetune_fail=missing_base_checkpoint searched=./artifacts_ens/m1|m2/best.safetensors" >&2
+  echo "metadata_finetune_fail=missing_base_checkpoint searched=$BASE_CKPT_SEARCH_ROOT/m*/best.safetensors" >&2
   exit 1
 fi
 

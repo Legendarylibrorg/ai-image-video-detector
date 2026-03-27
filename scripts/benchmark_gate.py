@@ -137,7 +137,6 @@ def main() -> int:
     if (
         not args.skip_video
         and not (video / "best_video.safetensors").exists()
-        and not (video / "best_video.pt").exists()
         and not args.allow_missing_video
     ):
         failures.append(f"missing {video / 'best_video.safetensors'}")
