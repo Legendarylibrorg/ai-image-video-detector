@@ -8,6 +8,7 @@ RUN_METADATA_MEMBER="${RUN_METADATA_MEMBER:-1}"
 METADATA_MEMBER_OUT="${METADATA_MEMBER_OUT:-$OUT_DIR/m5_metadata}"
 METADATA_MEMBER_BASE_CKPT="${METADATA_MEMBER_BASE_CKPT:-$OUT_DIR/m1/best.safetensors}"
 METADATA_MEMBER_EPOCHS="${METADATA_MEMBER_EPOCHS:-$EPOCHS}"
+TRAIN_ENSEMBLE_PROFILE="${TRAIN_ENSEMBLE_PROFILE:-default}"
 
 mkdir -p "$OUT_DIR"
 
@@ -31,32 +32,62 @@ if [[ -n "${TRAIN_DEGENERATE_PATIENCE:-}" ]]; then
   common_args+=(--degenerate-patience "$TRAIN_DEGENERATE_PATIENCE")
 fi
 
-# Diverse runs for stronger ensemble generalization.
-aid-train --data "$DATA_DIR" --epochs "$EPOCHS" --batch-size 64 --img-size 256 --lr 2e-4 --loss focal --focal-gamma 2.0 --backbone tiny --grad-accum 1 --threshold-objective balanced --out "$OUT_DIR/m1" "${common_args[@]}"
-aid-train --data "$DATA_DIR" --epochs "$EPOCHS" --batch-size 40 --img-size 320 --lr 1.5e-4 --loss focal --focal-gamma 1.8 --backbone effb0 --grad-accum 1 --threshold-objective balanced --out "$OUT_DIR/m2" "${common_args[@]}"
-aid-train --data "$DATA_DIR" --epochs "$EPOCHS" --batch-size 20 --img-size 384 --lr 1e-4 --loss focal --focal-gamma 2.2 --backbone effb0 --grad-accum 2 --threshold-objective balanced --out "$OUT_DIR/m3" "${common_args[@]}"
-aid-train --data "$DATA_DIR" --epochs "$EPOCHS" --batch-size 12 --img-size 320 --lr 8e-5 --loss focal --focal-gamma 2.2 --backbone effb2 --grad-accum 3 --threshold-objective balanced --out "$OUT_DIR/m4" "${common_args[@]}"
+run_member_train() {
+  local member_out="$1"
+  shift
+  aid-train \
+    --data "$DATA_DIR" \
+    --epochs "$EPOCHS" \
+    "$@" \
+    --threshold-objective balanced \
+    --out "$member_out" \
+    "${common_args[@]}"
+}
+
+metadata_batch_size=48
+metadata_lr=8e-5
+metadata_init_enabled=1
+if [[ "$TRAIN_ENSEMBLE_PROFILE" == "smoke" ]]; then
+  run_member_train "$OUT_DIR/m1" --batch-size 8 --img-size 256 --lr 2e-4 --loss focal --focal-gamma 2.0 --backbone tiny --grad-accum 1
+  run_member_train "$OUT_DIR/m2" --batch-size 8 --img-size 320 --lr 1.5e-4 --loss focal --focal-gamma 1.8 --backbone tiny --grad-accum 1
+  run_member_train "$OUT_DIR/m3" --batch-size 8 --img-size 384 --lr 1.2e-4 --loss focal --focal-gamma 2.1 --backbone tiny --grad-accum 1
+  run_member_train "$OUT_DIR/m4" --batch-size 8 --img-size 256 --lr 1e-4 --loss focal --focal-gamma 2.2 --backbone tiny --grad-accum 2
+  metadata_batch_size=8
+  metadata_lr=2e-4
+  metadata_init_enabled=0
+else
+  # Diverse runs for stronger ensemble generalization.
+  run_member_train "$OUT_DIR/m1" --batch-size 64 --img-size 256 --lr 2e-4 --loss focal --focal-gamma 2.0 --backbone tiny --grad-accum 1
+  run_member_train "$OUT_DIR/m2" --batch-size 40 --img-size 320 --lr 1.5e-4 --loss focal --focal-gamma 1.8 --backbone effb0 --grad-accum 1
+  run_member_train "$OUT_DIR/m3" --batch-size 20 --img-size 384 --lr 1e-4 --loss focal --focal-gamma 2.2 --backbone effb0 --grad-accum 2
+  run_member_train "$OUT_DIR/m4" --batch-size 12 --img-size 320 --lr 8e-5 --loss focal --focal-gamma 2.2 --backbone effb2 --grad-accum 3
+fi
 
 if [[ "$RUN_METADATA_MEMBER" == "1" ]]; then
-  if [[ ! -f "$METADATA_MEMBER_BASE_CKPT" ]]; then
+  if [[ "$metadata_init_enabled" == "1" && ! -f "$METADATA_MEMBER_BASE_CKPT" ]]; then
     echo "metadata_member_fail=missing_base_checkpoint path=$METADATA_MEMBER_BASE_CKPT" >&2
     exit 1
   fi
-  aid-train \
-    --data "$DATA_DIR" \
-    --epochs "$METADATA_MEMBER_EPOCHS" \
-    --batch-size 48 \
-    --img-size 256 \
-    --lr 8e-5 \
-    --loss focal \
-    --focal-gamma 2.0 \
-    --backbone tiny \
-    --grad-accum 1 \
-    --threshold-objective balanced \
-    --out "$METADATA_MEMBER_OUT" \
-    --init-from "$METADATA_MEMBER_BASE_CKPT" \
-    --use-metadata-features \
+  metadata_cmd=(
+    aid-train
+    --data "$DATA_DIR"
+    --epochs "$METADATA_MEMBER_EPOCHS"
+    --img-size 256
+    --lr "$metadata_lr"
+    --loss focal
+    --focal-gamma 2.0
+    --backbone tiny
+    --grad-accum 1
+    --batch-size "$metadata_batch_size"
+    --threshold-objective balanced
+    --out "$METADATA_MEMBER_OUT"
+    --use-metadata-features
     "${common_args[@]}"
+  )
+  if [[ "$metadata_init_enabled" == "1" ]]; then
+    metadata_cmd+=(--init-from "$METADATA_MEMBER_BASE_CKPT")
+  fi
+  "${metadata_cmd[@]}"
 fi
 
 echo "ensemble_models:"

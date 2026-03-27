@@ -21,6 +21,7 @@ RUN_ONCE="${RUN_ONCE:-0}"
 ENV_READY=0
 
 source "$ROOT_DIR/scripts/lib/core.sh"
+source "$ROOT_DIR/scripts/lib/training.sh"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -41,7 +42,7 @@ while true; do
   fi
 
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) continuous_training_retrain_start"
-  if bash scripts/weekly_retrain_v3.sh; then
+  if run_weekly_retrain_cycle; then
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) continuous_training_cycle_done"
   else
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) continuous_training_retrain_failed sleep_sec=$FAILURE_SLEEP_SEC"

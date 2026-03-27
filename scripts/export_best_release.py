@@ -5,19 +5,9 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import shutil
-from typing import Any
 
 from release_selection import build_inference_profile, build_public_model_manifest, select_public_model
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return data if isinstance(data, dict) else {}
+from script_support import iter_member_dirs, read_json_dict, resolve_checkpoint, write_json_dict
 
 
 def _copy_if_exists(src: Path, dst: Path) -> bool:
@@ -28,18 +18,15 @@ def _copy_if_exists(src: Path, dst: Path) -> bool:
     return True
 
 
-def _resolve_checkpoint(path: Path) -> Path | None:
-    safe = path.with_suffix(".safetensors")
-    if safe.exists():
-        return safe
-    if path.exists():
-        return path
-    return None
-
-
 def _copy_tree_file(path: Path, rel: str, out_dir: Path, copied: list[str]) -> None:
     if _copy_if_exists(path, out_dir / rel):
         copied.append(rel)
+
+
+def _copy_named_files(src_dir: Path, dst_dir: Path, names: tuple[str, ...], copied: list[str], *, rel_prefix: str) -> None:
+    for name in names:
+        target_rel = f"{rel_prefix}/{name}" if rel_prefix else name
+        _copy_tree_file(src_dir / name, target_rel, dst_dir, copied)
 
 
 def main() -> None:
@@ -59,7 +46,7 @@ def main() -> None:
         release_dir = ens_out / "releases" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     release_dir.mkdir(parents=True, exist_ok=True)
 
-    prod_manifest = _read_json(ens_out / "prod_manifest.json")
+    prod_manifest = read_json_dict(ens_out / "prod_manifest.json")
     copied: list[str] = []
 
     for name in (
@@ -74,38 +61,53 @@ def main() -> None:
     ):
         _copy_tree_file(ens_out / name, name, release_dir, copied)
 
-    for model_dir in sorted((p for p in ens_out.glob("m*") if p.is_dir()), key=lambda p: p.name):
+    for model_dir in iter_member_dirs(ens_out):
         rel_base = model_dir.name
-        preferred = _resolve_checkpoint(model_dir / "best.safetensors")
+        preferred = resolve_checkpoint(model_dir / "best.safetensors")
         if preferred is not None:
             _copy_tree_file(preferred, f"{rel_base}/{preferred.name}", release_dir, copied)
-        for name in (
-            "calibration.json",
-            "best_model_summary.json",
-            "best_metrics.json",
-            "best_group_metrics.json",
-            "config.json",
-            "inference_spec.json",
-            "best_checkpoint.txt",
-            "test_metrics.json",
-        ):
-            _copy_tree_file(model_dir / name, f"{rel_base}/{name}", release_dir, copied)
+        _copy_named_files(
+            model_dir,
+            release_dir,
+            (
+                "calibration.json",
+                "best_model_summary.json",
+                "best_metrics.json",
+                "best_group_metrics.json",
+                "config.json",
+                "inference_spec.json",
+                "best_checkpoint.txt",
+                "test_metrics.json",
+            ),
+            copied,
+            rel_prefix=rel_base,
+        )
 
     distill_dir = ens_out / "distill"
     if distill_dir.exists():
-        preferred = _resolve_checkpoint(distill_dir / "best.safetensors")
+        preferred = resolve_checkpoint(distill_dir / "best.safetensors")
         if preferred is not None:
             _copy_tree_file(preferred, f"distill/{preferred.name}", release_dir, copied)
-        for name in ("best_model_summary.json", "best_checkpoint.txt", "config.json"):
-            _copy_tree_file(distill_dir / name, f"distill/{name}", release_dir, copied)
+        _copy_named_files(
+            distill_dir,
+            release_dir,
+            ("best_model_summary.json", "best_checkpoint.txt", "config.json"),
+            copied,
+            rel_prefix="distill",
+        )
 
     if args.video_artifacts:
         video_dir = Path(args.video_artifacts)
-        preferred = _resolve_checkpoint(video_dir / "best_video.safetensors")
+        preferred = resolve_checkpoint(video_dir / "best_video.safetensors")
         if preferred is not None:
             _copy_tree_file(preferred, preferred.name, release_dir, copied)
-        for name in ("best_video_metrics.json", "config.json"):
-            _copy_tree_file(video_dir / name, name, release_dir, copied)
+        _copy_named_files(
+            video_dir,
+            release_dir,
+            ("best_video_metrics.json", "config.json"),
+            copied,
+            rel_prefix="",
+        )
 
     public_model = select_public_model(ens_out)
     public_model_manifest = None
@@ -115,19 +117,23 @@ def main() -> None:
         public_checkpoint = public_dir / "best.safetensors"
         if _copy_if_exists(public_model["source_checkpoint_path"], public_checkpoint):
             copied.append("public_model/best.safetensors")
-        for name in ("calibration.json", "best_metrics.json", "test_metrics.json", "config.json", "inference_spec.json", "best_model_summary.json"):
-            if _copy_if_exists(Path(public_model["artifact_dir"]) / name, public_dir / name):
-                copied.append(f"public_model/{name}")
+        _copy_named_files(
+            Path(public_model["artifact_dir"]),
+            release_dir,
+            ("calibration.json", "best_metrics.json", "test_metrics.json", "config.json", "inference_spec.json", "best_model_summary.json"),
+            copied,
+            rel_prefix="public_model",
+        )
         public_model_manifest = build_public_model_manifest(
             public_model,
             public_checkpoint=str(public_checkpoint.resolve()),
         )
         if public_model_manifest is not None:
-            (public_dir / "model_manifest.json").write_text(json.dumps(public_model_manifest, indent=2), encoding="utf-8")
+            write_json_dict(public_dir / "model_manifest.json", public_model_manifest, indent=2)
             copied.append("public_model/model_manifest.json")
         inference_profile = build_inference_profile(public_model)
         if inference_profile is not None:
-            (public_dir / "inference_profile.json").write_text(json.dumps(inference_profile, indent=2), encoding="utf-8")
+            write_json_dict(public_dir / "inference_profile.json", inference_profile, indent=2)
             copied.append("public_model/inference_profile.json")
         (ens_out / "latest_public_model.txt").write_text(str(public_checkpoint.resolve()), encoding="utf-8")
 
@@ -142,7 +148,7 @@ def main() -> None:
         "public_model": public_model_manifest,
         "copied_files": copied_with_manifest,
     }
-    (release_dir / "release_manifest.json").write_text(json.dumps(release_manifest, indent=2), encoding="utf-8")
+    write_json_dict(release_dir / "release_manifest.json", release_manifest, indent=2)
 
     (ens_out / "latest_release.txt").write_text(str(release_dir.resolve()), encoding="utf-8")
     print(f"saved_release={release_dir}")

@@ -4,10 +4,16 @@ TRAIN_LOCK_STALE_SEC="${TRAIN_LOCK_STALE_SEC:-7200}"
 GPU_REQUIRED_CMDS="${GPU_REQUIRED_CMDS:-pipeline,smoke-real}"
 
 ensure_env() {
-  if [[ "$ENV_READY" == "1" ]]; then
+  if [[ "${ENV_READY:-0}" == "1" ]]; then
     return
   fi
   local venv_dir="${VENV_DIR:-$ROOT_DIR/.venv}"
+  if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    echo "[DRY_RUN] bash scripts/install_deps.sh"
+    echo "[DRY_RUN] source $venv_dir/bin/activate"
+    ENV_READY=1
+    return 0
+  fi
   # Keep dependency bootstrap chatter off stdout so status commands can stay machine-readable.
   bash scripts/install_deps.sh >&2
   if [[ ! -f "$venv_dir/bin/activate" ]]; then
@@ -49,25 +55,6 @@ clear_stale_training_lock_if_needed() {
   return 1
 }
 
-stage_file() {
-  local stage="$1"
-  echo "$PIPELINE_STAGE_DIR/${stage}.done"
-}
-
-stage_done() {
-  local stage="$1"
-  if [[ "$PIPELINE_FORCE_STAGES" == "1" ]]; then
-    return 1
-  fi
-  [[ -f "$(stage_file "$stage")" ]]
-}
-
-mark_stage_done() {
-  local stage="$1"
-  mkdir -p "$PIPELINE_STAGE_DIR"
-  printf "%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$(stage_file "$stage")"
-}
-
 wait_for_training_to_finish() {
   local reason="${1:-pipeline}"
   while is_training_active; do
@@ -107,51 +94,6 @@ with_training_lock() {
   return "$status"
 }
 
-run_with_retry() {
-  local label="$1"
-  shift
-  local attempt=1
-  while true; do
-    echo "pipeline_step=${label} status=run attempt=${attempt}/${PIPELINE_MAX_ATTEMPTS}"
-    if "$@"; then
-      echo "pipeline_step=${label} status=done"
-      return 0
-    fi
-    if [[ "$attempt" -ge "$PIPELINE_MAX_ATTEMPTS" ]]; then
-      echo "pipeline_step=${label} status=failed attempts=$attempt"
-      return 1
-    fi
-    echo "pipeline_step=${label} status=retry sleep_sec=${PIPELINE_RETRY_SLEEP_SEC}"
-    sleep "$PIPELINE_RETRY_SLEEP_SEC"
-    attempt=$((attempt + 1))
-  done
-}
-
-run_stage_once() {
-  local stage="$1"
-  shift
-  local status=0
-  if stage_done "$stage"; then
-    echo "pipeline_stage=${stage} status=skip_done"
-    return 0
-  fi
-  if "$@"; then
-    status=0
-  else
-    status=$?
-  fi
-  if [[ "$status" -ne 0 ]]; then
-    return "$status"
-  fi
-  mark_stage_done "$stage"
-}
-
-run_pipeline_stage() {
-  local stage="$1"
-  shift
-  run_with_retry "$stage" run_stage_once "$stage" "$@"
-}
-
 skip_collection_if_training() {
   if is_training_active; then
     echo "collection skipped because training is active (lock: $TRAIN_LOCK)."
@@ -164,6 +106,7 @@ run_collection_command() {
   if skip_collection_if_training; then
     return 0
   fi
+  ensure_malware_scan_ready
   "$@"
 }
 
@@ -205,6 +148,18 @@ run_malware_scan() {
     targets=("${DATA_DIR:-./data_best}" "${NEW_DATA_DST:-./data_new/train}" "${VIDEO_OUT:-./video_data}" "${MODEL_OUTPUTS_SRC:-./incoming_model_outputs}")
   fi
   bash scripts/malware_scan.sh "${targets[@]}"
+}
+
+ensure_malware_scan_ready() {
+  if [[ "${MALWARE_SCAN:-1}" != "1" ]]; then
+    echo "malware_scan=disabled"
+    return 0
+  fi
+  local scan_bin="${MALWARE_SCAN_BIN:-clamscan}"
+  if ! command -v "$scan_bin" >/dev/null 2>&1; then
+    echo "malware_scan_status=scanner_missing scanner=$scan_bin run=./local.sh doctor" >&2
+    return 1
+  fi
 }
 
 print_hf_query_args() {
@@ -254,18 +209,35 @@ print_cli_flag_values_from_csv() {
   done
 }
 
+repo_python_bin() {
+  local python_bin="${VENV_DIR:-$ROOT_DIR/.venv}/bin/python"
+  if [[ -x "$python_bin" ]]; then
+    printf "%s\n" "$python_bin"
+    return
+  fi
+  command -v python
+}
+
+repo_python() {
+  local python_bin=""
+  python_bin="$(repo_python_bin)"
+  "$python_bin" "$@"
+}
+
 run_repo_python() {
   ensure_env
-  python "$@"
+  repo_python "$@"
 }
 
 run_repo_python_with_timeout() {
   local timeout_sec="$1"
   shift
   ensure_env
+  local python_bin=""
+  python_bin="$(repo_python_bin)"
   if command -v timeout >/dev/null 2>&1; then
-    timeout "${timeout_sec}s" python "$@"
+    timeout "${timeout_sec}s" "$python_bin" "$@"
     return
   fi
-  python "$@"
+  "$python_bin" "$@"
 }

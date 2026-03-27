@@ -1,20 +1,42 @@
 # Command Guide
 
 This guide collects the repo command surfaces in one place.
-The recommended runtime path is Docker Compose first.
+The recommended runtime path is a dedicated Linux VM first, then Docker Compose inside that VM.
 The repo-local Python environment is `./.venv`, created or reused by `./local.sh setup`.
 That setup also installs `huggingface_hub`, the `hf` CLI, and the repo CLI commands into the same venv.
+Unless a section says otherwise, the command snippets in this file use Linux `bash` syntax.
 The Linux-native command blocks in this file are for native Linux hosts. If you are on macOS or Windows, use the platform notes in [STARTUP.md](STARTUP.md) instead of copying the `apt-get` steps directly.
 
-## Docker Compose commands
+## Dedicated Linux VM + Docker Compose commands
 
 Use these first when possible:
 
+Important boundary:
+- Docker Compose is not a real VM.
+- For a true VM boundary on Linux, create the dedicated Linux VM first and run Docker inside it.
+
+Minimum needed inside the dedicated Linux VM:
+- `git`
+- Docker Engine
+- Docker Compose plugin
+- NVIDIA Container Toolkit for `pipeline-gpu`
+
+You do not need host Python, `pip`, or a host `./.venv` for this secure path.
+Run all commands in this section from the repo root, the directory that contains `docker-compose.yml`, `local.sh`, and `scripts/install_deps.sh`.
+
 ```bash
+git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
+cd ai-image-video-detector
+test -f docker-compose.yml
+test -f Dockerfile
+test -f Dockerfile.gpu
+test -f local.sh
+./local.sh docker-doctor
 docker compose build
 docker compose run --rm pipeline ./local.sh deps
 docker compose run --rm pipeline ./local.sh doctor
 docker compose run --rm pipeline-gpu ./local.sh doctor
+printf "HF_TOKEN='your_token_here'\n" >> .env
 docker compose run --rm pipeline-gpu ./local.sh smoke
 docker compose run --rm pipeline-gpu ./local.sh run
 docker compose run --rm pipeline-gpu ./local.sh status
@@ -24,78 +46,16 @@ docker compose run --rm pipeline-gpu ./local.sh status
   CPU-oriented Compose service.
 - `pipeline-gpu`
   GPU-enabled Compose service for CUDA hosts.
+- `./local.sh docker-doctor`
+  Verifies Docker, Compose, and the repo Docker files before you try the container workflow.
+- repo root in container
+  `/workspace`
+- container venv
+  `/opt/aid-venv`
+- general source tree in container
+  read-only
 
-The Compose services mount this repo at `/workspace`, reuse the repo-local `.env`, and keep Hugging Face and pip caches in named volumes.
-They also drop all Linux capabilities, enable `no-new-privileges`, use a read-only container root filesystem, and keep scratch space in `tmpfs`.
-The container entrypoint creates or reuses `/workspace/.venv` and runs `bash scripts/install_deps.sh`, so dependency install happens inside the container.
-This repo does not add a VM layer because that would change the normal GPU and bind-mount workflow rather than harden it transparently.
-Docker lowers host exposure, but it does not make malicious packages safe; packages still run code in the container and can still modify this bind-mounted checkout.
-
-Clone path:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
-git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
-cd ai-image-video-detector
-python3 -m venv .venv
-source .venv/bin/activate
-./local.sh deps
-./local.sh doctor
-printf "HF_TOKEN='your_token_here'\n" >> .env
-./local.sh smoke
-./local.sh run
-./local.sh status
-```
-
-ZIP path:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
-unzip ai-image-video-detector-main.zip
-cd ai-image-video-detector-main
-python3 -m venv .venv
-source .venv/bin/activate
-./local.sh deps
-./local.sh doctor
-printf "HF_TOKEN='your_token_here'\n" >> .env
-./local.sh smoke
-./local.sh run
-./local.sh status
-```
-
-Already inside the repo root:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
-python3 -m venv .venv
-source .venv/bin/activate
-./local.sh deps
-./local.sh doctor
-printf "HF_TOKEN='your_token_here'\n" >> .env
-./local.sh smoke
-./local.sh run
-./local.sh status
-```
-
-Run `bash ./install.sh` only from inside the repo root after cloning or unzipping.
-If you unzip the repo first, `bash ./install.sh` reuses that extracted folder and does not create a nested repo inside it.
-If you want the installer to fetch the repo for you, use the curl installer instead.
-
-Shortcut installers:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
-```
-
-```bash
-./local.sh setup
-```
+For the full secure startup walkthrough, use [STARTUP.md](STARTUP.md).
 
 ## Dependency profiles
 
@@ -155,22 +115,7 @@ What each stage does:
 
 ## `./local.sh` commands
 
-Recommended first: use the same basic Linux path above.
-
-Manual fallback:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
-python3 -m venv .venv
-source .venv/bin/activate
-./local.sh deps
-./local.sh doctor
-./local.sh smoke
-./local.sh run
-./local.sh status
-```
+Setup details live in [STARTUP.md](STARTUP.md). This section assumes the repo is already cloned and you are already in the repo root.
 
 Optional validation:
 

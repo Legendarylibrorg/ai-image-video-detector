@@ -2,37 +2,162 @@
 
 This guide expands the startup path from the main README.
 
-This guide is Docker-first.
+This guide is Linux-VM-first.
 The repo also supports a native Linux path that uses a pinned local virtualenv at `./.venv` for its Python dependencies and runtime.
+Unless a section says otherwise, the shell snippets in this document use Linux `bash` command syntax.
 
 If you are on macOS or Windows, do not copy the Linux-native `apt-get` commands below into your shell; use the Docker or platform sections in this document instead.
 
-## Docker Compose startup
+## Dedicated Linux VM + Docker Compose startup
 
 Use this as the default startup path when possible:
 
+Important boundary:
+- Docker Compose does not create a real VM inside Docker.
+- The secure model here is: host -> dedicated Linux VM -> Docker Engine -> Compose containers.
+- On Linux, if you want a real VM boundary, you must create the VM first and then run Docker inside that VM.
+
+Minimum needed inside the dedicated Linux VM:
+- `git`
+- Docker Engine
+- Docker Compose plugin
+- NVIDIA Container Toolkit for `pipeline-gpu`
+
+You do not need host Python, `pip`, or a host `./.venv` for this secure path.
+Run every command in this section from the repo root, the directory that contains `docker-compose.yml`, `local.sh`, and `scripts/install_deps.sh`.
+
+Linux VM setup checklist:
+1. Create a dedicated Linux VM for this repo.
+2. If you need GPU training, enable GPU passthrough for that VM.
+3. Install Docker Engine inside the VM.
+4. Install the Docker Compose plugin inside the VM.
+5. Install NVIDIA Container Toolkit inside the VM if `pipeline-gpu` will be used.
+6. Clone this repo inside that VM.
+7. Run the Compose workflow only from inside that VM.
+
+Linux VM repo-root check:
+
 ```bash
+pwd
+test -f docker-compose.yml
+test -f Dockerfile
+test -f Dockerfile.gpu
+test -f local.sh
+test -f scripts/install_deps.sh
+./local.sh docker-doctor
+```
+
+What `./local.sh docker-doctor` checks:
+- `docker-compose.yml` exists
+- `Dockerfile` exists
+- `Dockerfile.gpu` exists
+- `docker` is installed
+- `docker compose` is available
+
+Detailed secure Docker config flow:
+1. Build the Compose images.
+2. Install repo dependencies inside the isolated container venv at `/opt/aid-venv`.
+3. Run the normal doctor check in the CPU container first.
+4. Add `HF_TOKEN` to `./.env` in the repo root.
+5. Run the normal doctor check in the GPU container.
+6. Run the smoke pipeline in the GPU container.
+7. Run the full pipeline in the GPU container.
+8. Use `status` from the GPU container to inspect outputs.
+
+Repo-root check:
+
+```bash
+pwd
+test -f docker-compose.yml
+test -f Dockerfile
+test -f Dockerfile.gpu
+test -f local.sh
+test -f scripts/install_deps.sh
+./local.sh docker-doctor
+```
+
+Exact secure startup:
+
+```bash
+git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
+cd ai-image-video-detector
+test -f docker-compose.yml
+test -f Dockerfile
+test -f Dockerfile.gpu
+test -f local.sh
+./local.sh docker-doctor
 docker compose build
 docker compose run --rm pipeline ./local.sh deps
 docker compose run --rm pipeline ./local.sh doctor
+printf "HF_TOKEN='your_token_here'\n" >> .env
+test -f .env
 docker compose run --rm pipeline-gpu ./local.sh doctor
 docker compose run --rm pipeline-gpu ./local.sh smoke
 docker compose run --rm pipeline-gpu ./local.sh run
 docker compose run --rm pipeline-gpu ./local.sh status
 ```
 
+What each step does:
+1. `docker compose build`
+   Builds the container images.
+2. `./local.sh docker-doctor`
+   Verifies the Docker CLI, Compose plugin, and repo Docker files before container work starts.
+3. `docker compose run --rm pipeline ./local.sh deps`
+   Installs the pipeline dependencies in the isolated container venv at `/opt/aid-venv`.
+4. `docker compose run --rm pipeline ./local.sh doctor`
+   Verifies the secure container path before GPU work.
+5. `printf "HF_TOKEN='your_token_here'\n" >> .env`
+   Stores the Hugging Face token in the repo root for Compose to load.
+6. `docker compose run --rm pipeline-gpu ./local.sh doctor`
+   Verifies GPU access inside the secure path.
+7. `docker compose run --rm pipeline-gpu ./local.sh smoke`
+   Runs the smallest end-to-end pipeline check.
+8. `docker compose run --rm pipeline-gpu ./local.sh run`
+   Runs the full secure pipeline.
+9. `docker compose run --rm pipeline-gpu ./local.sh status`
+   Prints the current runtime and artifact state.
+
+Path map:
+- host repo root: your current working directory
+- container repo root: `/workspace`
+- container venv: `/opt/aid-venv`
+- repo env file: `./.env` on the host, loaded into Compose
+- general source tree: read-only inside the container
+- writable host/container path pairs:
+  - `./.local` <-> `/workspace/.local`
+  - `./data_best` <-> `/workspace/data_best`
+  - `./data_best_fast` <-> `/workspace/data_best_fast`
+  - `./data_new` <-> `/workspace/data_new`
+  - `./video_data` <-> `/workspace/video_data`
+  - `./artifacts_ens` <-> `/workspace/artifacts_ens`
+  - `./artifacts_sweep` <-> `/workspace/artifacts_sweep`
+  - `./artifacts_finetune_metadata` <-> `/workspace/artifacts_finetune_metadata`
+  - `./video_artifacts` <-> `/workspace/video_artifacts`
+  - `./incoming_model_outputs` <-> `/workspace/incoming_model_outputs`
+  - `./incoming_review_queue` <-> `/workspace/incoming_review_queue`
+
 Notes:
-- the Compose services mount this repo at `/workspace`, so datasets and artifacts still live in the checkout you started from
-- GPU mode requires Docker Engine, the Docker Compose plugin, and the NVIDIA Container Toolkit on the host
-- the container entrypoint creates or reuses `/workspace/.venv` and runs `bash scripts/install_deps.sh`, so dependency install happens inside the container
+- the Compose services mount the source checkout at `/workspace` read-only and expose only the expected data and artifact directories as writable bind mounts
+- datasets and artifacts still live in the checkout you started from, but the container cannot rewrite the general source tree
+- `pipeline` uses the CPU-only `Dockerfile`, while `pipeline-gpu` uses `Dockerfile.gpu` with the CUDA runtime
+- the container entrypoint creates or reuses an isolated venv volume at `/opt/aid-venv` and runs `bash scripts/install_deps.sh`
 - the Compose services drop all Linux capabilities, enable `no-new-privileges`, use a read-only container root filesystem, and keep writable scratch space in `tmpfs`
-- a VM path is intentionally not added here because it would change the host-GPU and repo bind-mount workflow, not just harden it
+- the VM is the main isolation boundary; Compose is the second layer inside it
 
 Security model:
-- Docker reduces exposure compared with installing directly on the host, but it does not guarantee safety from malicious packages
+- the dedicated Linux VM is the main defense against malicious packages reaching your normal host
+- Docker reduces exposure further inside that VM, but it does not guarantee safety from malicious packages
 - dependency installers and imported packages still execute code, only inside the container
-- because this repo is bind-mounted into the container, malicious code could still change files in this checkout
-- keep the repo in a dedicated workspace and avoid mounting unrelated host secrets into the container
+- because selected repo data and artifact directories stay writable, malicious code could still change those writable paths inside the VM
+- the general source checkout is mounted read-only in Compose, which helps protect the repo code and docs from accidental or malicious rewrites during installs and runs
+- keep the repo in a dedicated VM workspace and avoid mounting unrelated secrets into the container
+
+Best security with GPU:
+- dedicated Linux VM
+- GPU passthrough
+- Docker Engine
+- Docker Compose plugin
+- NVIDIA Container Toolkit
 
 ## Native Linux startup
 
@@ -203,31 +328,9 @@ Those should run as your normal user so the workspace, caches, and `.venv` stay 
 `./local.sh setup` creates or reuses that repo-local venv, and the pipeline scripts use it instead of the system Python.
 It does not stop to prompt for `HF_TOKEN` by default.
 
-## Recommended Flow
-
-If you only want the token for the current shell session:
-
-```bash
-export HF_TOKEN='your_token_here'
-```
-
 ## Manual Linux fallback
 
-If `./local.sh setup` does not finish cleanly, run the Linux steps one by one:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
-python3 -m venv .venv
-source .venv/bin/activate
-./local.sh deps
-./local.sh doctor
-printf "HF_TOKEN='your_token_here'\n" >> .env
-./local.sh smoke
-./local.sh run
-./local.sh status
-```
+If `./local.sh setup` does not finish cleanly, use the `Already inside the repo root` path above and then follow this fallback step summary:
 
 Fallback step summary:
 - `python3 -m venv .venv`
@@ -295,5 +398,4 @@ You changed dependencies:
 
 ```bash
 ./local.sh deps
-bash scripts/install_deps.sh
 ```

@@ -15,11 +15,20 @@ import build_best_dataset_sources
 
 
 class _FakeDataset:
-    def __init__(self, ds_id: str, downloads: int, likes: int, tags: list[str]) -> None:
+    def __init__(
+        self,
+        ds_id: str,
+        downloads: int,
+        likes: int,
+        tags: list[str],
+        *,
+        cardData: dict[str, object] | None = None,
+    ) -> None:
         self.id = ds_id
         self.downloads = downloads
         self.likes = likes
         self.tags = tags
+        self.cardData = cardData or {}
 
 
 class _FakeApi:
@@ -37,7 +46,7 @@ class _FakeApi:
                 "org/real-fake-images",
                 downloads=500,
                 likes=20,
-                tags=["image-classification", "image"],
+                tags=["image-classification", "image", "license:apache-2.0"],
             )
         ]
 
@@ -119,13 +128,50 @@ class BuildBestDatasetSourcesTests(unittest.TestCase):
 
         self.assertEqual(_FakeApi.init_tokens, [None])
 
+    def test_discover_hf_sources_filters_out_non_open_license_datasets(self) -> None:
+        class _LicenseApi:
+            def __init__(self, token: str | None = None) -> None:
+                self.token = token
+
+            def list_datasets(self, *, search=None, limit=None, sort=None):
+                return [
+                    _FakeDataset(
+                        "org/open-real-fake-images",
+                        downloads=500,
+                        likes=20,
+                        tags=["image-classification", "image", "license:apache-2.0"],
+                    ),
+                    _FakeDataset(
+                        "org/restricted-real-fake-images",
+                        downloads=800,
+                        likes=30,
+                        tags=["image-classification", "image", "license:cc-by-nc-4.0"],
+                    ),
+                ]
+
+        old_api = build_best_dataset_sources.HfApi
+        try:
+            build_best_dataset_sources.HfApi = _LicenseApi
+            found = build_best_dataset_sources.discover_hf_sources(
+                queries=["real fake images"],
+                per_query_limit=5,
+                max_sources=10,
+                min_downloads=10,
+                min_likes=1,
+                min_quality_score=0.0,
+                print_top_n=0,
+            )
+        finally:
+            build_best_dataset_sources.HfApi = old_api
+
+        self.assertEqual(found, ["org/open-real-fake-images"])
+
     def test_build_source_list_falls_back_to_live_discovery_when_cache_is_empty(self) -> None:
         old_discover = build_best_dataset_sources.discover_hf_sources
         try:
             build_best_dataset_sources.discover_hf_sources = lambda **_: ["org/real-fake-images"]
             with tempfile.TemporaryDirectory() as tmpdir:
                 args = SimpleNamespace(
-                    hf_only=True,
                     no_default_sources=True,
                     sources_file="",
                     extra_source=[],
@@ -171,7 +217,6 @@ class BuildBestDatasetSourcesTests(unittest.TestCase):
                     },
                 )
                 args = SimpleNamespace(
-                    hf_only=True,
                     no_default_sources=True,
                     sources_file="",
                     extra_source=[],

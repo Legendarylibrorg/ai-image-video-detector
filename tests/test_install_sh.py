@@ -14,10 +14,9 @@ class InstallShTests(unittest.TestCase):
     def test_install_script_supports_repo_bootstrap_without_zip(self) -> None:
         text = (ROOT / "install.sh").read_text(encoding="utf-8")
         self.assertIn("git clone --depth 1", text)
-        self.assertIn("python3 -m venv .venv", text)
         self.assertIn("source .venv/bin/activate", text)
-        self.assertIn("./local.sh deps", text)
-        self.assertIn("./local.sh doctor", text)
+        self.assertIn("./local.sh setup", text)
+        self.assertNotIn("./local.sh doctor", text)
         self.assertIn("install_status=ready", text)
 
     def test_install_script_dry_run_works_inside_repo(self) -> None:
@@ -36,13 +35,12 @@ class InstallShTests(unittest.TestCase):
         )
 
         self.assertIn("install_stage=repo status=using_current repo=.", proc.stdout)
-        self.assertIn("[DRY_RUN] ./local.sh deps", proc.stdout)
-        self.assertNotIn("[DRY_RUN] cd . && ./local.sh deps", proc.stdout)
+        self.assertIn("[DRY_RUN] SETUP_INSTALL_SYSTEM_DEPS=0 ./local.sh setup", proc.stdout)
+        self.assertNotIn("[DRY_RUN] cd . && SETUP_INSTALL_SYSTEM_DEPS=0 ./local.sh setup", proc.stdout)
         self.assertNotIn("  cd .", proc.stdout)
-        self.assertIn("install_stage=venv status=", proc.stdout)
         self.assertIn("source .venv/bin/activate", proc.stdout)
-        self.assertIn("./local.sh deps", proc.stdout)
-        self.assertIn("./local.sh doctor", proc.stdout)
+        self.assertIn("./local.sh setup", proc.stdout)
+        self.assertNotIn("./local.sh doctor", proc.stdout)
         self.assertIn("install_status=ready", proc.stdout)
         self.assertNotIn(str(ROOT), proc.stdout)
 
@@ -63,7 +61,7 @@ class InstallShTests(unittest.TestCase):
             )
 
         self.assertIn("install_stage=repo status=cloned repo=ai-image-video-detector", proc.stdout)
-        self.assertIn("[DRY_RUN] cd ai-image-video-detector && ./local.sh deps", proc.stdout)
+        self.assertIn("[DRY_RUN] cd ai-image-video-detector && SETUP_INSTALL_SYSTEM_DEPS=0 ./local.sh setup", proc.stdout)
         self.assertIn("  cd ai-image-video-detector", proc.stdout)
 
     def test_install_script_reuses_extracted_repo_directory(self) -> None:
@@ -123,7 +121,7 @@ class InstallShTests(unittest.TestCase):
             )
 
         self.assertIn("install_stage=repo status=using_extracted repo=ai-image-video-detector-main", proc.stdout)
-        self.assertIn("[DRY_RUN] cd ai-image-video-detector-main && ./local.sh deps", proc.stdout)
+        self.assertIn("[DRY_RUN] cd ai-image-video-detector-main && SETUP_INSTALL_SYSTEM_DEPS=0 ./local.sh setup", proc.stdout)
         self.assertIn("  cd ai-image-video-detector-main", proc.stdout)
 
 

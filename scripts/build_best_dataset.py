@@ -19,7 +19,7 @@ from build_best_dataset_policy import (
     source_manifest_policy,
     utc_now_iso,
 )
-from build_best_dataset_sources import build_source_list
+from build_best_dataset_sources import DEFAULT_ALLOWED_LICENSE_TAGS, build_source_list
 from build_best_dataset_support import build_summary, make_source_report, run_source_acceptance_loop, write_summary_files
 from dataset_builder_common import configure_hf_cache_env, targets_met
 from hf_data import (
@@ -35,12 +35,9 @@ from image_materialize import (
     ImageDeduper,
     ImageQualityPolicy,
     open_example_image,
-    open_local_image,
     passes_quality_filters,
     save_img,
 )
-
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
 
 def normalize_label(v) -> Optional[str]:
@@ -125,39 +122,9 @@ def augment_hard_negative(img: Image.Image, mode: str) -> Image.Image:
 
 
 def source_tag(src: str) -> str:
-    if src.startswith("local::"):
-        base = src.replace("local::", "local_")
-    else:
-        base = src.split("/")[-1]
+    base = src.split("/")[-1]
     tag = re.sub(r"[^a-zA-Z0-9]+", "_", base).strip("_").lower()
     return (tag or "src")[:30]
-
-
-def infer_local_class(path: Path) -> Optional[str]:
-    for part in reversed(path.parts):
-        p = part.lower()
-        if p in {"ai", "real"}:
-            return p
-    return None
-
-
-def collect_local_paths(root: Path, seed: int) -> List[Tuple[Path, str]]:
-    paths: List[Tuple[Path, str]] = []
-    if not root.exists():
-        print(f"warning_local_source_missing path={root}")
-        return paths
-    for p in root.rglob("*"):
-        if not p.is_file():
-            continue
-        if p.suffix.lower() not in IMAGE_EXTS:
-            continue
-        cls = infer_local_class(p)
-        if cls is None:
-            continue
-        paths.append((p, cls))
-    rng = random.Random(seed)
-    rng.shuffle(paths)
-    return paths
 
 
 def likely_rate_limited(msg: str) -> bool:
@@ -267,7 +234,7 @@ def generate_hard_negatives(
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Build large, high-quality AI-vs-real image dataset from HF + optional local data")
+    ap = argparse.ArgumentParser(description="Build large, high-quality AI-vs-real image dataset from Hugging Face sources")
     ap.add_argument("--out", default="data_best")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--train-per-class", type=int, default=30000)
@@ -285,8 +252,6 @@ def main():
     ap.add_argument("--hardneg-fraction", type=float, default=0.6)
     ap.add_argument("--sources-file", default="")
     ap.add_argument("--extra-source", action="append", default=[])
-    ap.add_argument("--local-source", action="append", default=[])
-    ap.add_argument("--hf-only", action="store_true", default=False, help="Only use Hugging Face dataset ids (disables local-source directories)")
     ap.add_argument("--no-default-sources", action="store_true", default=False, help="Disable built-in static source list")
     ap.add_argument("--discover-hf", action="store_true", default=False)
     ap.add_argument("--no-discover-hf", dest="discover_hf", action="store_false")
@@ -298,6 +263,9 @@ def main():
     ap.add_argument("--hf-min-quality-score", type=float, default=1.7)
     ap.add_argument("--hf-print-top", type=int, default=15)
     ap.add_argument("--hf-query-pause-ms", type=int, default=0, help="Pause between HF discovery queries to stay under page limits")
+    ap.add_argument("--hf-license-allow", action="append", default=list(DEFAULT_ALLOWED_LICENSE_TAGS), help="Allowed open/free HF dataset license markers")
+    ap.add_argument("--hf-require-open-license", action="store_true", default=True, help="Require discovered HF sources to advertise an allowed open/free license")
+    ap.add_argument("--no-hf-require-open-license", dest="hf_require_open_license", action="store_false")
     ap.add_argument("--hf-cache-file", default="", help="Optional file path to cache discovered HF source ids")
     ap.add_argument("--hf-cache-only-if-present", action="store_true", default=True, help="If cache file exists, use it and skip live HF discovery calls")
     ap.add_argument("--no-hf-cache-only-if-present", dest="hf_cache_only_if_present", action="store_false")
@@ -336,6 +304,12 @@ def main():
     if cache_dir is not None:
         print(f"hf_cache_dir={cache_dir}")
     print(f"hf_quality_filters min_downloads={args.hf_min_downloads} min_likes={args.hf_min_likes} min_score={args.hf_min_quality_score} min_acceptance_rate={args.min_acceptance_rate}")
+    print(
+        "hf_license_policy require_open_license={} allowed={}".format(
+            int(bool(args.hf_require_open_license)),
+            ",".join(sorted({str(tag).strip().lower() for tag in (args.hf_license_allow or list(DEFAULT_ALLOWED_LICENSE_TAGS)) if str(tag).strip()})),
+        )
+    )
 
     if args.discover_only:
         hf_sources = build_source_list(args)
@@ -440,9 +414,7 @@ def main():
         return True
 
     hf_sources = build_source_list(args)
-    if args.hf_only and args.local_source:
-        print("warning_hf_only_ignores_local_sources=1")
-    if not hf_sources and (args.hf_only or not args.local_source):
+    if not hf_sources:
         raise SystemExit("no_hf_sources_resolved: enable --discover-hf or provide HF sources cache/file")
     print(f"hf_source_candidates={len(hf_sources)}")
 
@@ -627,42 +599,6 @@ def main():
         print(
             f"loaded_source={src} accepted_ai={source_counts['ai']} accepted_real={source_counts['real']} "
             f"processed={report['processed_total']} rejected={sum(report['rejections'].values())} acceptance_rate={report['acceptance_rate']:.5f}"
-        )
-
-    for local_root in ([] if args.hf_only else args.local_source):
-        if done(counts, targets):
-            break
-        root = Path(local_root)
-        src_name = f"local::{root.resolve()}"
-        source_counts = {"ai": 0, "real": 0}
-        source_split_counts = {split: {cls: 0 for cls in CLASSES} for split in SPLITS}
-        local_paths = collect_local_paths(root, seed=args.seed + 333)
-        loop_result = run_source_acceptance_loop(
-            local_paths,
-            is_done=lambda: done(counts, targets),
-            max_unique_per_source=args.max_unique_per_source,
-            global_rejects=global_rejects,
-            try_accept_and_save=try_accept_and_save,
-            extract_payload=lambda item: (
-                item[1],
-                open_local_image(item[0]),
-                None if open_local_image(item[0]) is not None else "decode_fail",
-            ),
-            source_name=src_name,
-            source_counts=source_counts,
-            source_split_counts=source_split_counts,
-        )
-        report = make_source_report(
-            source=str(root),
-            source_type="local",
-            source_counts=source_counts,
-            source_split_counts=source_split_counts,
-            loop_result={**loop_result, "processed_total": len(local_paths), "skip_future_runs": False},
-        )
-        source_reports.append(report)
-        print(
-            f"loaded_local_source={root} accepted_ai={source_counts['ai']} accepted_real={source_counts['real']} "
-            f"rejected={sum(report['rejections'].values())}"
         )
 
     raw_counts = count_output_files(out, include_hardneg=False)

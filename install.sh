@@ -114,28 +114,10 @@ ensure_repo() {
   printf 'install_stage=repo status=cloned repo=%s\n' "$display_root"
 }
 
-ensure_venv() {
-  local display_root
-  display_root="$(display_path "$ROOT_DIR")"
-  if [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
-    printf 'install_stage=venv status=skip_exists path=%s/.venv\n' "$display_root"
-    return
-  fi
-  printf 'install_stage=venv status=run\n'
-  run_repo_cmd "python3 -m venv .venv"
-  printf 'install_stage=venv status=done path=%s/.venv\n' "$display_root"
-}
-
-install_repo_deps() {
-  printf 'install_stage=deps status=run\n'
-  run_repo_cmd "./local.sh deps"
-  printf 'install_stage=deps status=done\n'
-}
-
-run_repo_doctor() {
-  printf 'install_stage=doctor status=run\n'
-  run_repo_cmd "./local.sh doctor"
-  printf 'install_stage=doctor status=done\n'
+run_repo_setup() {
+  printf 'install_stage=setup status=run\n'
+  run_repo_cmd "SETUP_INSTALL_SYSTEM_DEPS=0 ./local.sh setup"
+  printf 'install_stage=setup status=done\n'
 }
 
 print_next_steps() {
@@ -156,7 +138,5 @@ print_next_steps() {
 ensure_linux
 install_system_deps
 ensure_repo
-ensure_venv
-install_repo_deps
-run_repo_doctor
+run_repo_setup
 print_next_steps

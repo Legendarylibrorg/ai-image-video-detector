@@ -36,6 +36,7 @@ run_image_dataset_build() {
   local out="$1"
   local query_csv="$2"
   shift 2
+  run_malware_scan "$out"
   run_image_dataset_builder "$out" "$query_csv" "$@"
   run_malware_scan "$out"
 }
@@ -66,11 +67,9 @@ print_image_collection_args() {
   local min_side_default=""
   local hardneg_fraction_default=""
   local min_sources_per_split_class_default=""
-  local hf_only_env=""
   local no_default_sources_env=""
   local sources_file_env=""
   local extra_sources_env=""
-  local local_sources_env=""
   local verbose_progress_env=""
 
   case "$profile" in
@@ -83,27 +82,25 @@ print_image_collection_args() {
       test_default="20000"
       prefix="BEST_DS"
       discovery_limit_default="280"
-      max_sources_default="420"
+      max_sources_default="480"
       print_top_default="24"
       cache_file_default="./.local/hf_discovered_sources.txt"
       stream_buffer_default="12000"
       max_samples_default="30000"
-      max_per_source_class_default="12000"
-      max_per_source_split_class_default="4000"
+      max_per_source_class_default="10000"
+      max_per_source_split_class_default="3000"
       warmup_default="400"
-      min_sources_with_accepted_default="28"
-      min_sources_per_class_default="16"
+      min_sources_with_accepted_default="36"
+      min_sources_per_class_default="20"
       base_pause_default="1100"
       jitter_default="900"
       cooldown_default="45000"
-      min_side_default="224"
+      min_side_default="160"
       hardneg_fraction_default="0.35"
-      min_sources_per_split_class_default="10"
-      hf_only_env="BEST_DS_HF_ONLY"
+      min_sources_per_split_class_default="12"
       no_default_sources_env="BEST_DS_NO_DEFAULT_SOURCES"
       sources_file_env="BEST_DS_SOURCES_FILE"
       extra_sources_env="BEST_DS_EXTRA_SOURCES"
-      local_sources_env="BEST_DS_LOCAL_SOURCES"
       verbose_progress_env="BEST_DS_VERBOSE_PROGRESS"
       ;;
     fast)
@@ -115,7 +112,7 @@ print_image_collection_args() {
       test_default="1000"
       prefix="FAST"
       discovery_limit_default="120"
-      max_sources_default="180"
+      max_sources_default="220"
       print_top_default="10"
       cache_file_default="./.local/hf_fast_sources.txt"
       stream_buffer_default="6000"
@@ -128,14 +125,12 @@ print_image_collection_args() {
       base_pause_default="900"
       jitter_default="700"
       cooldown_default="30000"
-      min_side_default="224"
+      min_side_default="160"
       hardneg_fraction_default="0.25"
       min_sources_per_split_class_default="6"
-      hf_only_env="FAST_HF_ONLY"
       no_default_sources_env="FAST_NO_DEFAULT_SOURCES"
       sources_file_env="FAST_SOURCES_FILE"
       extra_sources_env="FAST_EXTRA_SOURCES"
-      local_sources_env="FAST_LOCAL_SOURCES"
       verbose_progress_env="FAST_VERBOSE_PROGRESS"
       ;;
     *)
@@ -175,18 +170,13 @@ print_image_collection_args() {
     --repo-cooldown-ms "${prefix}_REPO_COOLDOWN_MS" "$cooldown_default" \
     --max-consecutive-failures "${prefix}_MAX_CONSECUTIVE_FAILURES" "2" \
     --min-side "${prefix}_MIN_SIDE" "$min_side_default" \
-    --max-aspect-ratio "${prefix}_MAX_ASPECT_RATIO" "2.5" \
+    --max-aspect-ratio "${prefix}_MAX_ASPECT_RATIO" "4.0" \
     --min-entropy "${prefix}_MIN_ENTROPY" "3.4" \
     --hardneg-fraction "${prefix}_HARDNEG_FRACTION" "$hardneg_fraction_default"
   if [[ -n "${!sources_file_env:-}" ]]; then
     print_cli_flag_value --sources-file "${!sources_file_env}"
   fi
   print_cli_flag_values_from_csv --extra-source "${!extra_sources_env:-}"
-  if [[ "${!hf_only_env:-1}" != "1" ]]; then
-    print_cli_flag_values_from_csv --local-source "${!local_sources_env:-}"
-  else
-    print_cli_flag --hf-only
-  fi
   if [[ "${!no_default_sources_env:-1}" == "1" ]]; then
     print_cli_flag --no-default-sources
   fi
@@ -201,26 +191,29 @@ print_image_collection_args() {
 collect_image_data() {
   local out="${DATA_DIR:-./data_best}"
   local query_csv="${BEST_DS_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}"
-  local -a build_args=()
-  local line=""
-  while IFS= read -r line; do
-    build_args+=("$line")
-  done < <(print_image_collection_args best)
-  run_image_dataset_build "$out" "$query_csv" "${build_args[@]}"
+  collect_profiled_image_data best "$out" "$query_csv"
 }
 
 collect_fast_data() {
   local out="${DATA_DIR:-./data_best_fast}"
   local query_csv="${FAST_HF_QUERIES:-${BEST_DS_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}}"
+  collect_profiled_image_data fast "$out" "$query_csv"
+}
+
+collect_profiled_image_data() {
+  local profile="$1"
+  local out="$2"
+  local query_csv="$3"
   local -a build_args=()
   local line=""
   while IFS= read -r line; do
     build_args+=("$line")
-  done < <(print_image_collection_args fast)
+  done < <(print_image_collection_args "$profile")
   run_image_dataset_build "$out" "$query_csv" "${build_args[@]}"
 }
 
 ingest_outputs() {
+  run_malware_scan "${NEW_DATA_DST:-./data_new/train}" "${MODEL_OUTPUTS_SRC:-./incoming_model_outputs}"
   run_repo_python scripts/ingest_model_outputs.py \
     --src "${MODEL_OUTPUTS_SRC:-./incoming_model_outputs}" \
     --dst "${NEW_DATA_DST:-./data_new/train}" \
@@ -244,16 +237,16 @@ print_diverse_common_args() {
     --max-per-source-split-class "DIVERSE_MAX_PER_SOURCE_SPLIT_CLASS" "4000" \
     --acceptance-warmup-samples "DIVERSE_ACCEPTANCE_WARMUP_SAMPLES" "192" \
     --min-acceptance-rate "DIVERSE_MIN_ACCEPTANCE_RATE" "0.02" \
-    --min-hf-sources-with-accepted "DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED" "24" \
-    --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "16" \
-    --min-hf-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "10" \
+    --min-hf-sources-with-accepted "DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED" "32" \
+    --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "20" \
+    --min-hf-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "12" \
     --repo-base-pause-ms "DIVERSE_REPO_BASE_PAUSE_MS" "150" \
     --repo-jitter-ms "DIVERSE_REPO_JITTER_MS" "150" \
     --repo-cooldown-ms "DIVERSE_REPO_COOLDOWN_MS" "15000" \
     --transient-error-cooldown-ms "DIVERSE_TRANSIENT_ERROR_COOLDOWN_MS" "2500" \
     --max-consecutive-failures "DIVERSE_MAX_CONSECUTIVE_FAILURES" "5" \
-    --min-side "DIVERSE_MIN_SIDE" "192" \
-    --max-aspect-ratio "DIVERSE_MAX_ASPECT_RATIO" "3.2" \
+    --min-side "DIVERSE_MIN_SIDE" "160" \
+    --max-aspect-ratio "DIVERSE_MAX_ASPECT_RATIO" "4.0" \
     --min-entropy "DIVERSE_MIN_ENTROPY" "3.1" \
     --hardneg-fraction "DIVERSE_HARDNEG_FRACTION" "0.5"
   if [[ "${DIVERSE_VERBOSE_PROGRESS:-0}" == "1" ]]; then
@@ -261,7 +254,6 @@ print_diverse_common_args() {
   else
     print_cli_flag --quiet-progress
   fi
-  print_cli_flag --hf-only
   print_cli_flag --require-full-targets
 }
 
@@ -269,7 +261,7 @@ print_diverse_discovery_args() {
   print_cli_flag --discover-hf
   print_cli_flag_value_from_env_triplets \
     --hf-discovery-limit "DIVERSE_HF_DISCOVERY_LIMIT" "180" \
-    --hf-max-sources "DIVERSE_HF_MAX_SOURCES" "360" \
+    --hf-max-sources "DIVERSE_HF_MAX_SOURCES" "480" \
     --hf-min-downloads "DIVERSE_HF_MIN_DOWNLOADS" "100" \
     --hf-min-likes "DIVERSE_HF_MIN_LIKES" "2" \
     --hf-min-quality-score "DIVERSE_HF_MIN_QUALITY_SCORE" "1.95" \
@@ -288,18 +280,6 @@ print_diverse_audit_args() {
     --max-class-imbalance "DIVERSE_MAX_CLASS_IMBALANCE" "0.08" \
     --max-source-share-per-split "DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT" "0.22" \
     --max-source-share-per-split-class "DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT_CLASS" "0.3"
-}
-
-audit_image_dataset() {
-  local out="${1:-${DATA_DIR:-./data_best}}"
-  local -a audit_args=()
-  local line=""
-  while IFS= read -r line; do
-    audit_args+=("$line")
-  done < <(print_diverse_audit_args 1)
-  run_repo_python scripts/audit_diversity.py \
-    --data "$out" \
-    "${audit_args[@]}"
 }
 
 collect_diverse_image_data() {
@@ -324,6 +304,8 @@ collect_diverse_image_data() {
   while IFS= read -r line; do
     audit_args+=("$line")
   done < <(print_diverse_audit_args)
+
+  run_malware_scan "$out"
 
   if [[ "${DIVERSE_SKIP_DISCOVERY:-0}" != "1" ]]; then
     if ! run_image_dataset_discovery "$timeout_sec" "$out" "$query_csv" "${common_args[@]}" "${discover_args[@]}"; then
@@ -374,6 +356,7 @@ collect_video_data() {
   while IFS= read -r line; do
     video_args+=("$line")
   done < <(print_video_collection_args)
+  run_malware_scan "${VIDEO_OUT:-./video_data}"
   run_repo_python scripts/build_video_dataset.py "${video_args[@]}"
   run_malware_scan "${VIDEO_OUT:-./video_data}"
 }
@@ -388,11 +371,6 @@ collect_diverse_cycle() {
   collect_diverse_image_data
   ingest_outputs
   VIDEO_CACHE_DIR="${VIDEO_CACHE_DIR:-$HF_CACHE_DIR_DEFAULT}" VIDEO_SNAPSHOT_MAX_WORKERS="${VIDEO_SNAPSHOT_MAX_WORKERS:-2}" collect_video_data
-}
-
-run_pipeline_collection_stage() {
-  wait_for_training_to_finish "pipeline_stage=collect"
-  collect_diverse_cycle
 }
 
 run_simple_collection_smoke() {

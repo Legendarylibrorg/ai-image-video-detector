@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
-source "$ROOT_DIR/scripts/lib/env.sh"
+source "$ROOT_DIR/scripts/lib/core.sh"
 
 load_env_file
 
@@ -15,17 +15,17 @@ VAL_PER_CLASS="${VAL_PER_CLASS:-9000}"
 TEST_PER_CLASS="${TEST_PER_CLASS:-9000}"
 BEST_DS_NEAR_HAMMING="${BEST_DS_NEAR_HAMMING:-2}"
 BEST_DS_NEAR_WINDOW="${BEST_DS_NEAR_WINDOW:-2400}"
-BEST_DS_MIN_SIDE="${BEST_DS_MIN_SIDE:-192}"
-BEST_DS_MAX_ASPECT_RATIO="${BEST_DS_MAX_ASPECT_RATIO:-3.0}"
+BEST_DS_MIN_SIDE="${BEST_DS_MIN_SIDE:-160}"
+BEST_DS_MAX_ASPECT_RATIO="${BEST_DS_MAX_ASPECT_RATIO:-4.0}"
 BEST_DS_MIN_ENTROPY="${BEST_DS_MIN_ENTROPY:-3.2}"
 BEST_DS_MAX_UNIQUE_PER_SOURCE="${BEST_DS_MAX_UNIQUE_PER_SOURCE:-220000}"
-BEST_DS_MAX_PER_SOURCE_CLASS="${BEST_DS_MAX_PER_SOURCE_CLASS:-120000}"
-BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS="${BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS:-0}"
+BEST_DS_MAX_PER_SOURCE_CLASS="${BEST_DS_MAX_PER_SOURCE_CLASS:-10000}"
+BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS="${BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS:-3000}"
 BEST_DS_JPEG_QUALITY="${BEST_DS_JPEG_QUALITY:-92}"
 BEST_DS_HARDNEG_FRACTION="${BEST_DS_HARDNEG_FRACTION:-0.6}"
 BEST_DS_DISCOVER_HF="${BEST_DS_DISCOVER_HF:-1}"
-BEST_DS_HF_DISCOVERY_LIMIT="${BEST_DS_HF_DISCOVERY_LIMIT:-180}"
-BEST_DS_HF_MAX_SOURCES="${BEST_DS_HF_MAX_SOURCES:-360}"
+BEST_DS_HF_DISCOVERY_LIMIT="${BEST_DS_HF_DISCOVERY_LIMIT:-240}"
+BEST_DS_HF_MAX_SOURCES="${BEST_DS_HF_MAX_SOURCES:-480}"
 BEST_DS_HF_MIN_DOWNLOADS="${BEST_DS_HF_MIN_DOWNLOADS:-80}"
 BEST_DS_HF_MIN_LIKES="${BEST_DS_HF_MIN_LIKES:-2}"
 BEST_DS_HF_MIN_QUALITY_SCORE="${BEST_DS_HF_MIN_QUALITY_SCORE:-1.7}"
@@ -33,20 +33,18 @@ BEST_DS_HF_PRINT_TOP="${BEST_DS_HF_PRINT_TOP:-24}"
 BEST_DS_HF_QUERY_PAUSE_MS="${BEST_DS_HF_QUERY_PAUSE_MS:-0}"
 BEST_DS_HF_CACHE_FILE="${BEST_DS_HF_CACHE_FILE:-./.local/hf_discovered_sources.txt}"
 BEST_DS_CACHE_DIR="${BEST_DS_CACHE_DIR:-./.local/hf}"
-BEST_DS_HF_QUERIES="${BEST_DS_HF_QUERIES:-real camera photo dataset,smartphone photo dataset,dslr photo dataset,webcam image dataset,cctv frame image dataset,meme image real vs ai,captioned image real ai,screenshot dataset image,chat ui screenshot,browser screenshot image,dashboard screenshot dataset,mobile app screenshot image,website screenshot dataset,image poster infographic,logo brand image dataset,advertisement creative image,receipt scanned document image,id card document image,invoice form document scan,passport scan image,document camera capture dataset,anime illustration real fake,digital art illustration dataset,manga artwork dataset,3d render real fake,cgi synthetic image real,game render frame dataset,watermarked social media image,recompressed image dataset,heavily edited real photo,low resolution blurry image,extreme aspect ratio image,portrait selfie real fake,group photo real fake,deepfake face swap image,diffusion generated image latest,stock photo real ai,image manipulation detection,synthetic portrait dataset,screen capture ui dataset}"
+BEST_DS_HF_QUERIES="${BEST_DS_HF_QUERIES:-real camera photo dataset,smartphone photo dataset,dslr photo dataset,webcam image dataset,cctv frame image dataset,portrait selfie real fake,group photo real fake,indoor room photo dataset,outdoor landscape photo dataset,product photo dataset,food photo dataset,animal photo dataset,night photo dataset,macro close up photo dataset,panorama photo dataset,high resolution photo dataset,low resolution image dataset,meme image real vs ai,captioned image real ai,screenshot dataset image,chat ui screenshot,browser screenshot image,dashboard screenshot dataset,mobile app screenshot image,website screenshot dataset,screen capture ui dataset,image poster infographic,logo brand image dataset,advertisement creative image,receipt scanned document image,id card document image,invoice form document scan,passport scan image,document camera capture dataset,anime illustration real fake,digital art illustration dataset,manga artwork dataset,3d render real fake,cgi synthetic image real,game render frame dataset,watermarked social media image,recompressed image dataset,heavily edited real photo,jpeg photo dataset,png image dataset,webp image dataset,extreme aspect ratio image,deepfake face swap image,diffusion generated image latest,stock photo real ai,image manipulation detection,synthetic portrait dataset}"
 BEST_DS_SOURCES_FILE="${BEST_DS_SOURCES_FILE:-}"
 BEST_DS_EXTRA_SOURCES="${BEST_DS_EXTRA_SOURCES:-}"
-BEST_DS_LOCAL_SOURCES="${BEST_DS_LOCAL_SOURCES:-}"
-BEST_DS_HF_ONLY="${BEST_DS_HF_ONLY:-1}"
 BEST_DS_NO_DEFAULT_SOURCES="${BEST_DS_NO_DEFAULT_SOURCES:-1}"
 BEST_DS_STREAMING="${BEST_DS_STREAMING:-1}"
 BEST_DS_STREAM_BUFFER_SIZE="${BEST_DS_STREAM_BUFFER_SIZE:-12000}"
-BEST_DS_MAX_SAMPLES_PER_SOURCE="${BEST_DS_MAX_SAMPLES_PER_SOURCE:-60000}"
+BEST_DS_MAX_SAMPLES_PER_SOURCE="${BEST_DS_MAX_SAMPLES_PER_SOURCE:-30000}"
 BEST_DS_ACCEPTANCE_WARMUP_SAMPLES="${BEST_DS_ACCEPTANCE_WARMUP_SAMPLES:-400}"
 BEST_DS_MIN_ACCEPTANCE_RATE="${BEST_DS_MIN_ACCEPTANCE_RATE:-0.01}"
-BEST_DS_MIN_HF_SOURCES_WITH_ACCEPTED="${BEST_DS_MIN_HF_SOURCES_WITH_ACCEPTED:-20}"
-BEST_DS_MIN_HF_SOURCES_PER_CLASS="${BEST_DS_MIN_HF_SOURCES_PER_CLASS:-12}"
-BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS="${BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS:-0}"
+BEST_DS_MIN_HF_SOURCES_WITH_ACCEPTED="${BEST_DS_MIN_HF_SOURCES_WITH_ACCEPTED:-36}"
+BEST_DS_MIN_HF_SOURCES_PER_CLASS="${BEST_DS_MIN_HF_SOURCES_PER_CLASS:-20}"
+BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS="${BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS:-12}"
 BEST_DS_REPO_BASE_PAUSE_MS="${BEST_DS_REPO_BASE_PAUSE_MS:-900}"
 BEST_DS_REPO_JITTER_MS="${BEST_DS_REPO_JITTER_MS:-900}"
 BEST_DS_REPO_COOLDOWN_MS="${BEST_DS_REPO_COOLDOWN_MS:-45000}"
@@ -216,30 +214,6 @@ on_exit() {
 }
 
 trap on_exit EXIT
-
-activate_repo_venv() {
-  local activate_script="$VENV_DIR/bin/activate"
-  if [[ -f "$activate_script" ]]; then
-    # shellcheck disable=SC1090
-    source "$activate_script"
-    return 0
-  fi
-  if [[ "$DRY_RUN" == "1" ]]; then
-    echo "[DRY_RUN] source $activate_script"
-    return 0
-  fi
-  echo "missing_virtualenv_activate=$activate_script run=bash scripts/install_deps.sh" >&2
-  return 1
-}
-
-repo_python() {
-  local python_bin="${VENV_DIR}/bin/python"
-  if [[ -x "$python_bin" ]]; then
-    "$python_bin" "$@"
-    return 0
-  fi
-  python "$@"
-}
 
 reset_ensemble_outputs() {
   local path=""
@@ -443,8 +417,7 @@ run_distill_bundle() {
   run_cmd "${distill_cmd[@]}"
 }
 
-run_cmd bash scripts/install_deps.sh
-activate_repo_venv
+ensure_env
 run_cmd mkdir -p "$PIPELINE_REPORT_DIR" "$ENS_OUT" "$VIDEO_ARTIFACTS_OUT"
 
 if [[ "$SKIP_DATA" != "1" ]]; then
@@ -525,17 +498,6 @@ if [[ "$SKIP_DATA" != "1" ]]; then
     done
   fi
 
-  if [[ -n "$BEST_DS_LOCAL_SOURCES" && "$BEST_DS_HF_ONLY" != "1" ]]; then
-    IFS=',' read -r -a _local_sources <<< "$BEST_DS_LOCAL_SOURCES"
-    for src in "${_local_sources[@]}"; do
-      src="$(echo "$src" | xargs)"
-      [[ -z "$src" ]] && continue
-      dataset_cmd+=(--local-source "$src")
-    done
-  fi
-  if [[ "$BEST_DS_HF_ONLY" == "1" ]]; then
-    dataset_cmd+=(--hf-only)
-  fi
   if [[ "$BEST_DS_NO_DEFAULT_SOURCES" == "1" ]]; then
     dataset_cmd+=(--no-default-sources)
   fi

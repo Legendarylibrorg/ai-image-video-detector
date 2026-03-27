@@ -15,7 +15,8 @@ This file keeps the README short and startup-focused while collecting the broade
 - `local.sh`: small public entrypoint
 - `install.sh`: optional installer
 - `docker-compose.yml`: optional Compose workflow for isolated CPU or GPU runs
-- `Dockerfile`: container image definition used by Compose
+- `Dockerfile`: CPU-oriented container image definition used by Compose
+- `Dockerfile.gpu`: CUDA-enabled container image definition used by the GPU Compose service
 - `docs/`: user-facing documentation
 - `scripts/`: internal pipeline helpers and advanced wrappers
 - `src/ai_image_detector/`: Python package code

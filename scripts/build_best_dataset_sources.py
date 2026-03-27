@@ -33,12 +33,41 @@ DEFAULT_DISCOVERY_QUERIES = [
     "real vs fake image",
     "camera photo dataset",
     "smartphone photo dataset",
+    "dslr photo dataset",
+    "webcam image dataset",
+    "cctv frame image dataset",
+    "portrait selfie real fake",
+    "group photo real fake",
+    "indoor room photo dataset",
+    "outdoor landscape photo dataset",
+    "product photo dataset",
+    "food photo dataset",
+    "animal photo dataset",
+    "night photo dataset",
+    "macro close up photo dataset",
+    "panorama photo dataset",
+    "high resolution photo dataset",
+    "low resolution image dataset",
     "screenshot dataset image",
+    "chat ui screenshot",
+    "browser screenshot image",
+    "mobile app screenshot image",
     "document scan image dataset",
+    "receipt scanned document image",
+    "invoice form document scan",
+    "id card document image",
+    "poster infographic image",
+    "logo icon brand image",
     "anime illustration real fake",
+    "digital art illustration dataset",
     "3d render real fake",
     "social media image dataset",
-    "portrait selfie real fake",
+    "watermarked social media image",
+    "recompressed image dataset",
+    "heavily edited real photo",
+    "jpeg photo dataset",
+    "png image dataset",
+    "webp image dataset",
 ]
 
 LOW_QUALITY_NAME_RE = re.compile(r"(^|[^a-z0-9])(toy|dummy|sample|mini|tiny|test)([^a-z0-9]|$)")
@@ -51,7 +80,74 @@ USEFUL_KEYWORD_GROUPS: dict[str, tuple[str, ...]] = {
     "illustration": ("anime", "illustration", "digital art", "artwork", "manga"),
     "render": ("3d", "render", "cgi", "game"),
     "web": ("social media", "meme", "watermarked", "recompressed", "edited"),
+    "format": ("jpeg", "jpg", "png", "webp", "bmp", "tiff"),
+    "resolution": ("low resolution", "high resolution", "panorama", "macro", "widescreen", "thumbnail"),
+    "scene": ("landscape", "indoor", "outdoor", "night", "product", "food", "animal"),
 }
+
+DEFAULT_ALLOWED_LICENSE_TAGS = (
+    "apache-2.0",
+    "mit",
+    "bsd-2-clause",
+    "bsd-3-clause",
+    "cc0-1.0",
+    "cc-by-4.0",
+    "cc-by-3.0",
+    "cc-by-sa-4.0",
+    "cc-by-sa-3.0",
+    "pddl",
+    "odc-by",
+    "odbl",
+    "cdla-permissive-2.0",
+    "etalab-2.0",
+)
+
+
+def _flatten_license_values(value: object) -> Iterable[str]:
+    if isinstance(value, str):
+        yield value
+        return
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            key_low = str(key).lower()
+            if key_low in {"license", "licenses", "license_name"}:
+                yield from _flatten_license_values(nested)
+        return
+    if isinstance(value, (list, tuple, set)):
+        for nested in value:
+            yield from _flatten_license_values(nested)
+
+
+def normalize_license_marker(raw: object) -> str:
+    value = str(raw or "").strip().lower()
+    if value.startswith("license:"):
+        value = value.split(":", 1)[1].strip()
+    return value
+
+
+def extract_license_markers(ds: object) -> set[str]:
+    markers: set[str] = set()
+    for tag in getattr(ds, "tags", None) or []:
+        normalized = normalize_license_marker(tag)
+        if normalized:
+            markers.add(normalized)
+    for field_name in ("cardData", "card_data", "carddata"):
+        card_data = getattr(ds, field_name, None)
+        if card_data is None:
+            continue
+        for value in _flatten_license_values(card_data):
+            normalized = normalize_license_marker(value)
+            if normalized:
+                markers.add(normalized)
+    for field_name in ("license", "licenses", "license_name"):
+        value = getattr(ds, field_name, None)
+        if value is None:
+            continue
+        for item in _flatten_license_values(value):
+            normalized = normalize_license_marker(item)
+            if normalized:
+                markers.add(normalized)
+    return markers
 
 
 def cache_policy_path(cache_path: Path) -> Path:
@@ -68,6 +164,8 @@ def discovery_policy(args) -> dict[str, object]:
         "hf_min_quality_score": float(args.hf_min_quality_score),
         "hf_print_top": int(args.hf_print_top),
         "hf_query_pause_ms": int(args.hf_query_pause_ms),
+        "hf_require_open_license": bool(getattr(args, "hf_require_open_license", True)),
+        "hf_license_allow": list(getattr(args, "hf_license_allow", []) or list(DEFAULT_ALLOWED_LICENSE_TAGS)),
     }
 
 
@@ -108,6 +206,8 @@ def discover_hf_sources(
     print_top_n: int,
     query_pause_ms: int = 0,
     token: str | None = None,
+    require_open_license: bool = True,
+    allowed_license_tags: Sequence[str] = DEFAULT_ALLOWED_LICENSE_TAGS,
 ) -> list[str]:
     if HfApi is None:
         print("warning_hf_discovery_unavailable reason=huggingface_hub_missing")
@@ -115,6 +215,7 @@ def discover_hf_sources(
     token = normalize_hf_token(token)
     api = HfApi(token=token)
     found: list[tuple[str, float, int, int]] = []
+    allowed_licenses = {normalize_license_marker(tag) for tag in allowed_license_tags if normalize_license_marker(tag)}
     for idx, q in enumerate(queries, start=1):
         if idx > 1 and int(query_pause_ms) > 0:
             time.sleep(int(query_pause_ms) / 1000.0)
@@ -134,14 +235,19 @@ def discover_hf_sources(
                 likes = int(getattr(ds, "likes", 0) or 0)
                 if downloads < min_downloads or likes < min_likes:
                     continue
+                license_markers = extract_license_markers(ds)
+                if require_open_license and not (license_markers & allowed_licenses):
+                    continue
                 score = min(3.0, math.log10(max(1, downloads) + 1.0)) + min(2.0, math.log10(max(1, likes) + 1.0))
-                useful_text = " ".join([ds_id.lower(), *tags])
+                useful_text = " ".join([ds_id.lower(), *tags, *sorted(license_markers)])
                 useful_groups = sum(
                     1
                     for keywords in USEFUL_KEYWORD_GROUPS.values()
                     if any(keyword in useful_text for keyword in keywords)
                 )
                 score += min(1.5, 0.22 * float(useful_groups))
+                if "cc0-1.0" in license_markers or "apache-2.0" in license_markers or "mit" in license_markers:
+                    score += 0.1
                 if any(tag in useful_text for tag in ("image-classification", "computer-vision", "image")):
                     score += 0.15
                 if LOW_QUALITY_NAME_RE.search(ds_id.lower()):
@@ -161,18 +267,16 @@ def discover_hf_sources(
 def build_source_list(args) -> list[str]:
     def finalize_sources(raw_sources: Iterable[str]) -> list[str]:
         resolved = unique_preserve(raw_sources)
-        if not args.hf_only:
-            return resolved
         before = len(resolved)
         resolved = [s for s in resolved if not str(s).startswith("local::")]
         filtered = before - len(resolved)
         if filtered > 0:
-            print(f"hf_only_filtered_non_hf_sources={filtered}")
+            print(f"filtered_non_hf_sources={filtered}")
         before_valid = len(resolved)
         resolved = [s for s in resolved if is_probable_hf_dataset_id(str(s))]
         invalid = before_valid - len(resolved)
         if invalid > 0:
-            print(f"hf_only_filtered_invalid_dataset_ids={invalid}")
+            print(f"filtered_invalid_dataset_ids={invalid}")
         return resolved
 
     sources: list[str] = []
@@ -211,6 +315,8 @@ def build_source_list(args) -> list[str]:
                 print_top_n=args.hf_print_top,
                 query_pause_ms=args.hf_query_pause_ms,
                 token=normalize_hf_token(os.environ.get(args.token_env)),
+                require_open_license=bool(getattr(args, "hf_require_open_license", True)),
+                allowed_license_tags=getattr(args, "hf_license_allow", []) or list(DEFAULT_ALLOWED_LICENSE_TAGS),
             )
             if cache_path:
                 write_noncomment_lines(cache_path, discovered)

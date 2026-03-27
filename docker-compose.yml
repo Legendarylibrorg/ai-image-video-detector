@@ -1,18 +1,75 @@
 x-pipeline-service: &pipeline-service
-  build:
-    context: .
-    dockerfile: Dockerfile
   working_dir: /workspace
   env_file:
     - .env
   environment:
-    VENV_DIR: /workspace/.venv
+    VENV_DIR: /opt/aid-venv
     HF_HOME: /workspace/.local/hf
     HUGGINGFACE_HUB_CACHE: /workspace/.local/hf
     PIP_CACHE_DIR: /workspace/.local/pip
     PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    HOME: /tmp/aid-home
   volumes:
-    - .:/workspace
+    - type: bind
+      source: .
+      target: /workspace
+      read_only: true
+    - type: bind
+      source: ./.local
+      target: /workspace/.local
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./data_best
+      target: /workspace/data_best
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./data_best_fast
+      target: /workspace/data_best_fast
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./data_new
+      target: /workspace/data_new
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./video_data
+      target: /workspace/video_data
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./artifacts_ens
+      target: /workspace/artifacts_ens
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./artifacts_sweep
+      target: /workspace/artifacts_sweep
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./artifacts_finetune_metadata
+      target: /workspace/artifacts_finetune_metadata
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./video_artifacts
+      target: /workspace/video_artifacts
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./incoming_model_outputs
+      target: /workspace/incoming_model_outputs
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./incoming_review_queue
+      target: /workspace/incoming_review_queue
+      bind:
+        create_host_path: true
+    - aid_venv:/opt/aid-venv
     - aid_hf_cache:/workspace/.local/hf
     - aid_pip_cache:/workspace/.local/pip
   user: "${AID_UID:-1000}:${AID_GID:-1000}"
@@ -32,13 +89,20 @@ x-pipeline-service: &pipeline-service
 services:
   pipeline:
     <<: *pipeline-service
+    build:
+      context: .
+      dockerfile: Dockerfile
     command: ["./local.sh", "help"]
 
   pipeline-gpu:
     <<: *pipeline-service
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
     command: ["./local.sh", "help"]
     gpus: all
 
 volumes:
+  aid_venv:
   aid_hf_cache:
   aid_pip_cache:

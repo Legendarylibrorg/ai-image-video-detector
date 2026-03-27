@@ -2,20 +2,14 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 from typing import Any
 
-try:
-    from ai_image_detector.utils import read_json_dict, read_nonempty_lines, write_json_dict
-except ModuleNotFoundError:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-    from ai_image_detector.utils import read_json_dict, read_nonempty_lines, write_json_dict
 from release_selection import build_public_model_manifest, select_public_model
+from script_support import iter_member_dirs, read_json_dict, read_nonempty_lines, resolve_preferred_checkpoint, write_json_dict
 
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
@@ -48,10 +42,6 @@ def _count_files(root: Path, splits: tuple[str, ...], exts: set[str]) -> dict[st
 
 def _complete_split_class_counts(counts: dict[str, dict[str, int]], splits: tuple[str, ...]) -> bool:
     return all(int(counts.get(split, {}).get(cls, 0)) > 0 for split in splits for cls in CLASSES)
-
-
-def _read_sources(cache_file: Path) -> list[str]:
-    return read_nonempty_lines(cache_file)
 
 
 def _disk_free_gb(root: Path) -> float:
@@ -89,13 +79,6 @@ def _selected_env() -> dict[str, str]:
     return dict(sorted(out.items()))
 
 
-def _resolve_checkpoint(preferred_pt: Path) -> Path:
-    safe_path = preferred_pt.with_suffix(".safetensors")
-    if safe_path.exists():
-        return safe_path
-    return preferred_pt
-
-
 def write_dataset_report(args: argparse.Namespace) -> int:
     data_root = Path(args.data)
     prepared_root = Path(args.prepared)
@@ -109,7 +92,7 @@ def write_dataset_report(args: argparse.Namespace) -> int:
     dataset_build_report = read_json_dict(dataset_build_report_path)
     dataset_run_summary = read_json_dict(dataset_run_summary_path)
     training_data_report = read_json_dict(training_data_report_path)
-    hf_sources = _read_sources(cache_file)
+    hf_sources = read_nonempty_lines(cache_file)
 
     data_counts = _count_files(data_root, SPLITS, IMAGE_EXTS)
     prepared_counts = _count_files(prepared_root, SPLITS, IMAGE_EXTS)
@@ -163,7 +146,7 @@ def write_dataset_report(args: argparse.Namespace) -> int:
 
 def _read_member_summaries(ens_out: Path) -> list[dict[str, Any]]:
     members: list[dict[str, Any]] = []
-    for root in sorted((p for p in ens_out.glob("m*") if p.is_dir()), key=lambda p: p.name):
+    for root in iter_member_dirs(ens_out):
         name = root.name
         if not root.exists():
             continue
@@ -199,7 +182,7 @@ def write_final_report(args: argparse.Namespace) -> int:
     dataset_qa = read_json_dict(Path(args.dataset_qa))
     distill_dir = ens_out / "distill"
     distill_summary = read_json_dict(distill_dir / "best_model_summary.json")
-    distill_checkpoint = _resolve_checkpoint(distill_dir / "best.safetensors")
+    distill_checkpoint = resolve_preferred_checkpoint(distill_dir / "best.safetensors")
     release_bundle = Path(args.release_bundle) if getattr(args, "release_bundle", "") else None
     public_model = select_public_model(ens_out)
     public_model_release_path = None
@@ -220,7 +203,7 @@ def write_final_report(args: argparse.Namespace) -> int:
         "video": video_metrics.get("threshold"),
     }
 
-    video_model = _resolve_checkpoint(video_artifacts / "best_video.safetensors")
+    video_model = resolve_preferred_checkpoint(video_artifacts / "best_video.safetensors")
     preferred_models = [item["preferred_checkpoint"] for item in image_members if item.get("preferred_checkpoint")]
     if video_model.exists():
         preferred_video_model = str(video_model.resolve())

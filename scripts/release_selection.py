@@ -2,27 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import sys
 from typing import Any
 
-try:
-    from ai_image_detector.utils import read_json_dict
-except ModuleNotFoundError:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-    from ai_image_detector.utils import read_json_dict
-
-
-def read_json(path: Path) -> dict[str, Any]:
-    return read_json_dict(path)
-
-
-def resolve_checkpoint(path: Path) -> Path | None:
-    if path.exists():
-        return path
-    safe = path.with_suffix(".safetensors")
-    if safe.exists():
-        return safe
-    return None
+from script_support import iter_member_dirs, read_json_dict, resolve_checkpoint
 
 
 def _bool_metric(obj: dict[str, Any], key: str, default: bool = False) -> bool:
@@ -52,15 +34,15 @@ def _use_metadata_features(config: dict[str, Any]) -> bool:
 
 def public_model_candidates(ens_out: Path) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
-    for model_dir in sorted((p for p in ens_out.glob("m*") if p.is_dir()), key=lambda p: p.name):
+    for model_dir in iter_member_dirs(ens_out):
         checkpoint = resolve_checkpoint(model_dir / "best.safetensors")
         if checkpoint is None:
             continue
 
-        metrics = read_json(model_dir / "best_metrics.json")
-        test_metrics = read_json(model_dir / "test_metrics.json")
-        calibration = read_json(model_dir / "calibration.json")
-        config = read_json(model_dir / "config.json")
+        metrics = read_json_dict(model_dir / "best_metrics.json")
+        test_metrics = read_json_dict(model_dir / "test_metrics.json")
+        calibration = read_json_dict(model_dir / "calibration.json")
+        config = read_json_dict(model_dir / "config.json")
 
         threshold = calibration.get("threshold")
         temperature = calibration.get("temperature")
