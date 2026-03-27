@@ -20,7 +20,7 @@ class DoctorShTests(unittest.TestCase):
             fake_python = bin_dir / "python"
             fake_python.write_text("#!/usr/bin/env bash\ncat >/dev/null\nexit 0\n", encoding="utf-8")
             fake_python.chmod(0o755)
-            for name in ("hf", "aid-train", "aid-video-train", "aid-dataset"):
+            for name in ("hf", "aid-train", "aid-video-train"):
                 fake_cli = bin_dir / name
                 fake_cli.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
                 fake_cli.chmod(0o755)

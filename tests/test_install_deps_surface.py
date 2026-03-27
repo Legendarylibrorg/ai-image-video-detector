@@ -23,7 +23,7 @@ class InstallDepsSurfaceTests(unittest.TestCase):
         self.assertIn("command -v hf", text)
         self.assertIn("command -v aid-train", text)
         self.assertIn("command -v aid-video-train", text)
-        self.assertIn("command -v aid-dataset", text)
+        self.assertNotIn("command -v aid-dataset", text)
         self.assertIn("deps_fail=huggingface_cli_missing", text)
         self.assertIn("deps_fail=repo_cli_missing", text)
         self.assertIn("PIP_DISABLE_PIP_VERSION_CHECK=1", text)
@@ -85,6 +85,15 @@ class InstallDepsSurfaceTests(unittest.TestCase):
         self.assertNotIn("uvicorn", text.lower())
 
     def test_install_deps_fast_path_skips_work_when_current_by_default(self) -> None:
+        subprocess.run(
+            ["bash", "scripts/install_deps.sh"],
+            cwd=ROOT,
+            env={**os.environ, "UPGRADE_TOOLCHAIN": "0"},
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
         proc = subprocess.run(
             ["bash", "scripts/install_deps.sh"],
             cwd=ROOT,

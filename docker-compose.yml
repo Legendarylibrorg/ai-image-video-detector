@@ -1,0 +1,44 @@
+x-pipeline-service: &pipeline-service
+  build:
+    context: .
+    dockerfile: Dockerfile
+  working_dir: /workspace
+  env_file:
+    - .env
+  environment:
+    VENV_DIR: /workspace/.venv
+    HF_HOME: /workspace/.local/hf
+    HUGGINGFACE_HUB_CACHE: /workspace/.local/hf
+    PIP_CACHE_DIR: /workspace/.local/pip
+    PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  volumes:
+    - .:/workspace
+    - aid_hf_cache:/workspace/.local/hf
+    - aid_pip_cache:/workspace/.local/pip
+  user: "${AID_UID:-1000}:${AID_GID:-1000}"
+  stdin_open: true
+  tty: true
+  read_only: true
+  shm_size: "8gb"
+  pids_limit: 1024
+  tmpfs:
+    - /tmp:size=8g,exec
+    - /run:size=64m
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  pipeline:
+    <<: *pipeline-service
+    command: ["./local.sh", "help"]
+
+  pipeline-gpu:
+    <<: *pipeline-service
+    command: ["./local.sh", "help"]
+    gpus: all
+
+volumes:
+  aid_hf_cache:
+  aid_pip_cache:

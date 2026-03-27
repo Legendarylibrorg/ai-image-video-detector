@@ -14,6 +14,8 @@ This file keeps the README short and startup-focused while collecting the broade
 
 - `local.sh`: small public entrypoint
 - `install.sh`: optional installer
+- `docker-compose.yml`: optional Compose workflow for isolated CPU or GPU runs
+- `Dockerfile`: container image definition used by Compose
 - `docs/`: user-facing documentation
 - `scripts/`: internal pipeline helpers and advanced wrappers
 - `src/ai_image_detector/`: Python package code
@@ -114,7 +116,6 @@ The packaged CLI surface is intentionally small:
 ```bash
 aid-train
 aid-video-train
-aid-dataset
 ```
 
 Those commands exist to support the local pipeline scripts, not to turn this repo into a broad general-purpose app surface.
@@ -131,6 +132,27 @@ The package is split into capability extras:
 - video only: `pip install -e '.[video]'`
 
 Normal repo usage should still go through `./local.sh deps` or `./local.sh setup`, which install the full `pipeline` profile into `./.venv`.
+
+## Containerized path
+
+For a more isolated runtime, the repo also includes:
+
+```bash
+docker compose run --rm pipeline ./local.sh doctor
+docker compose run --rm pipeline-gpu ./local.sh doctor
+docker compose run --rm pipeline-gpu ./local.sh run
+```
+
+The Compose services:
+- bind-mount the repo at `/workspace`
+- reuse `.env`
+- keep Hugging Face and pip caches in named Docker volumes
+- drop Linux capabilities and enable `no-new-privileges`
+- use a read-only container root filesystem with writable `tmpfs` scratch space
+- apply a PID limit to reduce blast radius if a process misbehaves
+
+GPU mode requires Docker Engine, the Docker Compose plugin, and the NVIDIA Container Toolkit on the host.
+This repo does not add a VM layer because that would change the normal host-GPU and local bind-mount workflow rather than simply harden the existing pipeline.
 
 ## Pipeline entrypoints
 

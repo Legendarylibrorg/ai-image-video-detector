@@ -8,6 +8,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DocsSurfaceTests(unittest.TestCase):
+    def test_docker_compose_surface_exists(self) -> None:
+        self.assertTrue((ROOT / "Dockerfile").exists())
+        self.assertTrue((ROOT / "docker-compose.yml").exists())
+        self.assertTrue((ROOT / ".dockerignore").exists())
+        self.assertTrue((ROOT / "scripts" / "docker-entrypoint.sh").exists())
+        self.assertFalse((ROOT / "src" / "ai_image_detector" / "explain.py").exists())
+        self.assertFalse((ROOT / "src" / "ai_image_detector" / "video.py").exists())
+
     def test_redundant_root_wrappers_are_removed(self) -> None:
         for name in ["autocollect.sh", "collect.sh", "continuous.sh", "retrain.sh", "run.sh", "start.sh", "train.sh"]:
             self.assertFalse((ROOT / name).exists(), name)
@@ -71,6 +79,11 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("pip install -e '.[pipeline]'", text)
         self.assertIn("pip install -e .", text)
         self.assertIn("Dependency Profiles", text)
+        self.assertIn("## Docker Compose", text)
+        self.assertIn("docker compose run --rm pipeline ./local.sh doctor", text)
+        self.assertIn("docker compose run --rm pipeline-gpu ./local.sh run", text)
+        self.assertIn("cap_drop: [ALL]", text)
+        self.assertIn("no-new-privileges", text)
         self.assertIn("./local.sh run", text)
         self.assertIn("./local.sh finetune", text)
         self.assertNotIn("cd /path/to/image-spam", text)
@@ -109,6 +122,14 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("repo CLI commands and the `hf` CLI", text)
         self.assertIn("pip install -e '.[pipeline]'", text)
         self.assertIn("aid-*` commands are thin wrappers", text)
+        self.assertIn("## Docker Compose startup", text)
+        self.assertIn("docker compose run --rm pipeline-gpu ./local.sh run", text)
+        self.assertIn("read-only container root filesystem", text)
+        self.assertIn("VM path is intentionally not added", text)
+        self.assertIn("## macOS startup", text)
+        self.assertIn("## Windows startup", text)
+        self.assertIn("WSL2 Ubuntu", text)
+        self.assertIn("do not copy the `apt-get` commands below", text)
         self.assertNotIn("## Manual Linux bootstrap", text)
         self.assertNotIn("cd /path/to/image-spam", text)
         self.assertNotIn("## Setup options", text)
@@ -150,6 +171,12 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("repo CLI commands and the `hf` CLI", text)
         self.assertIn("pip install -e '.[pipeline]'", text)
         self.assertIn("base install lightweight", text)
+        self.assertIn("## Docker Compose commands", text)
+        self.assertIn("docker compose run --rm pipeline ./local.sh doctor", text)
+        self.assertIn("drop all Linux capabilities", text)
+        self.assertIn("does not add a VM layer", text)
+        self.assertIn("Linux commands", text)
+        self.assertIn("macOS or Windows", text)
         self.assertIn("./local.sh run", text)
         self.assertNotIn("## Raw `scripts/do.sh` commands", text)
         self.assertNotIn(

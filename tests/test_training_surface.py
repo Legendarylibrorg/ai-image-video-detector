@@ -23,7 +23,7 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertNotIn("aid-train-advanced", text)
         self.assertIn('aid-train = "ai_image_detector.cli:train_main"', text)
         self.assertIn('aid-video-train = "ai_image_detector.cli:video_train_main"', text)
-        self.assertIn('aid-dataset = "ai_image_detector.cli:dataset_main"', text)
+        self.assertNotIn("aid-dataset =", text)
         self.assertNotIn("fastapi", text.lower())
         self.assertNotIn("uvicorn", text.lower())
 
@@ -57,7 +57,7 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertEqual(lines[1], "0")
         self.assertEqual(lines[2], "True")
         self.assertEqual(lines[3], "True")
-        self.assertEqual(lines[4], "True")
+        self.assertEqual(lines[4], "False")
 
     def test_local_retrain_defaults_to_train_existing(self) -> None:
         text = (ROOT / "scripts" / "local_retrain_4090.sh").read_text(encoding="utf-8")

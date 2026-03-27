@@ -5,6 +5,9 @@ This guide expands the startup path from the main README.
 This guide assumes a Linux machine and breaks startup into system deps, repo deps, then the pipeline.
 The repo uses a pinned local virtualenv at `./.venv` for its Python dependencies and runtime.
 
+Linux is the supported native path.
+If you are on macOS or Windows, do not copy the `apt-get` commands below into your shell; use the platform sections in this document instead.
+
 ## Basic Linux commands
 
 Clone path:
@@ -72,6 +75,58 @@ curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-det
 ```bash
 ./local.sh setup
 ```
+
+## Docker Compose startup
+
+If you want a more isolated runtime, the repo includes an optional Compose path:
+
+```bash
+docker compose run --rm pipeline ./local.sh doctor
+docker compose run --rm pipeline-gpu ./local.sh doctor
+docker compose run --rm pipeline-gpu ./local.sh run
+```
+
+Notes:
+- the Compose services mount this repo at `/workspace`, so datasets and artifacts still live in the checkout you started from
+- GPU mode requires Docker Engine, the Docker Compose plugin, and the NVIDIA Container Toolkit on the host
+- the container entrypoint reuses `scripts/install_deps.sh`, so the same pinned repo dependency flow still applies inside the container
+- the Compose services drop all Linux capabilities, enable `no-new-privileges`, use a read-only container root filesystem, and keep writable scratch space in `tmpfs`
+- a VM path is intentionally not added here because it would change the host-GPU and repo bind-mount workflow, not just harden it
+
+## macOS startup
+
+macOS is not a supported native host path for the full Linux/CUDA workflow in this repo.
+
+Use one of these options instead:
+
+```bash
+docker compose run --rm pipeline ./local.sh doctor
+docker compose run --rm pipeline ./local.sh collect
+```
+
+Notes:
+- use the Compose CPU service on macOS
+- the Linux-native `apt-get` setup steps in this repo do not apply on macOS
+- the CUDA-focused training path is not a native macOS path here
+
+## Windows startup
+
+Windows is not a supported native PowerShell or Command Prompt path for this repo.
+
+Use one of these options instead:
+
+1. WSL2 Ubuntu, then follow the Linux commands in this document from inside WSL.
+2. Docker Desktop plus Compose:
+
+```bash
+docker compose run --rm pipeline ./local.sh doctor
+docker compose run --rm pipeline ./local.sh collect
+```
+
+Notes:
+- do not run the Linux `apt-get` commands from PowerShell or Command Prompt
+- if you want the closest match to the documented Linux path, use WSL2 Ubuntu
+- Compose is the cleaner isolation path when you want to avoid mixing repo deps into the Windows host
 
 ## Dependency profiles
 

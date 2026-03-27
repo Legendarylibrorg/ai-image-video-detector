@@ -7,6 +7,7 @@ This repository is for one job:
 
 The commands below assume a local Linux machine with CUDA/PyTorch, such as an RTX 4090 box.
 The repo uses a local virtualenv at `./.venv`; `./local.sh setup` creates or reuses it and the pipeline runs from there.
+If you are on macOS or Windows, treat the Linux commands below as Linux-only and use the platform notes in [docs/STARTUP.md](docs/STARTUP.md) instead.
 
 It is not a production serving repo in the current mode.
 
@@ -27,6 +28,25 @@ The repo now keeps the base package lightweight:
 
 For normal repo use, prefer `./local.sh deps` or `./local.sh setup`; those install the full `pipeline` profile into `./.venv`.
 The packaged `aid-*` commands are lightweight wrappers and will tell you which extra to install if you run them without the required dependency profile.
+
+## Docker Compose
+
+If you want a more isolated runtime, the repo now includes an optional Docker Compose path.
+
+- `docker compose run --rm pipeline ./local.sh doctor`
+  Runs the repo in an isolated CPU container.
+- `docker compose run --rm pipeline-gpu ./local.sh doctor`
+  Runs the repo in an isolated GPU container.
+- `docker compose run --rm pipeline-gpu ./local.sh run`
+  Runs the full pipeline through Compose.
+
+Notes:
+- the Compose files mount this repo at `/workspace`, so datasets and artifacts still live in your local checkout
+- the container keeps Hugging Face and pip caches in named volumes
+- the Compose services run with `cap_drop: [ALL]`, `no-new-privileges`, a read-only container root filesystem, `tmpfs` scratch space, and a PID limit
+- GPU mode requires Docker Engine, the Docker Compose plugin, and the NVIDIA Container Toolkit on the host
+- the Docker path is optional; the local `./local.sh` workflow remains the primary path
+- no VM layer is included here because that would materially change the repo’s host-GPU and local-filesystem workflow rather than harden it transparently
 
 ## Quick Start
 
@@ -71,6 +91,10 @@ Important top-level paths:
   Small public command surface for setup, smoke, run, status, troubleshooting, and train-from-existing-data.
 - `./install.sh`
   Optional one-line Linux installer for clone or ZIP-based use.
+- `./docker-compose.yml`
+  Optional Compose entrypoint for an isolated CPU or GPU container workflow.
+- `./Dockerfile`
+  Container image definition for the Compose workflow.
 - `./docs/`
   Startup, commands, and reference docs.
 - `./scripts/`

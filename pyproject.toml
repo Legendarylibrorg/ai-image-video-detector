@@ -47,7 +47,6 @@ pipeline = [
 [project.scripts]
 aid-train = "ai_image_detector.cli:train_main"
 aid-video-train = "ai_image_detector.cli:video_train_main"
-aid-dataset = "ai_image_detector.cli:dataset_main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

@@ -157,7 +157,7 @@ require_disk_free_gb() {
 }
 
 write_dataset_reports() {
-  run_cmd python scripts/write_pipeline_report.py dataset \
+  run_cmd repo_python scripts/write_pipeline_report.py dataset \
     --data "$PIPELINE_COLLECTED_DATA_DIR" \
     --prepared "$PIPELINE_PREPARED_DATA_DIR" \
     --incremental "${TRAIN_INCREMENTAL_DATA_DIR:-}" \
@@ -168,7 +168,7 @@ write_dataset_reports() {
 }
 
 write_final_reports() {
-  run_cmd python scripts/write_pipeline_report.py final \
+  run_cmd repo_python scripts/write_pipeline_report.py final \
     --data "$PIPELINE_COLLECTED_DATA_DIR" \
     --prepared "$PIPELINE_PREPARED_DATA_DIR" \
     --video "$VIDEO_OUT" \
@@ -186,7 +186,7 @@ write_final_reports() {
 }
 
 write_release_bundle() {
-  run_cmd python scripts/export_best_release.py \
+  run_cmd repo_python scripts/export_best_release.py \
     --ens-out "$ENS_OUT" \
     --video-artifacts "$VIDEO_ARTIFACTS_OUT" \
     --out "$PIPELINE_RELEASE_OUT"
@@ -198,7 +198,7 @@ write_failure_report() {
     echo "[DRY_RUN] write_failure_report stage=$PIPELINE_STAGE exit_code=$exit_code out=$PIPELINE_FAILURE_OUT"
     return 0
   fi
-  python scripts/write_pipeline_report.py failure \
+  repo_python scripts/write_pipeline_report.py failure \
     --stage "$PIPELINE_STAGE" \
     --exit-code "$exit_code" \
     --data "$DATA_DIR" \
@@ -230,6 +230,15 @@ activate_repo_venv() {
   fi
   echo "missing_virtualenv_activate=$activate_script run=bash scripts/install_deps.sh" >&2
   return 1
+}
+
+repo_python() {
+  local python_bin="${VENV_DIR}/bin/python"
+  if [[ -x "$python_bin" ]]; then
+    "$python_bin" "$@"
+    return 0
+  fi
+  python "$@"
 }
 
 reset_ensemble_outputs() {
@@ -311,7 +320,7 @@ run_ensemble_training_bundle() {
 
   if [[ "$RUN_ENSEMBLE_FIT" == "1" ]]; then
     PIPELINE_STAGE="fit_ensemble"
-    run_cmd python scripts/fit_ensemble.py \
+    run_cmd repo_python scripts/fit_ensemble.py \
       --data "$train_root" \
       --model "${ENSEMBLE_MODELS[@]}" \
       --out "$ENS_CONFIG_PATH" \
@@ -325,7 +334,7 @@ run_ensemble_training_bundle() {
   if [[ "$RUN_DOMAIN_THRESHOLDS" == "1" ]]; then
     PIPELINE_STAGE="fit_domain_thresholds"
     declare -a domain_cmd=(
-      python scripts/fit_domain_thresholds.py
+      repo_python scripts/fit_domain_thresholds.py
       --data "$train_root"
       --model "${ENSEMBLE_MODELS[@]}"
       --out "$DOMAIN_CONFIG_PATH"
@@ -340,7 +349,7 @@ run_ensemble_training_bundle() {
 
   PIPELINE_STAGE="eval"
   declare -a eval_cmd=(
-    python scripts/eval_test_ensemble.py
+    repo_python scripts/eval_test_ensemble.py
     --data "$train_root"
     --model "${ENSEMBLE_MODELS[@]}"
     --tta "$EVAL_TTA_VIEWS"
@@ -354,7 +363,7 @@ run_ensemble_training_bundle() {
   if [[ "$RUN_ROBUST_EVAL" == "1" ]]; then
     PIPELINE_STAGE="robust_eval"
     declare -a robust_cmd=(
-      python -m ai_image_detector.robust_eval
+      repo_python -m ai_image_detector.robust_eval
       --data "$train_root"
       --model "${ENSEMBLE_MODELS[@]}"
       --max-images "$ROBUST_EVAL_MAX_IMAGES"
@@ -377,7 +386,7 @@ run_hard_mining_bundle() {
     run_cmd rm -rf "$ENS_OUT/hard_mined"
   fi
   declare -a hard_cmd=(
-    python scripts/mine_hard_negatives.py
+    repo_python scripts/mine_hard_negatives.py
     --data "$train_root"
     --model "${ENSEMBLE_MODELS[@]}"
   )
@@ -396,7 +405,7 @@ run_hard_mining_bundle() {
   if [[ -e "$HARD_RETRAIN_DATA_DIR" ]]; then
     run_cmd rm -rf "$HARD_RETRAIN_DATA_DIR"
   fi
-  run_cmd python scripts/prepare_training_data.py \
+  run_cmd repo_python scripts/prepare_training_data.py \
     --base "$train_root" \
     --incremental "$ENS_OUT/hard_mined" \
     --out "$HARD_RETRAIN_DATA_DIR"
@@ -419,7 +428,7 @@ run_distill_bundle() {
     run_cmd rm -rf "$ENS_OUT/distill"
   fi
   declare -a distill_cmd=(
-    python scripts/train_distill.py
+    repo_python scripts/train_distill.py
     --data "$train_root"
     --teacher "${ENSEMBLE_MODELS[@]}"
     --out "$ENS_OUT/distill"
@@ -442,7 +451,7 @@ if [[ "$SKIP_DATA" != "1" ]]; then
   PIPELINE_STAGE="collect_images"
   require_disk_free_gb "$PIPELINE_STAGE"
   dataset_cmd=(
-    python scripts/build_best_dataset.py
+    repo_python scripts/build_best_dataset.py
     --out "$DATA_DIR"
     --train-per-class "$TRAIN_PER_CLASS"
     --val-per-class "$VAL_PER_CLASS"
@@ -541,7 +550,7 @@ if [[ "$RUN_VIDEO_DATA_PULL" == "1" ]]; then
   PIPELINE_STAGE="collect_video"
   require_disk_free_gb "$PIPELINE_STAGE"
   video_data_cmd=(
-    python scripts/build_video_dataset.py
+    repo_python scripts/build_video_dataset.py
     --out "$VIDEO_OUT"
     --train-per-class "$VIDEO_TRAIN_PER_CLASS"
     --val-per-class "$VIDEO_VAL_PER_CLASS"
