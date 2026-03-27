@@ -159,7 +159,7 @@ Important top-level paths:
 - `./tests/`
   Unit and shell-surface regression coverage.
 - `./data_best`
-  Curated image dataset built from Hugging Face and local inputs.
+  Curated image dataset built from Hugging Face sources.
 - `./data_new`
   Incremental image data waiting to be folded into training.
 - `./video_data`
