@@ -8,8 +8,9 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image, ImageFilter
-from torchvision import datasets, transforms
+from torchvision import datasets
 
+from .data import make_eval_transform
 from .ensemble import EnsembleDetector, load_models, metadata_features_from_paths
 from .metrics import full_metric_report
 
@@ -58,28 +59,40 @@ def main() -> None:
     model = EnsembleDetector(loaded.models, weights=loaded.weights, img_sizes=loaded.img_sizes).to(device)
     model.eval()
 
-    tf = transforms.Compose([
-        transforms.Resize((loaded.img_size, loaded.img_size)),
-        transforms.ToTensor(),
-    ])
+    tf = make_eval_transform(loaded.img_size)
 
     buckets: dict[str, list[tuple[float, int]]] = {}
-
     n = min(len(ds), args.max_images)
-    for i in range(n):
-        p, y = ds.samples[i]
-        y_ai = 1 if int(y) == ai_idx else 0
-        img = Image.open(p).convert("RGB")
-        metadata_features = None
-        if loaded.uses_metadata_features:
-            metadata_features = metadata_features_from_paths([p], device=device)
-        for name, vimg in _variants(img).items():
-            x = tf(vimg).unsqueeze(0).to(device)
-            with torch.no_grad():
+    batch_size = 32
+    sample_paths = ds.samples[:n]
+    variant_names = tuple(_variants(Image.new("RGB", (16, 16))).keys())
+
+    with torch.no_grad():
+        for start in range(0, len(sample_paths), batch_size):
+            batch_samples = sample_paths[start : start + batch_size]
+            batch_paths = [path for path, _ in batch_samples]
+            batch_labels = [1 if int(y) == ai_idx else 0 for _, y in batch_samples]
+            variant_batches: dict[str, list[torch.Tensor]] = {name: [] for name in variant_names}
+            for path, _ in batch_samples:
+                img = Image.open(path).convert("RGB")
+                for name, vimg in _variants(img).items():
+                    variant_batches[name].append(tf(vimg))
+
+            metadata_features = None
+            if loaded.uses_metadata_features:
+                metadata_features = metadata_features_from_paths(batch_paths, device=device)
+
+            for name in variant_names:
+                x = torch.stack(variant_batches[name], dim=0).to(device, non_blocking=True)
+                if x.device.type == "cuda":
+                    x = x.contiguous(memory_format=torch.channels_last)
+                batch_metadata = None
                 if metadata_features is not None:
-                    metadata_features = metadata_features.to(device=device, dtype=x.dtype)
-                prob = torch.sigmoid(model(x, metadata_features=metadata_features) / max(loaded.temperature, 1e-6)).item()
-            buckets.setdefault(name, []).append((prob, int(y_ai)))
+                    batch_metadata = metadata_features.to(device=device, dtype=x.dtype)
+                probs = torch.sigmoid(model(x, metadata_features=batch_metadata) / max(loaded.temperature, 1e-6))
+                buckets.setdefault(name, []).extend(
+                    zip(probs.detach().cpu().tolist(), batch_labels)
+                )
 
     report = {}
     for name, pairs in buckets.items():

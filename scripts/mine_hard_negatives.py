@@ -5,10 +5,11 @@ from pathlib import Path
 import shutil
 
 import torch
-from PIL import Image
-from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+from torchvision import datasets
 
-from ai_image_detector.ensemble import EnsembleDetector, load_models, metadata_features_from_paths
+from ai_image_detector.data import MetadataImageFolder, build_loader_kwargs, make_eval_transform, unpack_image_batch
+from ai_image_detector.ensemble import EnsembleDetector, load_models
 
 
 def main():
@@ -32,25 +33,38 @@ def main():
     model = EnsembleDetector(loaded.models, weights=loaded.weights, img_sizes=loaded.img_sizes).to(device)
     model.eval()
 
-    tf = transforms.Compose([
-        transforms.Resize((loaded.img_size, loaded.img_size)),
-        transforms.ToTensor(),
-    ])
+    dataset_cls = MetadataImageFolder if loaded.uses_metadata_features else datasets.ImageFolder
+    ds = dataset_cls(
+        train_dir,
+        transform=make_eval_transform(loaded.img_size),
+    )
+    dl = DataLoader(
+        ds,
+        batch_size=64,
+        shuffle=False,
+        **build_loader_kwargs(num_workers=4),
+    )
 
     scored = []
+    offset = 0
     with torch.no_grad():
-        for path, y in ds.samples:
-            img = Image.open(path).convert("RGB")
-            x = tf(img).unsqueeze(0).to(device)
-            metadata_features = None
-            if loaded.uses_metadata_features:
-                metadata_features = metadata_features_from_paths([path], device=device, dtype=x.dtype)
-            p = torch.sigmoid(model(x, metadata_features=metadata_features) / max(loaded.temperature, 1e-6)).item()
-            target = 1 if int(y) == ai_idx else 0
-            loss_like = abs(target - p)
-            margin = abs(p - loaded.threshold)
-            hard = (1.0 - margin) + loss_like
-            scored.append((hard, path, target, p))
+        for batch in dl:
+            x, metadata_features, y = unpack_image_batch(batch)
+            x = x.to(device, non_blocking=True)
+            if device.type == "cuda":
+                x = x.contiguous(memory_format=torch.channels_last)
+            if metadata_features is not None:
+                metadata_features = metadata_features.to(device=device, dtype=x.dtype, non_blocking=True)
+            probs = torch.sigmoid(model(x, metadata_features=metadata_features) / max(loaded.temperature, 1e-6))
+            batch_paths = [path for path, _ in ds.samples[offset : offset + x.shape[0]]]
+            offset += x.shape[0]
+            batch_probs = probs.detach().cpu().tolist()
+            batch_targets = (y == ai_idx).int().tolist()
+            for path, target, prob in zip(batch_paths, batch_targets, batch_probs):
+                loss_like = abs(int(target) - float(prob))
+                margin = abs(float(prob) - loaded.threshold)
+                hard = (1.0 - margin) + loss_like
+                scored.append((hard, path, int(target), float(prob)))
 
     scored.sort(key=lambda t: t[0], reverse=True)
     picked = scored[: args.top_k]

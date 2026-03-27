@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from importlib import import_module
 import sys
-from typing import Callable
 
 
 def _run_entrypoint(module_name: str, attr_name: str, *, extra: str) -> int:

@@ -6,10 +6,10 @@ import unittest
 
 import torch
 
-from _support import write_rgb_image  # noqa: F401
 from ai_image_detector.checkpoints import save_safetensors_checkpoint
 from ai_image_detector.ensemble import EnsembleDetector, load_models, stack_model_logits
 from ai_image_detector.model import build_model
+from ai_image_detector.train import BinaryClassificationLoss
 
 
 class RecordingModel(torch.nn.Module):
@@ -24,6 +24,22 @@ class RecordingModel(torch.nn.Module):
 
 
 class EnsembleTests(unittest.TestCase):
+    def test_build_model_supports_convnext_tiny(self) -> None:
+        model = build_model(backbone="convnext_tiny", pretrained_backbone=False)
+
+        with torch.no_grad():
+            out = model(torch.zeros(2, 3, 64, 64))
+
+        self.assertEqual(tuple(out.shape), (2,))
+
+    def test_binary_classification_loss_supports_soft_targets(self) -> None:
+        logits = torch.tensor([0.25, -0.5, 0.9], dtype=torch.float32)
+        targets = torch.tensor([0.1, 0.5, 0.9], dtype=torch.float32)
+
+        for kind in ("ce", "bce", "focal"):
+            loss = BinaryClassificationLoss(kind=kind)(logits, targets)
+            self.assertTrue(torch.isfinite(loss))
+
     def test_stack_model_logits_resizes_each_model_input(self) -> None:
         models = [RecordingModel(1.0), RecordingModel(2.0)]
         x = torch.zeros(2, 3, 80, 80)

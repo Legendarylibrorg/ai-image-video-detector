@@ -10,7 +10,6 @@ from unittest import mock
 import numpy as np
 import torch
 
-from _support import ROOT  # noqa: F401
 from ai_image_detector import video_temporal
 
 

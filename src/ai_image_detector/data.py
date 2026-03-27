@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 import io
 import random
 from pathlib import Path
@@ -10,6 +11,7 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import datasets, transforms
 
 from .metadata import extract_metadata_features, metadata_feature_dim
+from .runtime import resolve_num_workers
 
 
 class RandomJpegCompression:
@@ -74,22 +76,37 @@ def make_transforms(img_size: int):
         transforms.ToTensor(),
         transforms.RandomErasing(p=0.15, scale=(0.02, 0.12), ratio=(0.3, 3.3), value="random"),
     ])
-    val_tf = transforms.Compose([
-        transforms.Resize((img_size, img_size)),
-        transforms.ToTensor(),
-    ])
+    val_tf = make_eval_transform(img_size)
     return train_tf, val_tf
 
 
-def build_loader_kwargs(num_workers: int = 4):
+def make_eval_transform(img_size: int):
+    return transforms.Compose([
+        transforms.Resize((img_size, img_size)),
+        transforms.ToTensor(),
+    ])
+
+
+def build_loader_kwargs(num_workers: int = 4, *, prefetch_factor: int = 4):
+    workers = resolve_num_workers(num_workers)
     dl_kwargs = {
-        "num_workers": num_workers,
+        "num_workers": workers,
         "pin_memory": bool(torch.cuda.is_available()),
     }
-    if num_workers > 0:
+    if workers > 0:
         dl_kwargs["persistent_workers"] = True
-        dl_kwargs["prefetch_factor"] = 4
+        dl_kwargs["prefetch_factor"] = int(prefetch_factor)
     return dl_kwargs
+
+
+def unpack_image_batch(
+    batch: tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor]:
+    if len(batch) == 3:
+        x, metadata_features, y = batch
+        return x, metadata_features, y
+    x, y = batch
+    return x, None, y
 
 
 def build_weighted_sampler(targets: list[int], classes: list[str]):
@@ -114,8 +131,13 @@ class MetadataImageFolder(datasets.ImageFolder):
         sample = self.loader(path)
         if self.transform is not None:
             sample = self.transform(sample)
-        metadata_features = torch.tensor(extract_metadata_features(path), dtype=torch.float32)
+        metadata_features = _metadata_feature_tensor(path)
         return sample, metadata_features, target
+
+
+@lru_cache(maxsize=65536)
+def _metadata_feature_tensor(path: str) -> torch.Tensor:
+    return torch.tensor(extract_metadata_features(path), dtype=torch.float32)
 
 
 def make_loaders(

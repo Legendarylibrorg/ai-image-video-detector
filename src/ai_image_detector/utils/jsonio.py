@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 from typing import Any
 
 
@@ -27,3 +28,10 @@ def read_nonempty_lines(path: str | Path) -> list[str]:
     if not target.exists():
         return []
     return [line.strip() for line in target.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def git_commit() -> str:
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True).strip()
+    except Exception:
+        return "unknown"

@@ -20,6 +20,10 @@ class _FakeSplit:
 
 
 class BuildBestDatasetTests(unittest.TestCase):
+    def test_source_acceptance_path_decodes_each_example_once(self) -> None:
+        text = Path(build_best_dataset.__file__).read_text(encoding="utf-8")
+        self.assertEqual(text.count("open_example_image(ex, image_field)"), 1)
+
     def test_label_resolver_uses_feature_names_for_integer_labels(self) -> None:
         resolver = build_best_dataset.build_label_resolver(_FakeSplit(["real", "synthetic"]), "label")
         self.assertEqual(resolver(0), "real")

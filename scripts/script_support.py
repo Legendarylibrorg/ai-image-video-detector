@@ -12,10 +12,10 @@ def _ensure_src_path() -> None:
 
 
 try:
-    from ai_image_detector.utils import read_json_dict, read_nonempty_lines, write_json_dict
+    from ai_image_detector.utils import git_commit, read_json_dict, read_nonempty_lines, write_json_dict
 except ModuleNotFoundError:
     _ensure_src_path()
-    from ai_image_detector.utils import read_json_dict, read_nonempty_lines, write_json_dict
+    from ai_image_detector.utils import git_commit, read_json_dict, read_nonempty_lines, write_json_dict
 
 
 def iter_member_dirs(ens_out: Path) -> list[Path]:

@@ -6,9 +6,10 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+from torchvision import datasets
 
-from ai_image_detector.data import MetadataImageFolder
+from ai_image_detector.data import MetadataImageFolder, build_loader_kwargs, make_eval_transform, unpack_image_batch
 from ai_image_detector.ensemble import EnsembleDetector, load_models
 from ai_image_detector.metrics import full_metric_report
 
@@ -29,37 +30,38 @@ def main():
 
     test_dir = Path(args.data) / "test"
     dataset_cls = MetadataImageFolder if loaded.uses_metadata_features else datasets.ImageFolder
-    ds = dataset_cls(test_dir)
+    ds = dataset_cls(
+        test_dir,
+        transform=make_eval_transform(loaded.img_size),
+    )
     if "ai" not in ds.class_to_idx:
         raise ValueError(f"Expected class 'ai' in {ds.class_to_idx}")
     ai_idx = int(ds.class_to_idx["ai"])
-
-    tf = transforms.Compose([
-        transforms.Resize((loaded.img_size, loaded.img_size)),
-        transforms.ToTensor(),
-    ])
+    dl = DataLoader(
+        ds,
+        batch_size=64,
+        shuffle=False,
+        **build_loader_kwargs(num_workers=4),
+    )
 
     probs, labels = [], []
     with torch.no_grad():
-        for index in range(len(ds)):
-            batch = ds[index]
-            metadata_features = None
-            if len(batch) == 3:
-                img, metadata_features, y = batch
-            else:
-                img, y = batch
-            x = tf(img).unsqueeze(0).to(device)
+        for batch in dl:
+            x, metadata_features, y = unpack_image_batch(batch)
+            x = x.to(device, non_blocking=True)
+            if device.type == "cuda":
+                x = x.contiguous(memory_format=torch.channels_last)
             if metadata_features is not None:
-                metadata_features = metadata_features.unsqueeze(0).to(device=device, dtype=x.dtype)
+                metadata_features = metadata_features.to(device=device, dtype=x.dtype, non_blocking=True)
             views = [x]
             if args.tta >= 2:
                 views.append(torch.flip(x, dims=[3]))  # hflip
             if args.tta >= 3:
                 views.append(torch.flip(x, dims=[2]))  # vflip
             logits = torch.stack([model(v, metadata_features=metadata_features) for v in views], dim=0).mean(dim=0)
-            prob = torch.sigmoid(logits / max(loaded.temperature, 1e-6)).item()
-            probs.append(prob)
-            labels.append(1 if int(y) == ai_idx else 0)
+            batch_probs = torch.sigmoid(logits / max(loaded.temperature, 1e-6))
+            probs.extend(batch_probs.detach().cpu().tolist())
+            labels.extend((y == ai_idx).int().tolist())
 
     report = full_metric_report(np.array(probs), np.array(labels), threshold=loaded.threshold)
     report["n_samples"] = len(labels)
