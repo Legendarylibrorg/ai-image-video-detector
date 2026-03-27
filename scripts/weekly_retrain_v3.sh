@@ -11,12 +11,15 @@ cd "$ROOT_DIR"
 LOG_DIR="${LOG_DIR:-./.local/runtime}"
 mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_FILE:-$LOG_DIR/weekly_retrain.log}"
+ENV_READY=0
+
+source "$ROOT_DIR/scripts/lib/core.sh"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) weekly_retrain_start"
 
-python scripts/review_queue_to_dataset.py --queue "${REVIEW_QUEUE_DIR:-./incoming_review_queue}" --dst "${NEW_DATA_DST:-./data_new/train}" || true
+run_repo_python scripts/review_queue_to_dataset.py --queue "${REVIEW_QUEUE_DIR:-./incoming_review_queue}" --dst "${NEW_DATA_DST:-./data_new/train}" || true
 
 bash scripts/local_retrain_4090.sh
 

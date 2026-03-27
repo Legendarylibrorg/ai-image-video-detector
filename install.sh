@@ -33,7 +33,11 @@ run_repo_cmd() {
   local display_root
   display_root="$(display_path "$ROOT_DIR")"
   if [ "$DRY_RUN" = "1" ]; then
-    printf '[DRY_RUN] cd %q && %s\n' "$display_root" "$*"
+    if [ "$display_root" = "." ]; then
+      printf '[DRY_RUN] %s\n' "$*"
+    else
+      printf '[DRY_RUN] cd %q && %s\n' "$display_root" "$*"
+    fi
   else
     (cd "$ROOT_DIR" && bash -c "$*")
   fi
@@ -139,7 +143,9 @@ print_next_steps() {
   display_root="$(display_path "$ROOT_DIR")"
   printf 'install_status=ready repo=%s\n' "$display_root"
   printf 'next_steps:\n'
-  printf '  cd %q\n' "$display_root"
+  if [ "$display_root" != "." ]; then
+    printf '  cd %q\n' "$display_root"
+  fi
   printf '  source .venv/bin/activate\n'
   printf "  printf \"HF_TOKEN='your_token_here'\\\\n\" >> .env\n"
   printf '  ./local.sh smoke\n'

@@ -21,7 +21,7 @@ The repo now runs one simple local pipeline:
 3. `./local.sh smoke`
    Runs a tiny local end-to-end sanity check before the full run.
 4. `./local.sh run`
-   Runs the resumable collect-plus-train pipeline.
+   Runs the canonical collect-plus-train pipeline.
 5. `./local.sh status`
    Shows the current pipeline state and key artifact paths.
 
@@ -33,6 +33,14 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh smoke
 ./local.sh run
 ./local.sh status
+```
+
+If you want to split the full flow:
+
+```bash
+./local.sh collect
+./local.sh train
+./local.sh retrain
 ```
 
 ## Repo Layout
@@ -63,6 +71,25 @@ Important top-level paths:
   Prepared additive image training dataset.
 - `./.local`
   Local caches, resumable stage markers, and collection state.
+
+## Command Map
+
+The public commands line up to the project structure like this:
+
+- `./local.sh setup`
+  Bootstraps `./.venv` and health-checks the repo.
+- `./local.sh collect`
+  Writes collected image data to `./data_best`, video data to `./video_data`, and cache/state under `./.local`.
+- `./local.sh train`
+  Reads `./data_best` and `./data_new`, prepares `./.local/training_data`, and trains from there.
+- `./local.sh retrain` or `./local.sh finetune`
+  Reruns the train-on-existing-data path and applies the benchmark gate to the resulting artifacts.
+- `./local.sh run`
+  Runs the full collect-then-train flow and writes reports under `./.local/reports` and model artifacts under `./artifacts_ens` and `./video_artifacts`.
+- `./local.sh continuous`
+  Repeats the collection and retraining loop for a long-lived machine.
+- `./local.sh status` and `./local.sh collect-status`
+  Read the current state from the same dataset, artifact, and cache paths above.
 
 ## Open Source Notes
 
@@ -140,7 +167,11 @@ Important notes:
 - The repo-local virtualenv is `./.venv`. The setup and pipeline scripts create or reuse it instead of relying on a global Python install.
 - `huggingface_hub`, the `hf` CLI, and the repo CLI commands are installed into that same repo-local venv during setup.
 - `./local.sh setup` retries dependency install and health checks automatically so it can finish cleanly after transient failures.
-- `./local.sh run` is resumable: completed stages are skipped, training locks are waited out, and transient failures are retried.
+- `./local.sh collect` is the collection-only path when you want Hugging Face image/video data without training yet.
+- `./local.sh run` is the canonical full pipeline path: it collects from Hugging Face first, then trains from that collected dataset.
+- `./local.sh train` is the train-only path when you already have data on disk and do not want a new collection pass.
+- `./local.sh retrain` and `./local.sh finetune` rerun training on top of existing collected data with the benchmark gate applied.
+- `./local.sh continuous` runs the continuous collection/retraining loop.
 - Hugging Face dataset and hub cache reuse the shared repo-local cache under `./.local/hf`, and discovery reuses cached source lists before doing live discovery calls.
 - `./local.sh run` prefers high-signal HF sources, cuts weak sources earlier, and keeps repo/query pauses tuned for faster collection without hammering rate limits.
 - `./local.sh collect-status` shows the current collection/build state, recent source activity, and resume hints.

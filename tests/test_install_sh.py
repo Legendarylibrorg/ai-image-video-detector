@@ -36,14 +36,35 @@ class InstallShTests(unittest.TestCase):
         )
 
         self.assertIn("install_stage=repo status=using_current repo=.", proc.stdout)
-        self.assertIn("[DRY_RUN] cd . && ./local.sh deps", proc.stdout)
-        self.assertIn("  cd .", proc.stdout)
+        self.assertIn("[DRY_RUN] ./local.sh deps", proc.stdout)
+        self.assertNotIn("[DRY_RUN] cd . && ./local.sh deps", proc.stdout)
+        self.assertNotIn("  cd .", proc.stdout)
         self.assertIn("install_stage=venv status=", proc.stdout)
         self.assertIn("source .venv/bin/activate", proc.stdout)
         self.assertIn("./local.sh deps", proc.stdout)
         self.assertIn("./local.sh doctor", proc.stdout)
         self.assertIn("install_status=ready", proc.stdout)
         self.assertNotIn(str(ROOT), proc.stdout)
+
+    def test_install_script_keeps_cd_for_cloned_repo_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proc = subprocess.run(
+                ["bash", str(ROOT / "install.sh")],
+                cwd=tmpdir,
+                env={
+                    **os.environ,
+                    "DRY_RUN": "1",
+                    "INSTALL_SYSTEM_DEPS": "0",
+                    "INSTALL_ASSUME_LINUX": "1",
+                },
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertIn("install_stage=repo status=cloned repo=ai-image-video-detector", proc.stdout)
+        self.assertIn("[DRY_RUN] cd ai-image-video-detector && ./local.sh deps", proc.stdout)
+        self.assertIn("  cd ai-image-video-detector", proc.stdout)
 
     def test_install_script_reuses_extracted_repo_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

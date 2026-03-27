@@ -244,9 +244,9 @@ train_existing_pipeline() {
 }
 
 run_pipeline_training_stage() {
-  local train_min="${PIPELINE_MIN_TRAIN_PER_CLASS:-${DIVERSE_TRAIN_PER_CLASS:-100000}}"
-  local val_min="${PIPELINE_MIN_VAL_PER_CLASS:-${DIVERSE_VAL_PER_CLASS:-25000}}"
-  local test_min="${PIPELINE_MIN_TEST_PER_CLASS:-${DIVERSE_TEST_PER_CLASS:-25000}}"
+  local train_min="${PIPELINE_MIN_TRAIN_PER_CLASS:-${TRAIN_PER_CLASS:-0}}"
+  local val_min="${PIPELINE_MIN_VAL_PER_CLASS:-${VAL_PER_CLASS:-0}}"
+  local test_min="${PIPELINE_MIN_TEST_PER_CLASS:-${TEST_PER_CLASS:-0}}"
   wait_for_training_to_finish "pipeline_stage=train"
   PIPELINE_MIN_TRAIN_PER_CLASS="$train_min" \
   PIPELINE_MIN_VAL_PER_CLASS="$val_min" \
@@ -263,9 +263,8 @@ run_pipeline_validation_stage() {
 }
 
 run_full_pipeline() {
-  run_pipeline_stage collect run_pipeline_collection_stage
-  run_pipeline_stage train run_pipeline_training_stage
-  run_pipeline_stage validate run_pipeline_validation_stage
+  wait_for_training_to_finish "pipeline"
+  with_training_lock bash scripts/max_quality_4090.sh
 }
 
 validate_train_artifacts() {

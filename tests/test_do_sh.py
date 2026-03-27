@@ -312,6 +312,13 @@ class DoShTests(unittest.TestCase):
         self.assertIn('TRAIN_REQUIRE_MIN_COUNTS=1 with_training_lock train_existing_pipeline', out)
         self.assertIn('if [[ "${TRAIN_REQUIRE_MIN_COUNTS:-0}" == "1" ]]; then', out)
         self.assertIn('PIPELINE_MIN_TRAIN_PER_CLASS="$train_min"', out)
+        self.assertIn('local train_min="${PIPELINE_MIN_TRAIN_PER_CLASS:-${TRAIN_PER_CLASS:-0}}"', out)
+        self.assertNotIn('DIVERSE_TRAIN_PER_CLASS', out)
+
+    def test_run_full_pipeline_uses_canonical_quality_wrapper(self) -> None:
+        out = self.run_bash("source scripts/do.sh; declare -f run_full_pipeline")
+        self.assertIn('with_training_lock bash scripts/max_quality_4090.sh', out)
+        self.assertNotIn('run_pipeline_stage collect', out)
 
     def test_wait_for_training_to_finish_clears_stale_lock(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -82,7 +82,11 @@ The main operator commands after setup are:
 ./local.sh status
 ```
 
-Use `./local.sh run` for the normal path. `./local.sh smoke` is the tiny local end-to-end check before the full run.
+Use `./local.sh run` for the normal full path. It collects first, then trains.
+Use `./local.sh collect` when you want to do the Hugging Face collection step first and train later.
+Use `./local.sh train` only when you already have collected data and want to skip a new collection pass.
+Use `./local.sh retrain` or `./local.sh finetune` when you want another training pass on top of the existing collected dataset.
+`./local.sh smoke` is the tiny local end-to-end check before the full run.
 
 ## Where `sudo` is needed
 
@@ -146,11 +150,19 @@ Fallback step summary:
 - `./local.sh smoke`
   Runs a smaller sanity check before the full pipeline.
 
-`./local.sh run` is resumable:
-- completed stages are skipped automatically on the next run
-- active training locks are waited out instead of failing immediately
-- transient stage failures are retried automatically
-- collection defaults are tuned for authenticated Hugging Face limits and cache-first reuse
+`./local.sh run` uses the canonical quality pipeline wrapper:
+- collects from Hugging Face before training
+- reuses the shared Hugging Face cache under `./.local/hf`
+- waits on active training locks instead of colliding with another run
+- keeps the collection defaults tuned for authenticated Hugging Face limits and cache-first reuse
+
+Split flow if you want more control:
+
+```bash
+./local.sh collect
+./local.sh train
+./local.sh retrain
+```
 
 For lower-level environment variables and internal pipeline controls, use [docs/REFERENCE.md](docs/REFERENCE.md).
 
@@ -164,14 +176,26 @@ Collection seems slow on first run:
 ./local.sh smoke
 ```
 
-You only want to train from existing collected data:
+You already have collected data and only want training:
 
 ```bash
 ./local.sh train
+./local.sh retrain
+./local.sh finetune
 ```
 
 - `./local.sh train` prepares `./.local/training_data` from `./data_best` plus any incremental data under `./data_new`.
-- `./local.sh train` trains images immediately and includes video training only when a complete video dataset is already present.
+- `./local.sh train` skips fresh Hugging Face collection and trains images immediately.
+- `./local.sh train` includes video training only when a complete video dataset is already present.
+- `./local.sh retrain` and `./local.sh finetune` run the retrain wrapper on top of existing data and apply the benchmark gate afterward.
+
+Continuous loop:
+
+```bash
+./local.sh continuous
+```
+
+- `./local.sh continuous` runs the continuous collection and retraining loop for long-lived boxes.
 
 You changed dependencies:
 

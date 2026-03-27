@@ -14,7 +14,7 @@ run_do() {
 
 print_usage() {
   cat <<EOF
-usage: ./local.sh [setup|venv|deps|doctor|run|status|smoke|smoke-real|collect-status|train]
+usage: ./local.sh [setup|venv|deps|doctor|collect|run|status|smoke|smoke-real|collect-status|train|retrain|finetune|continuous]
 
 one-line install:
   curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
@@ -45,7 +45,11 @@ repo dependency install:
 
 main pipeline commands:
   ./local.sh setup    # bootstrap deps and local env
-  ./local.sh run      # resumable collect + train pipeline
+  ./local.sh collect  # collect HF image/video data only
+  ./local.sh run      # canonical HF collect + train pipeline
+  ./local.sh retrain  # retrain on top of existing collected data
+  ./local.sh finetune # finetune/retrain on top of existing collected data
+  ./local.sh continuous # continuous collection + retraining loop
   ./local.sh status   # current pipeline and artifact summary
 
 optional validation:
@@ -53,8 +57,12 @@ optional validation:
   ./local.sh smoke-real # tiny real HF + CUDA smoke on a tokenized GPU box
 
 troubleshooting:
+  ./local.sh collect        # collection only, no training
   ./local.sh collect-status # current dataset build and resume state
-  ./local.sh train          # train from existing collected data
+  ./local.sh train          # train only from data already collected
+  ./local.sh retrain        # retrain with gating on existing data
+  ./local.sh finetune       # finetune alias for retrain
+  ./local.sh continuous     # repeat collection + retraining over time
 EOF
 }
 
@@ -85,6 +93,9 @@ case "$cmd" in
   deps)
     bash scripts/install_deps.sh
     ;;
+  collect)
+    run_do collect
+    ;;
   run)
     run_do pipeline "$@"
     ;;
@@ -99,6 +110,15 @@ case "$cmd" in
     ;;
   train)
     run_do train-existing "$@"
+    ;;
+  retrain)
+    run_do retrain "$@"
+    ;;
+  finetune)
+    run_do retrain "$@"
+    ;;
+  continuous)
+    run_do continuous "$@"
     ;;
   doctor)
     run_do doctor "$@"

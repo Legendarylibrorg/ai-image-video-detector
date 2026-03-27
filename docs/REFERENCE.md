@@ -19,6 +19,20 @@ This file keeps the README short and startup-focused while collecting the broade
 - `src/ai_image_detector/`: Python package code
 - `tests/`: regression coverage
 
+## Public command structure
+
+The repo is structured around the public `./local.sh` commands:
+
+- `setup`: creates `./.venv` and verifies the repo
+- `collect`: builds datasets in `./data_best` and `./video_data`
+- `train`: prepares `./.local/training_data` and trains from existing data
+- `retrain` and `finetune`: rerun training on top of the existing dataset and gate the result
+- `run`: full collect + train pipeline
+- `continuous`: repeat collection and retraining over time
+- `status` and `collect-status`: inspect the current local state
+
+Everything under `scripts/` and `src/ai_image_detector/` exists to support those public commands.
+
 ## Current pipeline shape
 
 The current pipeline is:
@@ -112,8 +126,11 @@ Normal users should start with:
 For stage-by-stage Linux usage:
 
 ```bash
+./local.sh collect
 ./local.sh collect-status
 ./local.sh train
+./local.sh retrain
+./local.sh continuous
 ```
 
 For command-level control, use:
