@@ -47,6 +47,9 @@ class TrainEnsembleShTests(unittest.TestCase):
             env["TRAIN_NO_PRETRAINED_BACKBONE"] = "1"
             env["TRAIN_NO_COMPILE"] = "1"
             env["TRAIN_NUM_WORKERS"] = "3"
+            env["TRAIN_PATIENCE"] = "5"
+            env["TRAIN_MIN_DELTA"] = "0.0005"
+            env["TRAIN_DEGENERATE_PATIENCE"] = "3"
 
             subprocess.run(
                 ["bash", "scripts/train_ensemble.sh", str(data_dir), str(out_dir), "1"],
@@ -63,6 +66,9 @@ class TrainEnsembleShTests(unittest.TestCase):
                 self.assertIn("--no-pretrained-backbone", line)
                 self.assertIn("--no-compile", line)
                 self.assertIn("--num-workers 3", line)
+                self.assertIn("--patience 5", line)
+                self.assertIn("--min-delta 0.0005", line)
+                self.assertIn("--degenerate-patience 3", line)
 
 
 if __name__ == "__main__":

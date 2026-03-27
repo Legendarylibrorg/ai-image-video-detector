@@ -367,6 +367,22 @@ def train_main() -> None:
                         "pretrained_backbone": bool(args.pretrained_backbone),
                     },
                 )
+                preferred_best = (out / "best_video.safetensors") if (out / "best_video.safetensors").exists() else (out / "best_video.pt")
+                (out / "best_video_checkpoint.txt").write_text(str(preferred_best), encoding="utf-8")
+                (out / "best_video_metrics.json").write_text(
+                    json.dumps(
+                        {
+                            "epoch": epoch,
+                            "val_loss": float(val_loss),
+                            "val_acc": float(val_acc),
+                            "threshold": 0.5,
+                            "skipped_batches": int(skipped_batches),
+                            "lr": float(opt.param_groups[0]["lr"]),
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
             else:
                 no_improve += 1
                 if args.patience > 0 and no_improve >= args.patience:
@@ -383,7 +399,7 @@ def train_main() -> None:
     if args.export_release and best_release.exists():
         rel = out / "releases" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         rel.mkdir(parents=True, exist_ok=True)
-        for name in (best_release.name, "config.json"):
+        for name in (best_release.name, "config.json", "best_video_checkpoint.txt", "best_video_metrics.json"):
             src = out / name
             if src.exists():
                 shutil.copy2(src, rel / name)

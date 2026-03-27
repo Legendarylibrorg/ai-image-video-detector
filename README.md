@@ -19,7 +19,7 @@ The repo now runs one simple local pipeline:
 2. `printf "HF_TOKEN='your_token_here'\n" >> .env`
    Adds the Hugging Face token when you want authenticated collection.
 3. `./local.sh smoke`
-   Runs the quick sanity check before the full run.
+   Runs a tiny local end-to-end sanity check before the full run.
 4. `./local.sh run`
    Runs the resumable collect-plus-train pipeline.
 5. `./local.sh status`
@@ -74,7 +74,7 @@ Important top-level paths:
 
 ## Startup
 
-Use this exact Linux sequence if you want the manual Linux path:
+Clone path:
 
 ```bash
 sudo apt-get update
@@ -92,7 +92,7 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh status
 ```
 
-If you downloaded the GitHub ZIP instead of cloning, the extracted folder is usually named `ai-image-video-detector-main`:
+ZIP path:
 
 ```bash
 unzip ai-image-video-detector-main.zip
@@ -107,7 +107,7 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh status
 ```
 
-If you are already inside that extracted repo root, `bash ./install.sh` also works. If you already have the repo checked out, start here instead:
+Already inside the repo root:
 
 ```bash
 python3 -m venv .venv
@@ -119,6 +119,9 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh run
 ./local.sh status
 ```
+
+Run `bash ./install.sh` only from inside the repo root after cloning or unzipping.
+If you want the installer to fetch the repo for you, use the one-line curl command instead.
 
 Shortcuts:
 
@@ -141,8 +144,10 @@ Important notes:
 - Hugging Face dataset and hub cache reuse the shared repo-local cache under `./.local/hf`, and discovery reuses cached source lists before doing live discovery calls.
 - `./local.sh run` prefers high-signal HF sources, cuts weak sources earlier, and keeps repo/query pauses tuned for faster collection without hammering rate limits.
 - `./local.sh collect-status` shows the current collection/build state, recent source activity, and resume hints.
+- `./local.sh run` now also writes simple machine-readable reports:
+  `./.local/reports/dataset_qa_summary.json`, `./.local/reports/dataset_provenance.json`, `./artifacts_ens/final_run_summary.json`, `./artifacts_ens/final_thresholds.json`, `./artifacts_ens/run_manifest.json`, `./artifacts_ens/prod_manifest.json`, `./artifacts_ens/domain_config.json`, and `./artifacts_ens/robust_eval.json`.
 
-`./local.sh smoke-real` is the optional real Hugging Face + CUDA validation path. Everything else is internal support for the pipeline and is intentionally not part of the normal startup path.
+`./local.sh smoke` is the tiny local end-to-end validation path. `./local.sh smoke-real` is the optional real Hugging Face + CUDA validation path.
 
 ## Docs
 

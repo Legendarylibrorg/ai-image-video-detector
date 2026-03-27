@@ -4,7 +4,7 @@ This guide collects the repo command surfaces in one place.
 The repo-local Python environment is `./.venv`, created or reused by `./local.sh setup`.
 That setup also installs `huggingface_hub`, the `hf` CLI, and the repo CLI commands into the same venv.
 
-The basic Linux command path is:
+Clone path:
 
 ```bash
 sudo apt-get update
@@ -22,7 +22,7 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh status
 ```
 
-If you downloaded the GitHub ZIP instead, the extracted folder is usually `ai-image-video-detector-main`:
+ZIP path:
 
 ```bash
 unzip ai-image-video-detector-main.zip
@@ -37,7 +37,21 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh status
 ```
 
-If you are already inside that extracted repo root, `bash ./install.sh` also works.
+Already inside the repo root:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+./local.sh deps
+./local.sh doctor
+printf "HF_TOKEN='your_token_here'\n" >> .env
+./local.sh smoke
+./local.sh run
+./local.sh status
+```
+
+Run `bash ./install.sh` only from inside the repo root after cloning or unzipping.
+If you want the installer to fetch the repo for you, use the curl installer instead.
 
 Shortcut installers:
 
@@ -62,7 +76,7 @@ What each stage does:
 - `status`
   Shows the current pipeline state, key artifact paths, and training lock status.
 - `smoke`
-  Optional smaller collection job for a quick sanity check before the full pipeline.
+  Tiny local end-to-end pipeline check before the full run.
 
 ## `./local.sh` commands
 
@@ -102,7 +116,7 @@ Main surface:
 - `./local.sh run`
   Run the full collection and training pipeline with retries and resumable stages.
 - `./local.sh smoke`
-  Run a much smaller collection job for a quick sanity check.
+  Run a tiny local end-to-end pipeline check.
 - `./local.sh smoke-real`
   Run a tiny real Hugging Face collection plus real CUDA training smoke. Requires `HF_TOKEN` and a CUDA GPU.
 - `./local.sh status`

@@ -15,7 +15,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-from ai_image_detector.checkpoints import load_checkpoint
+from ai_image_detector.checkpoints import load_checkpoint, resolve_checkpoint_path, save_safetensors_checkpoint
 from ai_image_detector.ensemble import EnsembleDetector, load_models
 from ai_image_detector.model import build_model
 
@@ -48,6 +48,8 @@ def main():
     ap.add_argument("--deterministic", action="store_true")
     ap.add_argument("--export-release", action="store_true", default=True)
     ap.add_argument("--no-export-release", dest="export_release", action="store_false")
+    ap.add_argument("--save-safetensors", action="store_true", default=True)
+    ap.add_argument("--no-save-safetensors", dest="save_safetensors", action="store_false")
     args = ap.parse_args()
 
     random.seed(args.seed)
@@ -171,16 +173,33 @@ def main():
             if acc > (best_acc + args.min_delta):
                 best_acc = acc
                 no_improve = 0
-                torch.save(
-                    {
-                        "state_dict": student.state_dict(),
-                        "img_size": args.img_size,
-                        "threshold": 0.5,
-                        "temperature": 1.0,
-                        "model_id": f"distilled-{args.student_backbone}",
-                        "backbone": args.student_backbone,
-                    },
-                    out / "best.pt",
+                ckpt = {
+                    "state_dict": student.state_dict(),
+                    "img_size": args.img_size,
+                    "threshold": 0.5,
+                    "temperature": 1.0,
+                    "model_id": f"distilled-{args.student_backbone}",
+                    "backbone": args.student_backbone,
+                    "metrics": {"val_acc": float(acc)},
+                }
+                torch.save(ckpt, out / "best.pt")
+                if args.save_safetensors:
+                    save_safetensors_checkpoint(out / "best.safetensors", ckpt)
+                preferred_best = resolve_checkpoint_path(out / "best.pt")
+                (out / "best_checkpoint.txt").write_text(str(preferred_best), encoding="utf-8")
+                (out / "best_model_summary.json").write_text(
+                    json.dumps(
+                        {
+                            "preferred_checkpoint": str(preferred_best),
+                            "student_backbone": args.student_backbone,
+                            "img_size": args.img_size,
+                            "threshold": 0.5,
+                            "temperature": 1.0,
+                            "metrics": {"val_acc": float(acc)},
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
                 )
             else:
                 no_improve += 1
@@ -194,17 +213,19 @@ def main():
         print(f"training_interrupted saved={out / 'interrupted.pt'}")
         return
 
-    if args.export_release and (out / "best.pt").exists():
+    best_path = resolve_checkpoint_path(out / "best.pt")
+    if args.export_release and best_path.exists():
         rel = out / "releases" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         rel.mkdir(parents=True, exist_ok=True)
-        for name in ("best.pt", "config.json"):
+        for name in ("config.json", "best_checkpoint.txt", "best_model_summary.json"):
             src = out / name
             if src.exists():
                 shutil.copy2(src, rel / name)
+        shutil.copy2(best_path, rel / best_path.name)
         (out / "latest_release.txt").write_text(str(rel), encoding="utf-8")
         print(f"saved release bundle to {rel}")
 
-    print(f"saved={out / 'best.pt'} best_acc={best_acc:.4f}")
+    print(f"saved={best_path} best_acc={best_acc:.4f}")
 
 
 if __name__ == "__main__":

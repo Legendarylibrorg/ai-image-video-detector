@@ -17,6 +17,15 @@ fi
 if [[ -n "${TRAIN_NUM_WORKERS:-}" ]]; then
   common_args+=(--num-workers "$TRAIN_NUM_WORKERS")
 fi
+if [[ -n "${TRAIN_PATIENCE:-}" ]]; then
+  common_args+=(--patience "$TRAIN_PATIENCE")
+fi
+if [[ -n "${TRAIN_MIN_DELTA:-}" ]]; then
+  common_args+=(--min-delta "$TRAIN_MIN_DELTA")
+fi
+if [[ -n "${TRAIN_DEGENERATE_PATIENCE:-}" ]]; then
+  common_args+=(--degenerate-patience "$TRAIN_DEGENERATE_PATIENCE")
+fi
 
 # Diverse runs for stronger ensemble generalization.
 aid-train --data "$DATA_DIR" --epochs "$EPOCHS" --batch-size 64 --img-size 256 --lr 2e-4 --loss focal --focal-gamma 2.0 --backbone tiny --grad-accum 1 --threshold-objective balanced --out "$OUT_DIR/m1" "${common_args[@]}"

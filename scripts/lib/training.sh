@@ -36,6 +36,61 @@ video_bucket_has_files() {
   bucket_has_files "$1" "*.mp4" "*.mov" "*.avi" "*.mkv" "*.webm" "*.m4v"
 }
 
+count_bucket_files() {
+  local dir="$1"
+  shift
+  if [[ ! -d "$dir" ]]; then
+    echo 0
+    return
+  fi
+  local -a expr=()
+  local pattern=""
+  for pattern in "$@"; do
+    if [[ "${#expr[@]}" -gt 0 ]]; then
+      expr+=(-o)
+    fi
+    expr+=(-iname "$pattern")
+  done
+  find "$dir" -maxdepth 1 -type f \( "${expr[@]}" \) | wc -l | tr -d ' '
+}
+
+require_min_image_counts() {
+  local data_root="$1"
+  local train_min="${2:-0}"
+  local val_min="${3:-0}"
+  local test_min="${4:-0}"
+  local failed=0
+  local split=""
+  local cls=""
+  local min_required=0
+  local count=0
+
+  for split in train val test; do
+    case "$split" in
+      train) min_required="$train_min" ;;
+      val) min_required="$val_min" ;;
+      test) min_required="$test_min" ;;
+    esac
+    [[ "$min_required" =~ ^[0-9]+$ ]] || min_required=0
+    if (( min_required <= 0 )); then
+      continue
+    fi
+    for cls in ai real; do
+      count="$(count_bucket_files "$data_root/$split/$cls" "*.jpg" "*.jpeg" "*.png" "*.webp" "*.bmp" "*.tif" "*.tiff")"
+      if (( count < min_required )); then
+        echo "insufficient_image_bucket=$data_root/$split/$cls have=$count need=$min_required"
+        failed=1
+      fi
+    done
+  done
+
+  if [[ "$failed" == "1" ]]; then
+    echo "image_collection_counts=invalid root=$data_root train_min=$train_min val_min=$val_min test_min=$test_min"
+    return 1
+  fi
+  echo "image_collection_counts=ok root=$data_root train_min=$train_min val_min=$val_min test_min=$test_min"
+}
+
 require_image_training_data() {
   local data_root="$1"
   local missing=0
@@ -54,6 +109,46 @@ require_image_training_data() {
     return 1
   fi
   echo "image_training_data=ok root=$data_root"
+}
+
+require_pipeline_collection_data() {
+  local data_root="${1:-${DATA_DIR:-./data_best}}"
+  local train_min="${PIPELINE_MIN_TRAIN_PER_CLASS:-${TRAIN_PER_CLASS:-0}}"
+  local val_min="${PIPELINE_MIN_VAL_PER_CLASS:-${VAL_PER_CLASS:-0}}"
+  local test_min="${PIPELINE_MIN_TEST_PER_CLASS:-${TEST_PER_CLASS:-0}}"
+  local report_path="$data_root/dataset_build_report.json"
+  local have_explicit_mins=0
+
+  if [[ -n "${PIPELINE_MIN_TRAIN_PER_CLASS:-}" || -n "${PIPELINE_MIN_VAL_PER_CLASS:-}" || -n "${PIPELINE_MIN_TEST_PER_CLASS:-}" || -n "${TRAIN_PER_CLASS:-}" || -n "${VAL_PER_CLASS:-}" || -n "${TEST_PER_CLASS:-}" ]]; then
+    have_explicit_mins=1
+  fi
+
+  if [[ -f "$report_path" ]]; then
+    local full_targets_ok=""
+    full_targets_ok="$(
+      python3 - <<'PY' "$report_path"
+import json, sys
+path = sys.argv[1]
+try:
+    data = json.loads(open(path, encoding="utf-8").read())
+except Exception:
+    print("")
+    raise SystemExit(0)
+print("1" if bool(data.get("full_targets_ok", False)) else "0")
+PY
+    )"
+    if [[ "$full_targets_ok" != "1" ]]; then
+      echo "collection_build_report=invalid path=$report_path full_targets_ok=0"
+      return 1
+    fi
+    echo "collection_build_report=ok path=$report_path"
+    if [[ "$have_explicit_mins" != "1" ]]; then
+      echo "collection_min_counts=skipped reason=build_report_ok"
+      return 0
+    fi
+  fi
+
+  require_min_image_counts "$data_root" "$train_min" "$val_min" "$test_min"
 }
 
 have_complete_video_training_data() {
@@ -97,34 +192,70 @@ prepare_training_image_data() {
   ensure_env
   "${cmd[@]}"
   require_image_training_data "$out_root"
+  if [[ "${TRAIN_REQUIRE_MIN_COUNTS:-0}" == "1" ]]; then
+    require_min_image_counts \
+      "$out_root" \
+      "${PIPELINE_MIN_TRAIN_PER_CLASS:-${TRAIN_PER_CLASS:-0}}" \
+      "${PIPELINE_MIN_VAL_PER_CLASS:-${VAL_PER_CLASS:-0}}" \
+      "${PIPELINE_MIN_TEST_PER_CLASS:-${TEST_PER_CLASS:-0}}"
+  fi
   PREPARED_IMAGE_DATA_DIR="$out_root"
 }
 
 train_image_pipeline() {
   prepare_training_image_data
-  env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 RUN_VIDEO_TRAIN=0 bash scripts/max_quality_4090.sh
+  local collected_root="${DATA_DIR:-./data_best}"
+  env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
+    TRAIN_READY_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
+    PIPELINE_COLLECTED_DATA_DIR="$collected_root" \
+    PIPELINE_PREPARED_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
+    SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 RUN_VIDEO_TRAIN=0 bash scripts/max_quality_4090.sh
 }
 
 train_all_pipeline() {
   prepare_training_image_data
   require_video_training_data "${VIDEO_OUT:-./video_data}"
-  env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 bash scripts/max_quality_4090.sh
+  local collected_root="${DATA_DIR:-./data_best}"
+  env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
+    TRAIN_READY_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
+    PIPELINE_COLLECTED_DATA_DIR="$collected_root" \
+    PIPELINE_PREPARED_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
+    SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 bash scripts/max_quality_4090.sh
 }
 
 train_existing_pipeline() {
   prepare_training_image_data
+  local collected_root="${DATA_DIR:-./data_best}"
   if have_complete_video_training_data "${VIDEO_OUT:-./video_data}"; then
     echo "train_mode=image_plus_video"
-    env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 bash scripts/max_quality_4090.sh
+    env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
+      TRAIN_READY_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
+      PIPELINE_COLLECTED_DATA_DIR="$collected_root" \
+      PIPELINE_PREPARED_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
+      SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 bash scripts/max_quality_4090.sh
     return
   fi
   echo "train_mode=image_only reason=video_data_missing"
-  env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 RUN_VIDEO_TRAIN=0 bash scripts/max_quality_4090.sh
+  env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
+    TRAIN_READY_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
+    PIPELINE_COLLECTED_DATA_DIR="$collected_root" \
+    PIPELINE_PREPARED_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
+    SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 RUN_VIDEO_TRAIN=0 bash scripts/max_quality_4090.sh
 }
 
 run_pipeline_training_stage() {
+  local train_min="${PIPELINE_MIN_TRAIN_PER_CLASS:-${DIVERSE_TRAIN_PER_CLASS:-100000}}"
+  local val_min="${PIPELINE_MIN_VAL_PER_CLASS:-${DIVERSE_VAL_PER_CLASS:-25000}}"
+  local test_min="${PIPELINE_MIN_TEST_PER_CLASS:-${DIVERSE_TEST_PER_CLASS:-25000}}"
   wait_for_training_to_finish "pipeline_stage=train"
-  with_training_lock train_existing_pipeline
+  PIPELINE_MIN_TRAIN_PER_CLASS="$train_min" \
+  PIPELINE_MIN_VAL_PER_CLASS="$val_min" \
+  PIPELINE_MIN_TEST_PER_CLASS="$test_min" \
+  require_pipeline_collection_data "${DATA_DIR:-./data_best}"
+  PIPELINE_MIN_TRAIN_PER_CLASS="$train_min" \
+  PIPELINE_MIN_VAL_PER_CLASS="$val_min" \
+  PIPELINE_MIN_TEST_PER_CLASS="$test_min" \
+  TRAIN_REQUIRE_MIN_COUNTS=1 with_training_lock train_existing_pipeline
 }
 
 run_pipeline_validation_stage() {

@@ -36,9 +36,11 @@ export VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 
 run_cmd() {
   if [[ "$DRY_RUN" == "1" ]]; then
-    echo "[DRY_RUN] $*"
+    printf "[DRY_RUN]"
+    printf " %q" "$@"
+    printf "\n"
   else
-    eval "$*"
+    "$@"
   fi
 }
 
@@ -60,21 +62,21 @@ activate_repo_venv() {
 # 1) Optional system deps for Ubuntu hosts
 if command -v apt-get >/dev/null 2>&1; then
   if command -v sudo >/dev/null 2>&1; then
-    run_cmd "sudo apt-get update"
-    run_cmd "sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon"
-    run_cmd "sudo freshclam || true"
+    run_cmd sudo apt-get update
+    run_cmd sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+    run_cmd sudo freshclam || true
   else
-    run_cmd "apt-get update"
-    run_cmd "apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon"
-    run_cmd "freshclam || true"
+    run_cmd apt-get update
+    run_cmd apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+    run_cmd freshclam || true
   fi
 fi
 
 # 2) Python environment + package deps
-run_cmd "bash scripts/install_deps.sh"
+run_cmd bash scripts/install_deps.sh
 activate_repo_venv
 
 # 3) Optimized full training pipeline
-run_cmd "bash scripts/full_pipeline_4090.sh"
+run_cmd bash scripts/full_pipeline_4090.sh
 
 # 4) Pipeline-only mode: no serving.

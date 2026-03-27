@@ -63,11 +63,14 @@ video_data/
 ```
 
 Image training writes artifacts such as:
-- `best.pt`
+- `best.safetensors` or `best.pt`
+- `best_checkpoint.txt`
 - `last.pt`
 - `epoch_XXX.pt`
 - `best_metrics.json`
 - `test_metrics.json`
+- `calibration.json`
+- `best_model_summary.json`
 - `config.json`
 - `training_log.jsonl`
 
@@ -75,6 +78,14 @@ Video training writes artifacts such as:
 - `best_video.pt` or `best_video.safetensors`
 - `last_video.pt`
 - `epoch_video_XXX.pt`
+
+Pipeline-level reports also include:
+- `domain_config.json`
+- `robust_eval.json`
+- `final_run_summary.json`
+- `final_thresholds.json`
+- `run_manifest.json`
+- `prod_manifest.json`
 
 ## Pipeline tools
 
