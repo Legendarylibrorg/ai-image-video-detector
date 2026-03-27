@@ -1,9 +1,35 @@
 # Command Guide
 
 This guide collects the repo command surfaces in one place.
+The recommended runtime path is Docker Compose first.
 The repo-local Python environment is `./.venv`, created or reused by `./local.sh setup`.
 That setup also installs `huggingface_hub`, the `hf` CLI, and the repo CLI commands into the same venv.
-The command blocks at the top of this file are Linux commands. If you are on macOS or Windows, use the platform notes in [STARTUP.md](STARTUP.md) instead of copying the `apt-get` steps directly.
+The Linux-native command blocks in this file are for native Linux hosts. If you are on macOS or Windows, use the platform notes in [STARTUP.md](STARTUP.md) instead of copying the `apt-get` steps directly.
+
+## Docker Compose commands
+
+Use these first when possible:
+
+```bash
+docker compose build
+docker compose run --rm pipeline ./local.sh deps
+docker compose run --rm pipeline ./local.sh doctor
+docker compose run --rm pipeline-gpu ./local.sh doctor
+docker compose run --rm pipeline-gpu ./local.sh smoke
+docker compose run --rm pipeline-gpu ./local.sh run
+docker compose run --rm pipeline-gpu ./local.sh status
+```
+
+- `pipeline`
+  CPU-oriented Compose service.
+- `pipeline-gpu`
+  GPU-enabled Compose service for CUDA hosts.
+
+The Compose services mount this repo at `/workspace`, reuse the repo-local `.env`, and keep Hugging Face and pip caches in named volumes.
+They also drop all Linux capabilities, enable `no-new-privileges`, use a read-only container root filesystem, and keep scratch space in `tmpfs`.
+The container entrypoint creates or reuses `/workspace/.venv` and runs `bash scripts/install_deps.sh`, so dependency install happens inside the container.
+This repo does not add a VM layer because that would change the normal GPU and bind-mount workflow rather than harden it transparently.
+Docker lowers host exposure, but it does not make malicious packages safe; packages still run code in the container and can still modify this bind-mounted checkout.
 
 Clone path:
 
@@ -70,25 +96,6 @@ curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-det
 ```bash
 ./local.sh setup
 ```
-
-## Docker Compose commands
-
-The repo also includes an optional Compose path for a more isolated runtime:
-
-```bash
-docker compose run --rm pipeline ./local.sh doctor
-docker compose run --rm pipeline-gpu ./local.sh doctor
-docker compose run --rm pipeline-gpu ./local.sh run
-```
-
-- `pipeline`
-  CPU-oriented Compose service.
-- `pipeline-gpu`
-  GPU-enabled Compose service for CUDA hosts.
-
-The Compose services mount this repo at `/workspace`, reuse the repo-local `.env`, and keep Hugging Face and pip caches in named volumes.
-They also drop all Linux capabilities, enable `no-new-privileges`, use a read-only container root filesystem, and keep scratch space in `tmpfs`.
-This repo does not add a VM layer because that would change the normal GPU and bind-mount workflow rather than harden it transparently.
 
 ## Dependency profiles
 

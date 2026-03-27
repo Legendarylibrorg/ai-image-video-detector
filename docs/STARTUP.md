@@ -2,13 +2,41 @@
 
 This guide expands the startup path from the main README.
 
-This guide assumes a Linux machine and breaks startup into system deps, repo deps, then the pipeline.
-The repo uses a pinned local virtualenv at `./.venv` for its Python dependencies and runtime.
+This guide is Docker-first.
+The repo also supports a native Linux path that uses a pinned local virtualenv at `./.venv` for its Python dependencies and runtime.
 
-Linux is the supported native path.
-If you are on macOS or Windows, do not copy the `apt-get` commands below into your shell; use the platform sections in this document instead.
+If you are on macOS or Windows, do not copy the Linux-native `apt-get` commands below into your shell; use the Docker or platform sections in this document instead.
 
-## Basic Linux commands
+## Docker Compose startup
+
+Use this as the default startup path when possible:
+
+```bash
+docker compose build
+docker compose run --rm pipeline ./local.sh deps
+docker compose run --rm pipeline ./local.sh doctor
+docker compose run --rm pipeline-gpu ./local.sh doctor
+docker compose run --rm pipeline-gpu ./local.sh smoke
+docker compose run --rm pipeline-gpu ./local.sh run
+docker compose run --rm pipeline-gpu ./local.sh status
+```
+
+Notes:
+- the Compose services mount this repo at `/workspace`, so datasets and artifacts still live in the checkout you started from
+- GPU mode requires Docker Engine, the Docker Compose plugin, and the NVIDIA Container Toolkit on the host
+- the container entrypoint creates or reuses `/workspace/.venv` and runs `bash scripts/install_deps.sh`, so dependency install happens inside the container
+- the Compose services drop all Linux capabilities, enable `no-new-privileges`, use a read-only container root filesystem, and keep writable scratch space in `tmpfs`
+- a VM path is intentionally not added here because it would change the host-GPU and repo bind-mount workflow, not just harden it
+
+Security model:
+- Docker reduces exposure compared with installing directly on the host, but it does not guarantee safety from malicious packages
+- dependency installers and imported packages still execute code, only inside the container
+- because this repo is bind-mounted into the container, malicious code could still change files in this checkout
+- keep the repo in a dedicated workspace and avoid mounting unrelated host secrets into the container
+
+## Native Linux startup
+
+Linux is the supported native host path.
 
 Clone path:
 
@@ -75,23 +103,6 @@ curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-det
 ```bash
 ./local.sh setup
 ```
-
-## Docker Compose startup
-
-If you want a more isolated runtime, the repo includes an optional Compose path:
-
-```bash
-docker compose run --rm pipeline ./local.sh doctor
-docker compose run --rm pipeline-gpu ./local.sh doctor
-docker compose run --rm pipeline-gpu ./local.sh run
-```
-
-Notes:
-- the Compose services mount this repo at `/workspace`, so datasets and artifacts still live in the checkout you started from
-- GPU mode requires Docker Engine, the Docker Compose plugin, and the NVIDIA Container Toolkit on the host
-- the container entrypoint reuses `scripts/install_deps.sh`, so the same pinned repo dependency flow still applies inside the container
-- the Compose services drop all Linux capabilities, enable `no-new-privileges`, use a read-only container root filesystem, and keep writable scratch space in `tmpfs`
-- a VM path is intentionally not added here because it would change the host-GPU and repo bind-mount workflow, not just harden it
 
 ## macOS startup
 

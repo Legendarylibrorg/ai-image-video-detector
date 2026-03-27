@@ -5,9 +5,10 @@ This repository is for one job:
 - train detectors locally
 - rerun safely if a long setup stops partway through
 
-The commands below assume a local Linux machine with CUDA/PyTorch, such as an RTX 4090 box.
-The repo uses a local virtualenv at `./.venv`; `./local.sh setup` creates or reuses it and the pipeline runs from there.
-If you are on macOS or Windows, treat the Linux commands below as Linux-only and use the platform notes in [docs/STARTUP.md](docs/STARTUP.md) instead.
+The recommended path is Docker Compose first.
+The repo also supports a native local Linux machine with CUDA/PyTorch, such as an RTX 4090 box.
+The native path uses a local virtualenv at `./.venv`; `./local.sh setup` creates or reuses it and the pipeline runs from there.
+If you are on macOS or Windows, treat the Linux-native commands below as Linux-only and use the platform notes in [docs/STARTUP.md](docs/STARTUP.md) instead.
 
 It is not a production serving repo in the current mode.
 
@@ -26,12 +27,23 @@ The repo now keeps the base package lightweight:
 - `pip install -e '.[video]'`
   Installs the video-specific stack only.
 
-For normal repo use, prefer `./local.sh deps` or `./local.sh setup`; those install the full `pipeline` profile into `./.venv`.
+For native local Linux use, prefer `./local.sh deps` or `./local.sh setup`; those install the full `pipeline` profile into `./.venv`.
 The packaged `aid-*` commands are lightweight wrappers and will tell you which extra to install if you run them without the required dependency profile.
 
 ## Docker Compose
 
-If you want a more isolated runtime, the repo now includes an optional Docker Compose path.
+Use this as the default runtime path when possible.
+
+Recommended first-time setup:
+
+```bash
+docker compose build
+docker compose run --rm pipeline ./local.sh deps
+docker compose run --rm pipeline ./local.sh doctor
+printf "HF_TOKEN='your_token_here'\n" >> .env
+docker compose run --rm pipeline-gpu ./local.sh smoke
+docker compose run --rm pipeline-gpu ./local.sh run
+```
 
 - `docker compose run --rm pipeline ./local.sh doctor`
   Runs the repo in an isolated CPU container.
@@ -42,28 +54,45 @@ If you want a more isolated runtime, the repo now includes an optional Docker Co
 
 Notes:
 - the Compose files mount this repo at `/workspace`, so datasets and artifacts still live in your local checkout
+- `scripts/docker-entrypoint.sh` creates `./.venv` and runs `bash scripts/install_deps.sh` inside the container, so dependency install happens in the container runtime rather than on the host
 - the container keeps Hugging Face and pip caches in named volumes
 - the Compose services run with `cap_drop: [ALL]`, `no-new-privileges`, a read-only container root filesystem, `tmpfs` scratch space, and a PID limit
 - GPU mode requires Docker Engine, the Docker Compose plugin, and the NVIDIA Container Toolkit on the host
-- the Docker path is optional; the local `./local.sh` workflow remains the primary path
+- the local `./local.sh` workflow remains available as the native Linux fallback path
 - no VM layer is included here because that would materially change the repo’s host-GPU and local-filesystem workflow rather than harden it transparently
+
+Security model:
+- Docker Compose reduces blast radius, but it does not make malicious packages harmless
+- Python packages still execute code during install and runtime, only now inside the container instead of directly on the host Python environment
+- because the repo is bind-mounted, a malicious package could still modify files inside this checkout
+- for the safest use, keep this repo in a dedicated workspace, do not mount unrelated host secrets into the container, and prefer the Compose path over host-native installs
 
 ## Quick Start
 
-The repo now runs one simple local pipeline:
+The repo now runs one simple Docker-first pipeline:
 
-1. `./local.sh setup`
-   Creates or reuses `./.venv`, installs the pinned Python dependencies, and runs a health check.
+1. `docker compose run --rm pipeline-gpu ./local.sh doctor`
+   Verifies the isolated runtime on a CUDA host.
 2. `printf "HF_TOKEN='your_token_here'\n" >> .env`
    Adds the Hugging Face token when you want authenticated collection.
-3. `./local.sh smoke`
+3. `docker compose run --rm pipeline-gpu ./local.sh smoke`
    Runs a tiny local end-to-end sanity check before the full run.
-4. `./local.sh run`
+4. `docker compose run --rm pipeline-gpu ./local.sh run`
    Runs the canonical collect-plus-train pipeline.
-5. `./local.sh status`
+5. `docker compose run --rm pipeline-gpu ./local.sh status`
    Shows the current pipeline state and key artifact paths.
 
 Most people only need these commands:
+
+```bash
+printf "HF_TOKEN='your_token_here'\n" >> .env
+docker compose run --rm pipeline-gpu ./local.sh doctor
+docker compose run --rm pipeline-gpu ./local.sh smoke
+docker compose run --rm pipeline-gpu ./local.sh run
+docker compose run --rm pipeline-gpu ./local.sh status
+```
+
+If you want the native Linux fallback instead:
 
 ```bash
 ./local.sh setup
@@ -143,7 +172,7 @@ The public commands line up to the project structure like this:
 - Dataset and model licenses vary by source; verify each source license before commercial or production use.
 - Detection outputs are probabilistic and can be wrong; review high-risk decisions with human oversight.
 
-## Startup
+## Native Linux Startup
 
 Clone path:
 
