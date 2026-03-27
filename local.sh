@@ -16,6 +16,17 @@ print_usage() {
   cat <<EOF
 usage: ./local.sh [setup|venv|deps|doctor|collect|run|status|smoke|smoke-real|collect-status|train|retrain|finetune|continuous]
 
+Docker-first path:
+  docker compose build
+  docker compose run --rm pipeline ./local.sh deps
+  docker compose run --rm pipeline ./local.sh doctor
+  docker compose run --rm pipeline-gpu ./local.sh doctor
+  docker compose run --rm pipeline-gpu ./local.sh smoke
+  docker compose run --rm pipeline-gpu ./local.sh run
+  docker compose run --rm pipeline-gpu ./local.sh status
+  deps are installed inside the container entrypoint into /workspace/.venv
+  Docker reduces host exposure but does not make malicious packages harmless
+
 one-line install:
   curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
 
@@ -43,10 +54,12 @@ repo dependency install:
   repo commands run inside that repo-local venv
   do not use sudo for repo commands
 
-optional Docker Compose path:
-  docker compose run --rm pipeline ./local.sh doctor
-  docker compose run --rm pipeline-gpu ./local.sh doctor
-  docker compose run --rm pipeline-gpu ./local.sh run
+native Linux fallback:
+  ./local.sh setup
+  printf "HF_TOKEN='your_token_here'\n" >> .env
+  ./local.sh smoke
+  ./local.sh run
+  ./local.sh status
 
 main pipeline commands:
   ./local.sh setup    # bootstrap deps and local env
