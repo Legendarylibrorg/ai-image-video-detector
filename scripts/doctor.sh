@@ -150,7 +150,7 @@ PY
 
   local cli
   local cli_missing=0
-  for cli in hf aid-train aid-video-train aid-dataset; do
+  for cli in hf aid-train aid-video-train; do
     if [[ -x "$VENV_DIR/bin/$cli" ]]; then
       emit_ok "cli_ready name=$cli"
     else

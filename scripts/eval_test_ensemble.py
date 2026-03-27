@@ -22,17 +22,17 @@ def main():
     ap.add_argument("--out", default="./artifacts_ens/test_metrics.json")
     args = ap.parse_args()
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    loaded = load_models(args.model, device, ensemble_config=args.ensemble_config)
+    model = EnsembleDetector(loaded.models, weights=loaded.weights, img_sizes=loaded.img_sizes).to(device)
+    model.eval()
+
     test_dir = Path(args.data) / "test"
     dataset_cls = MetadataImageFolder if loaded.uses_metadata_features else datasets.ImageFolder
     ds = dataset_cls(test_dir)
     if "ai" not in ds.class_to_idx:
         raise ValueError(f"Expected class 'ai' in {ds.class_to_idx}")
     ai_idx = int(ds.class_to_idx["ai"])
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    loaded = load_models(args.model, device, ensemble_config=args.ensemble_config)
-    model = EnsembleDetector(loaded.models, weights=loaded.weights, img_sizes=loaded.img_sizes).to(device)
-    model.eval()
 
     tf = transforms.Compose([
         transforms.Resize((loaded.img_size, loaded.img_size)),

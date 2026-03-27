@@ -31,6 +31,18 @@ class MetricsThresholdTests(unittest.TestCase):
         self.assertFalse(metrics["operable"])
         self.assertEqual(metrics["search_status"], "fallback_no_operable_threshold")
 
+    def test_threshold_search_handles_low_probability_but_well_ranked_outputs(self) -> None:
+        probs = [0.01, 0.02, 0.03, 0.04]
+        labels = [0, 0, 1, 1]
+
+        threshold, score, metrics = find_best_threshold(probs, labels, objective="balanced")
+
+        self.assertGreater(score, 0.5)
+        self.assertTrue(metrics["operable"])
+        self.assertEqual(metrics["search_status"], "operable")
+        self.assertGreater(threshold, 0.02)
+        self.assertLessEqual(threshold, 0.03)
+
 
 if __name__ == "__main__":
     unittest.main()

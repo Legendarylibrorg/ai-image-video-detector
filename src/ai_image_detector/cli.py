@@ -32,7 +32,3 @@ def train_main() -> int:
 
 def video_train_main() -> int:
     return _run_entrypoint("ai_image_detector.video_temporal", "train_main", extra="training,video")
-
-
-def dataset_main() -> int:
-    return _run_entrypoint("ai_image_detector.dataset_tools", "main", extra="collection")

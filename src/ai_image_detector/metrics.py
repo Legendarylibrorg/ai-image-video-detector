@@ -116,7 +116,13 @@ def find_best_threshold(probs, labels, objective: str = "f1") -> tuple[float, fl
     best_metrics: dict[str, float] = {}
     best_distance = float("inf")
 
-    for th in np.linspace(0.05, 0.95, 91):
+    unique_probs = np.unique(np.clip(p.astype(np.float64), 0.0, 1.0))
+    candidate_thresholds = {0.0, float(fallback_threshold), 1.0}
+    candidate_thresholds.update(float(v) for v in unique_probs.tolist())
+    for lo, hi in zip(unique_probs[:-1], unique_probs[1:]):
+        candidate_thresholds.add(float((lo + hi) / 2.0))
+
+    for th in sorted(candidate_thresholds):
         m = binary_metrics(p, y, threshold=float(th))
         if not _threshold_is_operable(m):
             continue

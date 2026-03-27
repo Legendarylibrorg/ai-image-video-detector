@@ -43,6 +43,11 @@ repo dependency install:
   repo commands run inside that repo-local venv
   do not use sudo for repo commands
 
+optional Docker Compose path:
+  docker compose run --rm pipeline ./local.sh doctor
+  docker compose run --rm pipeline-gpu ./local.sh doctor
+  docker compose run --rm pipeline-gpu ./local.sh run
+
 main pipeline commands:
   ./local.sh setup    # bootstrap deps and local env
   ./local.sh collect  # collect HF image/video data only

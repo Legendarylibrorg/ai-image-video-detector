@@ -38,6 +38,7 @@ class MetadataEvalSurfaceTests(unittest.TestCase):
         self.assertIn("loaded.uses_metadata_features", eval_text)
         self.assertIn("MetadataImageFolder", eval_text)
         self.assertIn("metadata_features=metadata_features", eval_text)
+        self.assertLess(eval_text.index("loaded = load_models"), eval_text.index("dataset_cls = MetadataImageFolder"))
 
         self.assertIn("metadata_features_from_paths", domain_text)
         self.assertIn("loaded.uses_metadata_features", domain_text)

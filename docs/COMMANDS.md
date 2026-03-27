@@ -3,6 +3,7 @@
 This guide collects the repo command surfaces in one place.
 The repo-local Python environment is `./.venv`, created or reused by `./local.sh setup`.
 That setup also installs `huggingface_hub`, the `hf` CLI, and the repo CLI commands into the same venv.
+The command blocks at the top of this file are Linux commands. If you are on macOS or Windows, use the platform notes in [STARTUP.md](STARTUP.md) instead of copying the `apt-get` steps directly.
 
 Clone path:
 
@@ -69,6 +70,25 @@ curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-det
 ```bash
 ./local.sh setup
 ```
+
+## Docker Compose commands
+
+The repo also includes an optional Compose path for a more isolated runtime:
+
+```bash
+docker compose run --rm pipeline ./local.sh doctor
+docker compose run --rm pipeline-gpu ./local.sh doctor
+docker compose run --rm pipeline-gpu ./local.sh run
+```
+
+- `pipeline`
+  CPU-oriented Compose service.
+- `pipeline-gpu`
+  GPU-enabled Compose service for CUDA hosts.
+
+The Compose services mount this repo at `/workspace`, reuse the repo-local `.env`, and keep Hugging Face and pip caches in named volumes.
+They also drop all Linux capabilities, enable `no-new-privileges`, use a read-only container root filesystem, and keep scratch space in `tmpfs`.
+This repo does not add a VM layer because that would change the normal GPU and bind-mount workflow rather than harden it transparently.
 
 ## Dependency profiles
 

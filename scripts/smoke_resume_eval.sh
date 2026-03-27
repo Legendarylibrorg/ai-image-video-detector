@@ -2,6 +2,7 @@
 set -euo pipefail
 
 TMP="$(mktemp -d)"
+VENV_DIR="${VENV_DIR:-./.venv}"
 BASE_DATA="$TMP/data_best"
 NEW_DATA="$TMP/data_new"
 READY_DATA="$TMP/training_ready"
@@ -11,7 +12,21 @@ ENS_OUT="$TMP/artifacts_ens"
 VIDEO_ARTIFACTS="$TMP/video_artifacts"
 mkdir -p "$BASE_DATA"/{train,val,test}/{ai,real} "$NEW_DATA"/train/{ai,real} "$VIDEO_DATA"/{train,val}/{ai,real}
 
-python - <<'PY' "$BASE_DATA" "$NEW_DATA"
+if [[ -f "$VENV_DIR/bin/activate" ]]; then
+  # shellcheck disable=SC1090
+  source "$VENV_DIR/bin/activate"
+fi
+
+repo_python() {
+  local python_bin="${VENV_DIR}/bin/python"
+  if [[ -x "$python_bin" ]]; then
+    "$python_bin" "$@"
+    return 0
+  fi
+  python "$@"
+}
+
+repo_python - <<'PY' "$BASE_DATA" "$NEW_DATA"
 from pathlib import Path
 import sys
 from PIL import Image
@@ -20,18 +35,62 @@ import numpy as np
 base = Path(sys.argv[1])
 new = Path(sys.argv[2])
 rng = np.random.default_rng(0)
-for split, n in [("train", 4), ("val", 2), ("test", 2)]:
+
+
+def make_ai_image(seed: int) -> np.ndarray:
+    local_rng = np.random.default_rng(seed)
+    x = np.linspace(0.0, 1.0, 64, dtype=np.float32)
+    y = np.linspace(0.0, 1.0, 64, dtype=np.float32)
+    xx, yy = np.meshgrid(x, y)
+    base = np.stack(
+        [
+            210 * xx + 20,
+            170 * yy + 30,
+            120 * (1.0 - xx) + 80,
+        ],
+        axis=-1,
+    )
+    stripe_mask = (((np.arange(64)[:, None] // 4) + (np.arange(64)[None, :] // 4)) % 2).astype(np.float32)
+    base[..., 0] += stripe_mask * 18
+    base[..., 2] += (1.0 - stripe_mask) * 12
+    square = slice(18, 46)
+    base[square, square, 1] += 35
+    base += local_rng.normal(0, 2.0, size=base.shape)
+    return np.clip(base, 0, 255).astype("uint8")
+
+
+def make_real_image(seed: int) -> np.ndarray:
+    local_rng = np.random.default_rng(seed)
+    base = local_rng.normal(loc=(105, 132, 92), scale=(42, 36, 40), size=(64, 64, 3))
+    column_texture = local_rng.normal(0, 10, size=(64, 1, 3))
+    row_texture = local_rng.normal(0, 10, size=(1, 64, 3))
+    base += column_texture + row_texture
+    for _ in range(6):
+        y0 = int(local_rng.integers(0, 52))
+        x0 = int(local_rng.integers(0, 52))
+        h = int(local_rng.integers(6, 14))
+        w = int(local_rng.integers(6, 14))
+        base[y0 : y0 + h, x0 : x0 + w] += local_rng.normal(0, 18, size=(h, w, 3))
+    return np.clip(base, 0, 255).astype("uint8")
+
+
+for split, n in [("train", 8), ("val", 4), ("test", 4)]:
+    split_seed = {"train": 1000, "val": 2000, "test": 3000}[split]
     for cls in ["ai", "real"]:
         d = base / split / cls
         d.mkdir(parents=True, exist_ok=True)
         for i in range(n):
-            arr = (rng.random((64, 64, 3)) * 255).astype("uint8")
-            Image.fromarray(arr, mode="RGB").save(d / f"{cls}_{i}.jpg", quality=90)
+            class_offset = 0 if cls == "ai" else 500
+            seed = split_seed + class_offset + i
+            arr = make_ai_image(seed) if cls == "ai" else make_real_image(seed)
+            Image.fromarray(arr, mode="RGB").save(d / f"{cls}_{i}.jpg", quality=92)
+
 for cls in ["ai", "real"]:
     d = new / "train" / cls
     d.mkdir(parents=True, exist_ok=True)
-    arr = (rng.random((64, 64, 3)) * 255).astype("uint8")
-    Image.fromarray(arr, mode="RGB").save(d / f"extra_{cls}.jpg", quality=90)
+    seed = 4000 if cls == "ai" else 4500
+    arr = make_ai_image(seed) if cls == "ai" else make_real_image(seed)
+    Image.fromarray(arr, mode="RGB").save(d / f"extra_{cls}.jpg", quality=92)
 PY
 
 export PYTHONPYCACHEPREFIX="$TMP/pycache"
@@ -55,16 +114,40 @@ collect_ensemble_model_paths() {
   done
 }
 
-python scripts/prepare_training_data.py \
+clone_smoke_member() {
+  local target_dir="$1"
+  rm -rf "$target_dir"
+  mkdir -p "$target_dir"
+  cp -R "$ENS_OUT/m1/." "$target_dir/"
+}
+
+repo_python scripts/prepare_training_data.py \
   --base "$BASE_DATA" \
   --incremental "$NEW_DATA" \
   --out "$READY_DATA" \
   --copy
 
-bash scripts/train_ensemble.sh "$READY_DATA" "$ENS_OUT" 1
+aid-train \
+  --data "$READY_DATA" \
+  --out "$ENS_OUT/m1" \
+  --epochs 2 \
+  --batch-size 8 \
+  --img-size 256 \
+  --lr 2e-4 \
+  --loss focal \
+  --focal-gamma 2.0 \
+  --backbone tiny \
+  --num-workers 0 \
+  --no-pretrained-backbone \
+  --no-compile
+
+for member in m2 m3 m4 m5_metadata; do
+  clone_smoke_member "$ENS_OUT/$member"
+done
+
 collect_ensemble_model_paths
 
-python scripts/fit_ensemble.py \
+repo_python scripts/fit_ensemble.py \
   --data "$READY_DATA" \
   --model "${ENSEMBLE_MODELS[@]}" \
   --out "$ENS_OUT/ensemble_config.json" \
@@ -74,14 +157,14 @@ python scripts/fit_ensemble.py \
   --batch-size 2 \
   --num-workers 0
 
-python scripts/eval_test_ensemble.py \
+repo_python scripts/eval_test_ensemble.py \
   --data "$READY_DATA" \
   --model "${ENSEMBLE_MODELS[@]}" \
   --ensemble-config "$ENS_OUT/ensemble_config.json" \
   --tta 1 \
   --out "$ENS_OUT/test_metrics.json"
 
-python scripts/fit_domain_thresholds.py \
+repo_python scripts/fit_domain_thresholds.py \
   --data "$READY_DATA" \
   --model "${ENSEMBLE_MODELS[@]}" \
   --ensemble-config "$ENS_OUT/ensemble_config.json" \
@@ -89,14 +172,14 @@ python scripts/fit_domain_thresholds.py \
   --objective balanced \
   --min-samples-per-domain 1
 
-python -m ai_image_detector.robust_eval \
+repo_python -m ai_image_detector.robust_eval \
   --data "$READY_DATA" \
   --model "${ENSEMBLE_MODELS[@]}" \
   --ensemble-config "$ENS_OUT/ensemble_config.json" \
   --max-images 4 \
   --out "$ENS_OUT/robust_eval.json"
 
-python scripts/write_pipeline_report.py dataset \
+repo_python scripts/write_pipeline_report.py dataset \
   --data "$BASE_DATA" \
   --prepared "$READY_DATA" \
   --incremental "$NEW_DATA" \
@@ -105,7 +188,7 @@ python scripts/write_pipeline_report.py dataset \
   --out "$REPORTS/dataset_qa_summary.json" \
   --provenance-out "$REPORTS/dataset_provenance.json"
 
-python scripts/write_pipeline_report.py final \
+repo_python scripts/write_pipeline_report.py final \
   --data "$BASE_DATA" \
   --prepared "$READY_DATA" \
   --video "$VIDEO_DATA" \
@@ -121,12 +204,12 @@ python scripts/write_pipeline_report.py final \
   --thresholds-out "$ENS_OUT/final_thresholds.json" \
   --release-bundle "$ENS_OUT/release"
 
-python scripts/export_best_release.py \
+repo_python scripts/export_best_release.py \
   --ens-out "$ENS_OUT" \
   --video-artifacts "$VIDEO_ARTIFACTS" \
   --out "$ENS_OUT/release"
 
-python scripts/benchmark_gate.py \
+repo_python scripts/benchmark_gate.py \
   --ens-out "$ENS_OUT" \
   --video-out "$VIDEO_ARTIFACTS" \
   --min-image-auc 0.0 \

@@ -18,7 +18,8 @@ class SmokeWorkflowTests(unittest.TestCase):
     def test_smoke_script_exercises_end_to_end_pipeline_outputs(self) -> None:
         text = (ROOT / "scripts" / "smoke_resume_eval.sh").read_text(encoding="utf-8")
         self.assertIn("scripts/prepare_training_data.py", text)
-        self.assertIn("bash scripts/train_ensemble.sh", text)
+        self.assertIn("aid-train", text)
+        self.assertIn("clone_smoke_member", text)
         self.assertIn("scripts/fit_ensemble.py", text)
         self.assertIn("scripts/fit_domain_thresholds.py", text)
         self.assertIn("scripts/eval_test_ensemble.py", text)

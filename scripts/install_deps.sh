@@ -62,7 +62,7 @@ import torch  # noqa: F401
 import torchvision  # noqa: F401
 PY
   then
-    if command -v hf >/dev/null 2>&1 && command -v aid-train >/dev/null 2>&1 && command -v aid-video-train >/dev/null 2>&1 && command -v aid-dataset >/dev/null 2>&1; then
+    if command -v hf >/dev/null 2>&1 && command -v aid-train >/dev/null 2>&1 && command -v aid-video-train >/dev/null 2>&1; then
       echo "deps_status=up_to_date"
       exit 0
     fi
@@ -128,11 +128,6 @@ fi
 
 if ! command -v aid-video-train >/dev/null 2>&1; then
   echo "deps_fail=repo_cli_missing cli=aid-video-train run=bash scripts/install_deps.sh" >&2
-  exit 1
-fi
-
-if ! command -v aid-dataset >/dev/null 2>&1; then
-  echo "deps_fail=repo_cli_missing cli=aid-dataset run=bash scripts/install_deps.sh" >&2
   exit 1
 fi
 

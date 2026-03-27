@@ -181,7 +181,7 @@ prepare_training_image_data() {
   incremental_root="$(resolve_incremental_image_root)"
   local out_root="${TRAIN_READY_DATA_DIR:-./.local/training_data}"
   local -a cmd=(
-    python scripts/prepare_training_data.py
+    scripts/prepare_training_data.py
     --base "$base_root"
     --incremental "$incremental_root"
     --out "$out_root"
@@ -190,7 +190,7 @@ prepare_training_image_data() {
     cmd+=(--copy)
   fi
   ensure_env
-  "${cmd[@]}"
+  run_repo_python "${cmd[@]}"
   require_image_training_data "$out_root"
   if [[ "${TRAIN_REQUIRE_MIN_COUNTS:-0}" == "1" ]]; then
     require_min_image_counts \
