@@ -21,7 +21,7 @@ class LocalShTests(unittest.TestCase):
         )
 
         out = proc.stdout
-        self.assertIn("usage: ./local.sh [setup|venv|deps|doctor|run|status|smoke|smoke-real|collect-status|train]", out)
+        self.assertIn("usage: ./local.sh [setup|venv|deps|doctor|collect|run|status|smoke|smoke-real|collect-status|train|retrain|finetune|continuous]", out)
         self.assertIn("basic linux commands inside the repo", out.lower())
         self.assertIn("sudo apt-get update", out)
         self.assertIn("git unzip python3", out)
@@ -33,15 +33,18 @@ class LocalShTests(unittest.TestCase):
         self.assertIn("./local.sh deps", out)
         self.assertIn("./local.sh doctor", out)
         self.assertIn("./local.sh smoke-real", out)
+        self.assertIn("./local.sh collect", out)
         self.assertIn("./local.sh run", out)
         self.assertIn("./local.sh status", out)
         self.assertIn("./local.sh collect-status", out)
         self.assertIn("./local.sh train", out)
+        self.assertIn("./local.sh retrain", out)
+        self.assertIn("./local.sh finetune", out)
+        self.assertIn("./local.sh continuous", out)
         self.assertIn("does not pause to prompt for HF_TOKEN by default", out)
         self.assertIn("repo-local venv", out.lower())
         self.assertNotIn("advanced aliases still work", out.lower())
         self.assertNotIn("detect <image>", out)
-        self.assertNotIn("./local.sh retrain", out)
         self.assertNotIn("./local.sh deps-update", out)
 
     def test_setup_uses_linux_setup_path_in_dry_run(self) -> None:
@@ -106,6 +109,19 @@ class LocalShTests(unittest.TestCase):
         payload = json.loads(proc.stdout)
         self.assertIn("data_root", payload)
         self.assertTrue(proc.stdout.lstrip().startswith("{"))
+
+    def test_collect_command_routes_to_collection_pipeline(self) -> None:
+        text = (ROOT / "local.sh").read_text(encoding="utf-8")
+        self.assertIn("collect)", text)
+        self.assertIn('run_do collect', text)
+
+    def test_retrain_and_continuous_commands_route_to_supported_pipeline_paths(self) -> None:
+        text = (ROOT / "local.sh").read_text(encoding="utf-8")
+        self.assertIn("retrain)", text)
+        self.assertIn("finetune)", text)
+        self.assertIn("continuous)", text)
+        self.assertIn('run_do retrain "$@"', text)
+        self.assertIn('run_do continuous "$@"', text)
 
 
 if __name__ == "__main__":

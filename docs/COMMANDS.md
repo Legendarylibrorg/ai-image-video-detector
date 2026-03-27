@@ -67,12 +67,35 @@ curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-det
 
 The normal local workflow is the basic Linux path above.
 
+Public command-to-path map:
+
+- `./local.sh collect`
+  Fills `./data_best`, `./video_data`, and `./.local`.
+- `./local.sh train`
+  Builds `./.local/training_data` from `./data_best` and `./data_new`, then trains.
+- `./local.sh retrain` and `./local.sh finetune`
+  Reuse the existing-data training path and gate the resulting artifacts.
+- `./local.sh run`
+  Does both collection and training, then writes reports to `./.local/reports` and artifacts to `./artifacts_ens` and `./video_artifacts`.
+- `./local.sh continuous`
+  Repeats collection and retraining over time on the same repo-local paths.
+
 What each stage does:
 
 - `setup`
   Creates or reuses `./.venv`, installs pinned Python deps, prepares local cache dirs, and runs a health check.
 - `run`
-  Executes the normal resumable collect-plus-train pipeline.
+  Executes the normal collect-plus-train pipeline.
+- `collect`
+  Executes the collection-only pipeline without training.
+- `train`
+  Trains from data already collected on disk.
+- `retrain`
+  Runs the retrain wrapper on top of existing collected data.
+- `finetune`
+  Alias for `retrain`.
+- `continuous`
+  Runs the continuous collection and retraining loop.
 - `status`
   Shows the current pipeline state, key artifact paths, and training lock status.
 - `smoke`
@@ -114,7 +137,9 @@ Main surface:
 - `./local.sh doctor`
   Run the health check directly.
 - `./local.sh run`
-  Run the full collection and training pipeline with retries and resumable stages.
+  Run the full Hugging Face collection and training pipeline.
+- `./local.sh collect`
+  Run the Hugging Face collection pipeline only.
 - `./local.sh smoke`
   Run a tiny local end-to-end pipeline check.
 - `./local.sh smoke-real`
@@ -125,6 +150,12 @@ Main surface:
   Show the current collection/build state and the recommended next command.
 - `./local.sh train`
   Train from data that is already collected on disk without starting a new collection pass.
+- `./local.sh retrain`
+  Retrain on top of the existing collected dataset and run the benchmark gate.
+- `./local.sh finetune`
+  Finetune alias for `./local.sh retrain`.
+- `./local.sh continuous`
+  Run the continuous collection and retraining loop for a long-lived machine.
 
 Everything else in the repo is internal support for the pipeline and is intentionally not part of the normal command surface.
 

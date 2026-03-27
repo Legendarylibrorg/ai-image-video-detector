@@ -67,6 +67,24 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertIn('--transient-error-cooldown-ms "$BEST_DS_TRANSIENT_ERROR_COOLDOWN_MS"', text)
         self.assertIn('--min-video-bytes "$VIDEO_MIN_BYTES"', text)
 
+    def test_continuous_training_runs_collection_before_retrain(self) -> None:
+        text = (ROOT / "scripts" / "continuous_training.sh").read_text(encoding="utf-8")
+        self.assertIn("Continuous collection + retraining loop", text)
+        self.assertIn('source "$ROOT_DIR/scripts/lib/core.sh"', text)
+        self.assertIn('PIPELINE_WAIT_FOR_TRAINING_SEC="${PIPELINE_WAIT_FOR_TRAINING_SEC:-$CHECK_WHILE_TRAINING_SEC}"', text)
+        self.assertIn('wait_for_training_to_finish "continuous_training"', text)
+        self.assertIn("continuous_training_collect_start", text)
+        self.assertIn("bash scripts/do.sh collect", text)
+        self.assertIn("continuous_training_retrain_start", text)
+        self.assertIn("bash scripts/weekly_retrain_v3.sh", text)
+        self.assertNotIn("is_training_active()", text)
+
+    def test_weekly_retrain_uses_repo_python_for_review_queue_ingest(self) -> None:
+        text = (ROOT / "scripts" / "weekly_retrain_v3.sh").read_text(encoding="utf-8")
+        self.assertIn('source "$ROOT_DIR/scripts/lib/core.sh"', text)
+        self.assertIn("run_repo_python scripts/review_queue_to_dataset.py", text)
+        self.assertNotIn("\npython scripts/review_queue_to_dataset.py", text)
+
 
 if __name__ == "__main__":
     unittest.main()
