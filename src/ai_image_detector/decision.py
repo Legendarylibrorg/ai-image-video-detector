@@ -48,7 +48,7 @@ def combined_risk(
     provenance_score: float = 0.0,
     text_score: float = 0.0,
 ) -> float:
-    return float((0.68 * prob_ai) + (0.12 * metadata_score) + (0.10 * provenance_score) + (0.10 * text_score))
+    return float((0.84 * prob_ai) + (0.06 * metadata_score) + (0.05 * provenance_score) + (0.05 * text_score))
 
 
 def decide_label(
@@ -56,9 +56,22 @@ def decide_label(
     threshold: float,
     unknown_margin: float,
     ood_score: float,
+    borderline_ood_score: float = 0.45,
+    hard_ood_score: float = 0.80,
+    ai_unknown_margin: float | None = None,
+    real_unknown_margin: float | None = None,
 ) -> str:
-    if abs(prob_ai - threshold) <= unknown_margin:
+    ai_margin = max(float(ai_unknown_margin if ai_unknown_margin is not None else unknown_margin), 0.0)
+    real_margin = max(float(real_unknown_margin if real_unknown_margin is not None else unknown_margin), 0.0)
+    borderline_ood_score = max(float(borderline_ood_score), 0.0)
+    hard_ood_score = max(float(hard_ood_score), borderline_ood_score)
+
+    if ood_score >= hard_ood_score:
         return "Unknown"
-    if ood_score >= 0.70:
+    if prob_ai >= threshold:
+        if (prob_ai - threshold) <= ai_margin and ood_score >= borderline_ood_score:
+            return "Unknown"
+        return "AI-generated"
+    if (threshold - prob_ai) <= real_margin and ood_score >= borderline_ood_score:
         return "Unknown"
-    return "AI-generated" if prob_ai >= threshold else "Real"
+    return "Real"

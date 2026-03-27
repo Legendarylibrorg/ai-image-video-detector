@@ -36,6 +36,16 @@ def next_split_for_source_class(
     rng: random.Random,
     max_per_source_split_class: int,
 ) -> Optional[str]:
+    existing_splits = [split for split in SPLITS if int(source_split_counts[split][cls]) > 0]
+    if existing_splits:
+        assigned_split = max(existing_splits, key=lambda split: int(source_split_counts[split][cls]))
+        remaining = max(0, need[assigned_split][cls] - have[assigned_split][cls])
+        if remaining <= 0:
+            return None
+        if source_split_counts[assigned_split][cls] >= max_per_source_split_class:
+            return None
+        return assigned_split
+
     choices: list[str] = []
     weighted_remaining: dict[str, int] = {}
     for split in SPLITS:

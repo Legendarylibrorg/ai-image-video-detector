@@ -8,7 +8,7 @@ import torch
 from PIL import Image
 from torchvision import datasets, transforms
 
-from ai_image_detector.ensemble import EnsembleDetector, load_models
+from ai_image_detector.ensemble import EnsembleDetector, load_models, metadata_features_from_paths
 
 
 def main():
@@ -42,7 +42,10 @@ def main():
         for path, y in ds.samples:
             img = Image.open(path).convert("RGB")
             x = tf(img).unsqueeze(0).to(device)
-            p = torch.sigmoid(model(x) / max(loaded.temperature, 1e-6)).item()
+            metadata_features = None
+            if loaded.uses_metadata_features:
+                metadata_features = metadata_features_from_paths([path], device=device, dtype=x.dtype)
+            p = torch.sigmoid(model(x, metadata_features=metadata_features) / max(loaded.temperature, 1e-6)).item()
             target = 1 if int(y) == ai_idx else 0
             loss_like = abs(target - p)
             margin = abs(p - loaded.threshold)

@@ -9,6 +9,8 @@ import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import datasets, transforms
 
+from .metadata import extract_metadata_features, metadata_feature_dim
+
 
 class RandomJpegCompression:
     def __init__(self, p: float = 0.35, quality_range: tuple[int, int] = (35, 95)):
@@ -106,15 +108,32 @@ def build_weighted_sampler(targets: list[int], classes: list[str]):
     return sampler, class_counts, class_weights
 
 
-def make_loaders(data_root: str, img_size: int, batch_size: int, num_workers: int = 4):
+class MetadataImageFolder(datasets.ImageFolder):
+    def __getitem__(self, index: int):
+        path, target = self.samples[index]
+        sample = self.loader(path)
+        if self.transform is not None:
+            sample = self.transform(sample)
+        metadata_features = torch.tensor(extract_metadata_features(path), dtype=torch.float32)
+        return sample, metadata_features, target
+
+
+def make_loaders(
+    data_root: str,
+    img_size: int,
+    batch_size: int,
+    num_workers: int = 4,
+    use_metadata_features: bool = False,
+):
     root = Path(data_root)
     train_dir = root / "train"
     val_dir = root / "val"
 
     train_tf, val_tf = make_transforms(img_size)
 
-    train_ds = datasets.ImageFolder(train_dir, transform=train_tf)
-    val_ds = datasets.ImageFolder(val_dir, transform=val_tf)
+    dataset_cls = MetadataImageFolder if use_metadata_features else datasets.ImageFolder
+    train_ds = dataset_cls(train_dir, transform=train_tf)
+    val_ds = dataset_cls(val_dir, transform=val_tf)
 
     train_targets = list(train_ds.targets)
     sampler, class_counts, class_weights = build_weighted_sampler(train_targets, train_ds.classes)
@@ -145,4 +164,5 @@ def make_loaders(data_root: str, img_size: int, batch_size: int, num_workers: in
         train_distribution,
         val_distribution,
         class_weight_map,
+        metadata_feature_dim() if use_metadata_features else 0,
     )

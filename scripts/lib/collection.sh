@@ -82,9 +82,9 @@ print_image_collection_args() {
       test_env="TEST_PER_CLASS"
       test_default="20000"
       prefix="BEST_DS"
-      discovery_limit_default="220"
-      max_sources_default="320"
-      print_top_default="15"
+      discovery_limit_default="280"
+      max_sources_default="420"
+      print_top_default="24"
       cache_file_default="./.local/hf_discovered_sources.txt"
       stream_buffer_default="12000"
       max_samples_default="30000"
@@ -267,12 +267,12 @@ print_diverse_common_args() {
 print_diverse_discovery_args() {
   print_cli_flag --discover-hf
   print_cli_flag_value_from_env_triplets \
-    --hf-discovery-limit "DIVERSE_HF_DISCOVERY_LIMIT" "120" \
-    --hf-max-sources "DIVERSE_HF_MAX_SOURCES" "280" \
+    --hf-discovery-limit "DIVERSE_HF_DISCOVERY_LIMIT" "180" \
+    --hf-max-sources "DIVERSE_HF_MAX_SOURCES" "360" \
     --hf-min-downloads "DIVERSE_HF_MIN_DOWNLOADS" "100" \
     --hf-min-likes "DIVERSE_HF_MIN_LIKES" "2" \
     --hf-min-quality-score "DIVERSE_HF_MIN_QUALITY_SCORE" "1.95" \
-    --hf-print-top "DIVERSE_HF_PRINT_TOP" "20" \
+    --hf-print-top "DIVERSE_HF_PRINT_TOP" "24" \
     --hf-query-pause-ms "DIVERSE_HF_QUERY_PAUSE_MS" "900"
 }
 

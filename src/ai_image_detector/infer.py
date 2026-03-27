@@ -11,7 +11,7 @@ from torchvision import transforms
 from .decision import combined_risk, decide_label, image_ood_score
 from .domain import classify_domain, load_domain_config, resolve_domain_threshold
 from .ensemble import EnsembleDetector, load_models
-from .metadata import analyze_metadata
+from .metadata import analyze_metadata, extract_metadata_features
 from .provenance import analyze_provenance
 from .risk_tools import apply_risk_tools, load_tools_config
 from .text_signals import analyze_text_signals
@@ -26,7 +26,11 @@ def main():
     ap.add_argument("--domain-config", default="", help="Optional JSON with per-domain thresholds")
     ap.add_argument("--tools-config", default="", help="Optional JSON for rule/policy risk adjustments")
     ap.add_argument("--tta-views", type=int, default=1, help="1=none, 2=+hflip, 3=+vflip")
-    ap.add_argument("--unknown-margin", type=float, default=0.08)
+    ap.add_argument("--unknown-margin", type=float, default=0.04)
+    ap.add_argument("--unknown-margin-ai", type=float, default=0.03)
+    ap.add_argument("--unknown-margin-real", type=float, default=0.05)
+    ap.add_argument("--borderline-ood-threshold", type=float, default=0.45)
+    ap.add_argument("--hard-ood-threshold", type=float, default=0.80)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -48,6 +52,7 @@ def main():
     image_bytes = image_path.read_bytes()
     img = Image.open(args.image).convert("RGB")
     x = tf(img).unsqueeze(0).to(device)
+    metadata_features = torch.tensor([extract_metadata_features(args.image)], dtype=x.dtype, device=device)
 
     with torch.no_grad():
         views = [x]
@@ -55,7 +60,7 @@ def main():
             views.append(torch.flip(x, dims=[3]))
         if args.tta_views >= 3:
             views.append(torch.flip(x, dims=[2]))
-        logit = torch.stack([model(v) for v in views], dim=0).mean(dim=0)
+        logit = torch.stack([model(v, metadata_features=metadata_features) for v in views], dim=0).mean(dim=0)
         prob_ai = torch.sigmoid(logit / max(loaded.temperature, 1e-6)).item()
 
     meta = analyze_metadata(args.image)
@@ -79,13 +84,26 @@ def main():
     )
     prob_ai = float(adjusted["prob_ai"])
     c_risk = float(adjusted["combined_risk"])
-    label = decide_label(prob_ai, threshold, args.unknown_margin, float(ood["ood_score"]))
+    label = decide_label(
+        prob_ai,
+        threshold,
+        args.unknown_margin,
+        float(ood["ood_score"]),
+        borderline_ood_score=args.borderline_ood_threshold,
+        hard_ood_score=args.hard_ood_threshold,
+        ai_unknown_margin=args.unknown_margin_ai,
+        real_unknown_margin=args.unknown_margin_real,
+    )
 
     out = {
         "label": label,
         "prob_ai": float(prob_ai),
         "threshold": threshold,
         "unknown_margin": float(args.unknown_margin),
+        "unknown_margin_ai": float(args.unknown_margin_ai),
+        "unknown_margin_real": float(args.unknown_margin_real),
+        "borderline_ood_threshold": float(args.borderline_ood_threshold),
+        "hard_ood_threshold": float(args.hard_ood_threshold),
         "combined_risk": c_risk,
         "metadata_score": metadata_score,
         "metadata_flags": meta["metadata_flags"],

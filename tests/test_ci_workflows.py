@@ -30,6 +30,8 @@ class SmokeWorkflowTests(unittest.TestCase):
         self.assertIn("run_manifest.json", text)
         self.assertIn("prod_manifest.json", text)
         self.assertIn("robust_eval.json", text)
+        self.assertIn("collect_ensemble_model_paths", text)
+        self.assertIn('"$ENS_OUT/m5_metadata/best.safetensors"', text)
 
 
 if __name__ == "__main__":

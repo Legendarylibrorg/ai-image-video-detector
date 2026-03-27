@@ -121,6 +121,7 @@ class LocalShTests(unittest.TestCase):
         self.assertIn("finetune)", text)
         self.assertIn("continuous)", text)
         self.assertIn('run_do retrain "$@"', text)
+        self.assertIn('run_do finetune "$@"', text)
         self.assertIn('run_do continuous "$@"', text)
 
 

@@ -39,6 +39,25 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertIn('--max-robust-auc-drop "${GATE_MAX_ROBUST_AUC_DROP:-0.08}"', text)
         self.assertNotIn('eval "$PIPELINE_CMD"', text)
 
+    def test_metadata_finetune_wrapper_uses_metadata_features_and_existing_checkpoint(self) -> None:
+        text = (ROOT / "scripts" / "metadata_finetune_4090.sh").read_text(encoding="utf-8")
+        self.assertIn("prepare_training_image_data", text)
+        self.assertIn("--use-metadata-features", text)
+        self.assertIn("--init-from", text)
+        self.assertIn("artifacts_finetune_metadata", text)
+
+    def test_train_module_skips_degenerate_best_checkpoint_promotion(self) -> None:
+        text = (ROOT / "src" / "ai_image_detector" / "train.py").read_text(encoding="utf-8")
+        self.assertIn("def _promotion_status(report: dict[str, Any]) -> tuple[bool, str]:", text)
+        self.assertIn('return False, "no_operable_threshold"', text)
+        self.assertIn('return False, "single_class_predictions"', text)
+        self.assertIn('return False, "uninformative_balanced_threshold"', text)
+        self.assertIn('report["promotion_eligible"] = bool(promotion_eligible)', text)
+        self.assertIn('report["threshold_operable"] = bool(threshold_metrics.get("operable", True))', text)
+        self.assertIn('report["threshold_search_status"] = str(threshold_metrics.get("search_status", "unknown"))', text)
+        self.assertIn("skip_best_checkpoint epoch={}", text)
+        self.assertIn('raise RuntimeError("no_promotable_checkpoint")', text)
+
     def test_reference_doc_stays_pipeline_focused(self) -> None:
         text = (ROOT / "docs" / "REFERENCE.md").read_text(encoding="utf-8")
         self.assertIn("Pipeline tools", text)

@@ -48,7 +48,7 @@ main pipeline commands:
   ./local.sh collect  # collect HF image/video data only
   ./local.sh run      # canonical HF collect + train pipeline
   ./local.sh retrain  # retrain on top of existing collected data
-  ./local.sh finetune # finetune/retrain on top of existing collected data
+  ./local.sh finetune # metadata-aware finetune on top of an existing checkpoint
   ./local.sh continuous # continuous collection + retraining loop
   ./local.sh status   # current pipeline and artifact summary
 
@@ -61,7 +61,7 @@ troubleshooting:
   ./local.sh collect-status # current dataset build and resume state
   ./local.sh train          # train only from data already collected
   ./local.sh retrain        # retrain with gating on existing data
-  ./local.sh finetune       # finetune alias for retrain
+  ./local.sh finetune       # finetune an existing model with metadata cues
   ./local.sh continuous     # repeat collection + retraining over time
 EOF
 }
@@ -115,7 +115,7 @@ case "$cmd" in
     run_do retrain "$@"
     ;;
   finetune)
-    run_do retrain "$@"
+    run_do finetune "$@"
     ;;
   continuous)
     run_do continuous "$@"

@@ -82,8 +82,10 @@ The public commands line up to the project structure like this:
   Writes collected image data to `./data_best`, video data to `./video_data`, and cache/state under `./.local`.
 - `./local.sh train`
   Reads `./data_best` and `./data_new`, prepares `./.local/training_data`, and trains from there.
-- `./local.sh retrain` or `./local.sh finetune`
+- `./local.sh retrain`
   Reruns the train-on-existing-data path and applies the benchmark gate to the resulting artifacts.
+- `./local.sh finetune`
+  Runs the separate metadata-aware finetune path on top of an existing checkpoint and writes results under `./artifacts_finetune_metadata`.
 - `./local.sh run`
   Runs the full collect-then-train flow and writes reports under `./.local/reports` and model artifacts under `./artifacts_ens` and `./video_artifacts`.
 - `./local.sh continuous`
@@ -122,6 +124,9 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ZIP path:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
 unzip ai-image-video-detector-main.zip
 cd ai-image-video-detector-main
 python3 -m venv .venv
@@ -137,6 +142,9 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 Already inside the repo root:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
 python3 -m venv .venv
 source .venv/bin/activate
 ./local.sh deps
@@ -148,6 +156,7 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ```
 
 Run `bash ./install.sh` only from inside the repo root after cloning or unzipping.
+If you unzip the repo first, `bash ./install.sh` reuses that extracted folder and does not create a nested repo inside it.
 If you want the installer to fetch the repo for you, use the one-line curl command instead.
 
 Shortcuts:
@@ -170,7 +179,8 @@ Important notes:
 - `./local.sh collect` is the collection-only path when you want Hugging Face image/video data without training yet.
 - `./local.sh run` is the canonical full pipeline path: it collects from Hugging Face first, then trains from that collected dataset.
 - `./local.sh train` is the train-only path when you already have data on disk and do not want a new collection pass.
-- `./local.sh retrain` and `./local.sh finetune` rerun training on top of existing collected data with the benchmark gate applied.
+- `./local.sh retrain` reruns training on top of existing collected data with the benchmark gate applied.
+- `./local.sh finetune` is the separate metadata-feature finetune path for adding EXIF/file cues on top of an existing model.
 - `./local.sh continuous` runs the continuous collection/retraining loop.
 - Hugging Face dataset and hub cache reuse the shared repo-local cache under `./.local/hf`, and discovery reuses cached source lists before doing live discovery calls.
 - `./local.sh run` prefers high-signal HF sources, cuts weak sources earlier, and keeps repo/query pauses tuned for faster collection without hammering rate limits.

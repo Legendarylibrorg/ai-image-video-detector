@@ -15,8 +15,8 @@ display_path() {
 import os
 import sys
 
-base = sys.argv[1]
-target = sys.argv[2]
+base = os.path.realpath(sys.argv[1])
+target = os.path.realpath(sys.argv[2])
 print(os.path.relpath(target, base))
 PY
 }

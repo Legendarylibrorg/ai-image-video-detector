@@ -168,8 +168,8 @@ def write_dataset_report(args: argparse.Namespace) -> int:
 
 def _read_member_summaries(ens_out: Path) -> list[dict[str, Any]]:
     members: list[dict[str, Any]] = []
-    for name in ("m1", "m2", "m3", "m4"):
-        root = ens_out / name
+    for root in sorted((p for p in ens_out.glob("m*") if p.is_dir()), key=lambda p: p.name):
+        name = root.name
         if not root.exists():
             continue
         best_pt = root / "best.pt"

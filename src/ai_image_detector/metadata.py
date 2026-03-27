@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 from typing import Any
 from typing import Optional
@@ -9,9 +10,27 @@ import piexif
 from PIL import Image
 
 
+METADATA_FEATURE_NAMES = (
+    "metadata_score",
+    "has_exif",
+    "has_software_tag",
+    "has_suspicious_software_marker",
+    "has_generation_prompt_trace",
+    "has_capture_time",
+    "has_camera_id",
+    "has_gps",
+    "is_jpeg_like",
+    "log_file_size_norm",
+    "aspect_ratio_norm",
+    "megapixels_norm",
+)
+
+WEB_EXPORT_FORMATS = {"WEBP", "PNG", "GIF"}
+
+
 def _load_exif_dict(image_path: str) -> dict:
-    img = Image.open(image_path)
-    exif_bytes = img.info.get("exif", b"")
+    with Image.open(image_path) as img:
+        exif_bytes = img.info.get("exif", b"")
     if exif_bytes:
         return piexif.load(exif_bytes)
     return {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
@@ -52,15 +71,20 @@ def _extract_fields(exif_dict: dict) -> dict[str, str]:
 
 
 def analyze_metadata(image_path: str) -> dict[str, Any]:
+    with Image.open(image_path) as image:
+        image_format = (image.format or "").upper()
     exif_dict = _load_exif_dict(image_path)
     fields = _extract_fields(exif_dict)
+    if image_format:
+        fields.setdefault("file_format", image_format.lower())
 
     score = 0.0
     flags: list[str] = []
+    is_web_export_format = image_format in WEB_EXPORT_FORMATS
 
     has_any_exif = any(bool(exif_dict.get(k)) for k in ("0th", "Exif", "GPS", "Interop", "1st"))
     if not has_any_exif:
-        score += 0.30
+        score += 0.08 if is_web_export_format else 0.22
         flags.append("missing_exif")
 
     software = fields.get("software", "").lower()
@@ -99,15 +123,71 @@ def analyze_metadata(image_path: str) -> dict[str, Any]:
         flags.append("generation_prompt_trace")
 
     if "datetime" not in fields:
-        score += 0.10
+        score += 0.02 if is_web_export_format else 0.06
         flags.append("missing_capture_time")
 
     if "camera_make" not in fields and "camera_model" not in fields:
-        score += 0.15
+        score += 0.03 if is_web_export_format else 0.08
         flags.append("missing_camera_id")
 
     score = min(1.0, score)
     return {"metadata_score": score, "metadata_flags": flags, "metadata_fields": fields}
+
+
+def extract_metadata_features(image_path: str) -> list[float]:
+    with Image.open(image_path) as image:
+        width, height = image.size
+        image_format = (image.format or "").upper()
+    exif_dict = _load_exif_dict(image_path)
+    fields = _extract_fields(exif_dict)
+    analysis = analyze_metadata(image_path)
+
+    software = fields.get("software", "").lower()
+    user_comment = fields.get("user_comment", "").lower()
+    has_any_exif = any(bool(exif_dict.get(k)) for k in ("0th", "Exif", "GPS", "Interop", "1st"))
+    suspicious_software_markers = (
+        "stable diffusion",
+        "midjourney",
+        "dall",
+        "comfyui",
+        "automatic1111",
+        "invokeai",
+        "adobe firefly",
+        "novelai",
+        "leonardo",
+    )
+    suspicious_comment_markers = (
+        "steps:",
+        "sampler:",
+        "cfg scale",
+        "negative prompt",
+        "seed:",
+        "model hash",
+        "prompt:",
+    )
+    file_size = Path(image_path).stat().st_size if Path(image_path).exists() else 0
+    aspect_ratio = width / max(float(height), 1.0)
+    aspect_ratio_norm = min(abs(math.log(max(aspect_ratio, 1e-6))), math.log(4.0)) / math.log(4.0)
+    megapixels = (width * height) / 1_000_000.0
+
+    return [
+        float(analysis["metadata_score"]),
+        1.0 if has_any_exif else 0.0,
+        1.0 if software else 0.0,
+        1.0 if any(marker in software for marker in suspicious_software_markers) else 0.0,
+        1.0 if any(marker in user_comment for marker in suspicious_comment_markers) else 0.0,
+        1.0 if "datetime" in fields else 0.0,
+        1.0 if ("camera_make" in fields or "camera_model" in fields) else 0.0,
+        1.0 if bool(exif_dict.get("GPS")) else 0.0,
+        1.0 if image_format in {"JPEG", "JPG"} else 0.0,
+        min(math.log1p(float(file_size)) / 20.0, 1.0),
+        float(aspect_ratio_norm),
+        min(megapixels / 12.0, 1.0),
+    ]
+
+
+def metadata_feature_dim() -> int:
+    return len(METADATA_FEATURE_NAMES)
 
 
 def inspect_metadata(image_path: str) -> None:

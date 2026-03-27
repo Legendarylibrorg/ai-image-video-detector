@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 
 from .checkpoints import load_checkpoint
+from .metadata import extract_metadata_features
 from .model import AdvancedAIDetector, build_model
 
 
@@ -19,6 +20,8 @@ class LoadedModels:
     threshold: float
     temperature: float
     model_ids: list[str]
+    metadata_feature_dims: list[int]
+    uses_metadata_features: bool
     model_temperatures: list[float]
     model_thresholds: list[float]
     weights: list[float]
@@ -36,10 +39,35 @@ def _resize_for_model(x: torch.Tensor, img_size: int) -> torch.Tensor:
     )
 
 
+def _run_model(
+    model: torch.nn.Module,
+    x: torch.Tensor,
+    metadata_features: torch.Tensor | None = None,
+) -> torch.Tensor:
+    if metadata_features is None:
+        return model(x)
+    try:
+        return model(x, metadata_features=metadata_features)
+    except TypeError as exc:
+        if "metadata_features" not in str(exc):
+            raise
+        return model(x)
+
+
+def metadata_features_from_paths(
+    paths: list[str] | tuple[str, ...],
+    device: torch.device,
+    dtype: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    features = [extract_metadata_features(str(path)) for path in paths]
+    return torch.tensor(features, dtype=dtype, device=device)
+
+
 def stack_model_logits(
     models: list[torch.nn.Module],
     img_sizes: list[int],
     x: torch.Tensor,
+    metadata_features: torch.Tensor | None = None,
 ) -> torch.Tensor:
     if len(models) != len(img_sizes):
         raise ValueError(f"img_sizes count {len(img_sizes)} != models count {len(models)}")
@@ -49,7 +77,7 @@ def stack_model_logits(
         model_x = _resize_for_model(x, img_size)
         if model_x.device.type == "cuda":
             model_x = model_x.contiguous(memory_format=torch.channels_last)
-        logits.append(model(model_x))
+        logits.append(_run_model(model, model_x, metadata_features=metadata_features))
     return torch.stack(logits, dim=0)
 
 
@@ -77,12 +105,12 @@ class EnsembleDetector(torch.nn.Module):
         self.register_buffer("weights", w)
         self.img_sizes = [int(s) for s in img_sizes]
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, metadata_features: torch.Tensor | None = None) -> torch.Tensor:
         effective_sizes = [
             int(size) if int(size) > 0 else int(x.shape[-1])
             for size in self.img_sizes
         ]
-        logits = stack_model_logits(list(self.models), effective_sizes, x)
+        logits = stack_model_logits(list(self.models), effective_sizes, x, metadata_features=metadata_features)
         w = self.weights.view(-1, 1)
         return (logits * w).sum(dim=0)
 
@@ -120,7 +148,8 @@ def _resolve_model_weights(
 def _load_single(path: str, device: torch.device):
     ckpt = load_checkpoint(path, map_location=device)
     backbone = str(ckpt.get("backbone", "tiny"))
-    model = build_model(backbone=backbone, pretrained_backbone=False).to(device)
+    metadata_dim = int(ckpt.get("metadata_feature_dim", 0))
+    model = build_model(backbone=backbone, pretrained_backbone=False, metadata_feature_dim=metadata_dim).to(device)
     model.load_state_dict(ckpt["state_dict"])
     model.eval()
 
@@ -128,7 +157,7 @@ def _load_single(path: str, device: torch.device):
     threshold = float(ckpt.get("threshold", 0.5))
     temperature = float(ckpt.get("temperature", 1.0))
     model_id = str(ckpt.get("model_id", Path(path).stem))
-    return model, img_size, threshold, temperature, model_id
+    return model, img_size, threshold, temperature, model_id, metadata_dim
 
 
 def load_models(model_paths: list[str], device: torch.device, ensemble_config: str = "") -> LoadedModels:
@@ -141,6 +170,7 @@ def load_models(model_paths: list[str], device: torch.device, ensemble_config: s
     thresholds = [x[2] for x in loaded]
     temps = [x[3] for x in loaded]
     model_ids = [x[4] for x in loaded]
+    metadata_dims = [int(x[5]) for x in loaded]
     weights = [1.0 / len(loaded)] * len(loaded)
     threshold = float(sum(thresholds) / len(thresholds))
     temperature = float(sum(temps) / len(temps))
@@ -160,6 +190,8 @@ def load_models(model_paths: list[str], device: torch.device, ensemble_config: s
         threshold=threshold,
         temperature=temperature,
         model_ids=model_ids,
+        metadata_feature_dims=metadata_dims,
+        uses_metadata_features=any(dim > 0 for dim in metadata_dims),
         model_temperatures=[float(t) for t in temps],
         model_thresholds=[float(t) for t in thresholds],
         weights=[float(w) for w in weights],

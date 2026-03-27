@@ -26,7 +26,8 @@ The repo is structured around the public `./local.sh` commands:
 - `setup`: creates `./.venv` and verifies the repo
 - `collect`: builds datasets in `./data_best` and `./video_data`
 - `train`: prepares `./.local/training_data` and trains from existing data
-- `retrain` and `finetune`: rerun training on top of the existing dataset and gate the result
+- `retrain`: rerun training on top of the existing dataset and gate the result
+- `finetune`: separate metadata-aware finetune on top of an existing checkpoint
 - `run`: full collect + train pipeline
 - `continuous`: repeat collection and retraining over time
 - `status` and `collect-status`: inspect the current local state

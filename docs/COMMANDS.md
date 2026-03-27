@@ -25,6 +25,9 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ZIP path:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
 unzip ai-image-video-detector-main.zip
 cd ai-image-video-detector-main
 python3 -m venv .venv
@@ -40,6 +43,9 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 Already inside the repo root:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
 python3 -m venv .venv
 source .venv/bin/activate
 ./local.sh deps
@@ -51,6 +57,7 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ```
 
 Run `bash ./install.sh` only from inside the repo root after cloning or unzipping.
+If you unzip the repo first, `bash ./install.sh` reuses that extracted folder and does not create a nested repo inside it.
 If you want the installer to fetch the repo for you, use the curl installer instead.
 
 Shortcut installers:
@@ -93,7 +100,7 @@ What each stage does:
 - `retrain`
   Runs the retrain wrapper on top of existing collected data.
 - `finetune`
-  Alias for `retrain`.
+  Runs the separate metadata-aware finetune wrapper on top of an existing checkpoint.
 - `continuous`
   Runs the continuous collection and retraining loop.
 - `status`
@@ -153,7 +160,7 @@ Main surface:
 - `./local.sh retrain`
   Retrain on top of the existing collected dataset and run the benchmark gate.
 - `./local.sh finetune`
-  Finetune alias for `./local.sh retrain`.
+  Run the metadata-aware finetune path and write outputs to `./artifacts_finetune_metadata`.
 - `./local.sh continuous`
   Run the continuous collection and retraining loop for a long-lived machine.
 

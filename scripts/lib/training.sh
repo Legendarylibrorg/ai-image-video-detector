@@ -273,6 +273,10 @@ validate_train_artifacts() {
   local vid_best_sft="${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.safetensors"
   local missing=0
   local video_required=0
+  local model_count=0
+  shopt -s nullglob
+  local -a ensemble_models=("$ens_dir"/m*/best.safetensors)
+  shopt -u nullglob
 
   case "${VALIDATE_REQUIRE_VIDEO:-auto}" in
     1|true|yes|always)
@@ -288,7 +292,13 @@ validate_train_artifacts() {
       ;;
   esac
 
-  for p in "$ens_dir/m1/best.safetensors" "$ens_dir/m2/best.safetensors" "$ens_dir/m3/best.safetensors" "$ens_dir/m4/best.safetensors" "$ens_dir/test_metrics.json" "$ens_dir/prod_manifest.json"; do
+  model_count="${#ensemble_models[@]}"
+  if (( model_count < 4 )); then
+    echo "missing_artifact=ensemble_models have=$model_count need=4"
+    missing=1
+  fi
+
+  for p in "$ens_dir/test_metrics.json" "$ens_dir/prod_manifest.json"; do
     if [[ ! -f "$p" ]]; then
       echo "missing_artifact=$p"
       missing=1
