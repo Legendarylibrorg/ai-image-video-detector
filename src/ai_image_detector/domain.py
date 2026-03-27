@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-import numpy as np
-from PIL import Image
+if TYPE_CHECKING:
+    from PIL import Image
 
 
 DOMAIN_NAMES = ["photo", "screenshot", "document", "art_cgi", "face"]
 
 
-def classify_domain(image: Image.Image, text_score: float = 0.0) -> str:
+def classify_domain(image: "Image.Image", text_score: float = 0.0) -> str:
+    import numpy as np
+
     w, h = image.size
     arr = np.asarray(image.convert("RGB"), dtype=np.float32)
     gray = np.asarray(image.convert("L"), dtype=np.float32)

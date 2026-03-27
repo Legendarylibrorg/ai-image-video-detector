@@ -7,6 +7,8 @@ from pathlib import Path
 import shutil
 from typing import Any
 
+from release_selection import build_inference_profile, build_public_model_manifest, select_public_model
+
 
 def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
@@ -83,6 +85,7 @@ def main() -> None:
             "best_metrics.json",
             "best_group_metrics.json",
             "config.json",
+            "inference_spec.json",
             "best_checkpoint.txt",
             "test_metrics.json",
         ):
@@ -104,6 +107,30 @@ def main() -> None:
         for name in ("best_video_metrics.json", "config.json"):
             _copy_tree_file(video_dir / name, name, release_dir, copied)
 
+    public_model = select_public_model(ens_out)
+    public_model_manifest = None
+    if public_model is not None:
+        public_dir = release_dir / "public_model"
+        public_dir.mkdir(parents=True, exist_ok=True)
+        public_checkpoint = public_dir / "best.safetensors"
+        if _copy_if_exists(public_model["source_checkpoint_path"], public_checkpoint):
+            copied.append("public_model/best.safetensors")
+        for name in ("calibration.json", "best_metrics.json", "test_metrics.json", "config.json", "inference_spec.json", "best_model_summary.json"):
+            if _copy_if_exists(Path(public_model["artifact_dir"]) / name, public_dir / name):
+                copied.append(f"public_model/{name}")
+        public_model_manifest = build_public_model_manifest(
+            public_model,
+            public_checkpoint=str(public_checkpoint.resolve()),
+        )
+        if public_model_manifest is not None:
+            (public_dir / "model_manifest.json").write_text(json.dumps(public_model_manifest, indent=2), encoding="utf-8")
+            copied.append("public_model/model_manifest.json")
+        inference_profile = build_inference_profile(public_model)
+        if inference_profile is not None:
+            (public_dir / "inference_profile.json").write_text(json.dumps(inference_profile, indent=2), encoding="utf-8")
+            copied.append("public_model/inference_profile.json")
+        (ens_out / "latest_public_model.txt").write_text(str(public_checkpoint.resolve()), encoding="utf-8")
+
     copied_with_manifest = [*copied, "release_manifest.json"]
     release_manifest = {
         "schema": "ai-image-detector-release-bundle-v1",
@@ -112,6 +139,7 @@ def main() -> None:
         "release_dir": str(release_dir.resolve()),
         "prod_manifest": str((release_dir / "prod_manifest.json").resolve()) if (release_dir / "prod_manifest.json").exists() else None,
         "public_models": prod_manifest.get("models", []),
+        "public_model": public_model_manifest,
         "copied_files": copied_with_manifest,
     }
     (release_dir / "release_manifest.json").write_text(json.dumps(release_manifest, indent=2), encoding="utf-8")

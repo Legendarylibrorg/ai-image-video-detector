@@ -4,11 +4,11 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from _support import ROOT, write_rgb_image  # noqa: F401
 from ai_image_detector.decision import combined_risk, decide_label
-from ai_image_detector.metadata import analyze_metadata
+from ai_image_detector.metadata import METADATA_FEATURE_NAMES, analyze_metadata, extract_metadata_features, metadata_feature_dim
 
 
 class InferLogicTests(unittest.TestCase):
@@ -89,6 +89,27 @@ class InferLogicTests(unittest.TestCase):
         self.assertLess(png_analysis["metadata_score"], jpg_analysis["metadata_score"])
         self.assertLess(png_analysis["metadata_score"], 0.20)
         self.assertIn("missing_exif", png_analysis["metadata_flags"])
+
+    def test_auxiliary_feature_vector_includes_provenance_and_text_signals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            img_path = Path(tmp) / "overlay.png"
+            image = Image.new("RGB", (192, 96), (248, 248, 248))
+            draw = ImageDraw.Draw(image)
+            draw.rectangle((0, 0, 191, 20), fill=(16, 16, 16))
+            draw.text((12, 28), "SALE NOW", fill=(0, 0, 0))
+            draw.text((12, 56), "LIMITED OFFER", fill=(0, 0, 0))
+            image.save(img_path)
+
+            features = extract_metadata_features(str(img_path))
+
+        self.assertEqual(len(features), metadata_feature_dim())
+        self.assertIn("provenance_score", METADATA_FEATURE_NAMES)
+        self.assertIn("text_score", METADATA_FEATURE_NAMES)
+        self.assertIn("has_text_overlay_signal", METADATA_FEATURE_NAMES)
+        text_score_idx = METADATA_FEATURE_NAMES.index("text_score")
+        text_overlay_idx = METADATA_FEATURE_NAMES.index("has_text_overlay_signal")
+        self.assertGreater(features[text_score_idx], 0.0)
+        self.assertEqual(features[text_overlay_idx], 1.0)
 
 
 if __name__ == "__main__":

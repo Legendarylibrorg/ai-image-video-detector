@@ -20,6 +20,8 @@ class DocsSurfaceTests(unittest.TestCase):
             "privacy_cleanup.sh",
             "fit_multimodal_fusion.py",
             "build_large_dataset.py",
+            "max_accuracy_v2.sh",
+            "one_command_4090.sh",
         ]:
             self.assertFalse((ROOT / "scripts" / name).exists(), name)
 
@@ -66,6 +68,9 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("./local.sh deps", text)
         self.assertIn("./local.sh doctor", text)
         self.assertIn("repo CLI commands are installed", text)
+        self.assertIn("pip install -e '.[pipeline]'", text)
+        self.assertIn("pip install -e .", text)
+        self.assertIn("Dependency Profiles", text)
         self.assertIn("./local.sh run", text)
         self.assertIn("./local.sh finetune", text)
         self.assertNotIn("cd /path/to/image-spam", text)
@@ -102,6 +107,8 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("./local.sh deps", text)
         self.assertIn("./local.sh doctor", text)
         self.assertIn("repo CLI commands and the `hf` CLI", text)
+        self.assertIn("pip install -e '.[pipeline]'", text)
+        self.assertIn("aid-*` commands are thin wrappers", text)
         self.assertNotIn("## Manual Linux bootstrap", text)
         self.assertNotIn("cd /path/to/image-spam", text)
         self.assertNotIn("## Setup options", text)
@@ -141,6 +148,8 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("./local.sh train", text)
         self.assertIn("./local.sh finetune", text)
         self.assertIn("repo CLI commands and the `hf` CLI", text)
+        self.assertIn("pip install -e '.[pipeline]'", text)
+        self.assertIn("base install lightweight", text)
         self.assertIn("./local.sh run", text)
         self.assertNotIn("## Raw `scripts/do.sh` commands", text)
         self.assertNotIn(

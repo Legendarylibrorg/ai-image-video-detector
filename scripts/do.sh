@@ -4,12 +4,8 @@ set -euo pipefail
 # Minimal command surface for everyday use.
 # Examples:
 #   bash scripts/do.sh pipeline
-#   bash scripts/do.sh run
 #   bash scripts/do.sh smoke
 #   bash scripts/do.sh smoke-real
-#   bash scripts/do.sh check
-#   bash scripts/do.sh start
-#   bash scripts/do.sh start-v2
 #   bash scripts/do.sh collect
 #   bash scripts/do.sh collect-diverse
 #   bash scripts/do.sh collect-fast
@@ -18,10 +14,8 @@ set -euo pipefail
 #   bash scripts/do.sh collection-status
 #   bash scripts/do.sh ingest
 #   bash scripts/do.sh scan
-#   bash scripts/do.sh train
 #   bash scripts/do.sh retrain
 #   bash scripts/do.sh continuous
-#   bash scripts/do.sh train-all-types
 #   bash scripts/do.sh deps-update
 #   bash scripts/do.sh doctor
 #   bash scripts/do.sh preflight
@@ -49,7 +43,7 @@ if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
 fi
 
 load_env_file
-cmd="${1:-start}"
+cmd="${1:-help}"
 shift || true
 
 case ",$GPU_REQUIRED_CMDS," in
@@ -59,7 +53,7 @@ case ",$GPU_REQUIRED_CMDS," in
 esac
 
 case "$cmd" in
-  pipeline|run)
+  pipeline)
     run_preflight_check
     run_full_pipeline
     ;;
@@ -77,20 +71,8 @@ case "$cmd" in
     run_preflight_check
     ;;
 
-  check|doctor)
+  doctor)
     run_doctor_check
-    ;;
-
-  start)
-    # Full, best-quality pipeline.
-    run_preflight_check
-    with_training_lock bash scripts/max_quality_4090.sh
-    ;;
-
-  start-v2)
-    # Max-accuracy v2 pipeline with domain calibration + refinement loops.
-    run_preflight_check
-    with_training_lock bash scripts/max_accuracy_v2.sh
     ;;
 
   collect)
@@ -126,7 +108,7 @@ case "$cmd" in
     run_malware_scan "$@"
     ;;
 
-  train|train-existing)
+  train-existing)
     # Train from collected image data already on disk, with video if available.
     with_training_lock train_existing_pipeline
     ;;
@@ -161,11 +143,6 @@ case "$cmd" in
 
   continuous)
     bash scripts/continuous_training.sh "$@"
-    ;;
-
-  train-all-types)
-    # End-to-end: broad collection + image/video training + artifact checks.
-    run_full_pipeline
     ;;
 
   status)

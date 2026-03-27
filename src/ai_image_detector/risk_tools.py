@@ -4,20 +4,14 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .utils import read_json_dict
+
 
 def load_tools_config(path: str = "") -> dict[str, Any]:
     if not path:
         return {}
     p = Path(path)
-    if not p.exists():
-        return {}
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            return data
-    except Exception:
-        pass
-    return {}
+    return read_json_dict(p)
 
 
 def apply_risk_tools(

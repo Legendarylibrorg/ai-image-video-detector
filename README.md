@@ -10,6 +10,24 @@ The repo uses a local virtualenv at `./.venv`; `./local.sh setup` creates or reu
 
 It is not a production serving repo in the current mode.
 
+## Dependency Profiles
+
+The repo now keeps the base package lightweight:
+
+- `pip install -e .`
+  Installs the package without the heavy training/collection stack.
+- `pip install -e '.[pipeline]'`
+  Installs the full local pipeline dependency set.
+- `pip install -e '.[training]'`
+  Installs the image-training stack only.
+- `pip install -e '.[collection]'`
+  Installs the Hugging Face collection stack only.
+- `pip install -e '.[video]'`
+  Installs the video-specific stack only.
+
+For normal repo use, prefer `./local.sh deps` or `./local.sh setup`; those install the full `pipeline` profile into `./.venv`.
+The packaged `aid-*` commands are lightweight wrappers and will tell you which extra to install if you run them without the required dependency profile.
+
 ## Quick Start
 
 The repo now runs one simple local pipeline:
@@ -175,6 +193,7 @@ Important notes:
 - Keep `sudo` on package-manager commands only. Run `./local.sh ...` and `bash scripts/...` as your normal user.
 - The repo-local virtualenv is `./.venv`. The setup and pipeline scripts create or reuse it instead of relying on a global Python install.
 - `huggingface_hub`, the `hf` CLI, and the repo CLI commands are installed into that same repo-local venv during setup.
+- A direct package install can stay lightweight with `pip install -e .`, but the full repo workflow expects `./local.sh deps` or `pip install -e '.[pipeline]'`.
 - `./local.sh setup` retries dependency install and health checks automatically so it can finish cleanly after transient failures.
 - `./local.sh collect` is the collection-only path when you want Hugging Face image/video data without training yet.
 - `./local.sh run` is the canonical full pipeline path: it collects from Hugging Face first, then trains from that collected dataset.

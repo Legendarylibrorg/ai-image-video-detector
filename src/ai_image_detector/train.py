@@ -24,7 +24,7 @@ from torchvision import datasets, transforms
 from .checkpoints import load_checkpoint, save_safetensors_checkpoint
 from .data import MetadataImageFolder, make_loaders
 from .metrics import find_best_threshold, fit_temperature, full_metric_report, sigmoid
-from .model import build_model
+from .model import build_model, model_runtime_spec
 
 
 def _path_tags(path: str) -> dict[str, str]:
@@ -343,8 +343,14 @@ def main():
         "git_commit": _git_commit(),
         "dataset_counts": _dataset_counts(data_root),
         "created_utc": datetime.now(timezone.utc).isoformat(),
+        "runtime_spec": model_runtime_spec(
+            backbone=args.backbone,
+            img_size=args.img_size,
+            metadata_feature_dim=metadata_dim,
+        ),
     }
     (out / "config.json").write_text(json.dumps(run_config, indent=2), encoding="utf-8")
+    (out / "inference_spec.json").write_text(json.dumps(run_config["runtime_spec"], indent=2), encoding="utf-8")
 
     if set(classes) != {"ai", "real"}:
         raise ValueError(f"Expected classes exactly ai/real, got {classes}")
@@ -606,11 +612,16 @@ def main():
                     "backbone": args.backbone,
                     "metadata_feature_dim": metadata_dim,
                     "use_metadata_features": bool(args.use_metadata_features),
+                    "runtime_spec": model_runtime_spec(
+                        backbone=args.backbone,
+                        img_size=args.img_size,
+                        metadata_feature_dim=metadata_dim,
+                    ),
                 }
                 save_safetensors_checkpoint(out / "best.safetensors", ckpt)
                 preferred_best = out / "best.safetensors"
                 best_checkpoint_saved = True
-                (out / "best_checkpoint.txt").write_text(str(preferred_best), encoding="utf-8")
+                (out / "best_checkpoint.txt").write_text(preferred_best.name, encoding="utf-8")
                 (out / "best_metrics.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
                 (out / "best_group_metrics.json").write_text(json.dumps(grouped, indent=2), encoding="utf-8")
                 (out / "calibration.json").write_text(
@@ -620,6 +631,11 @@ def main():
                             "temperature": float(temperature),
                             "objective": args.threshold_objective,
                             "metrics": report,
+                            "runtime_spec": model_runtime_spec(
+                                backbone=args.backbone,
+                                img_size=args.img_size,
+                                metadata_feature_dim=metadata_dim,
+                            ),
                         },
                         indent=2,
                     ),
@@ -629,7 +645,7 @@ def main():
                     json.dumps(
                         {
                             "epoch": epoch,
-                            "preferred_checkpoint": str(preferred_best),
+                            "preferred_checkpoint": preferred_best.name,
                             "metrics": report,
                             "calibration": {
                                 "threshold": float(threshold),
@@ -637,6 +653,11 @@ def main():
                                 "objective": args.threshold_objective,
                                 "objective_score": float(threshold_score) if threshold_score is not None else None,
                             },
+                            "runtime_spec": model_runtime_spec(
+                                backbone=args.backbone,
+                                img_size=args.img_size,
+                                metadata_feature_dim=metadata_dim,
+                            ),
                         },
                         indent=2,
                     ),
@@ -736,6 +757,7 @@ def main():
             "calibration.json",
             "test_metrics.json",
             "config.json",
+            "inference_spec.json",
             "best_checkpoint.txt",
             "best_model_summary.json",
         ):
