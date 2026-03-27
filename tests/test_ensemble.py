@@ -7,6 +7,7 @@ import unittest
 import torch
 
 from _support import write_rgb_image  # noqa: F401
+from ai_image_detector.checkpoints import save_safetensors_checkpoint
 from ai_image_detector.ensemble import EnsembleDetector, load_models, stack_model_logits
 from ai_image_detector.model import build_model
 
@@ -39,10 +40,16 @@ class EnsembleTests(unittest.TestCase):
             model = build_model(backbone="tiny", pretrained_backbone=False)
             state_dict = model.state_dict()
 
-            ckpt1 = tmp_path / "m1.pt"
-            ckpt2 = tmp_path / "m2.pt"
-            torch.save({"state_dict": state_dict, "img_size": 64, "threshold": 0.4, "temperature": 1.0, "backbone": "tiny"}, ckpt1)
-            torch.save({"state_dict": state_dict, "img_size": 96, "threshold": 0.6, "temperature": 1.5, "backbone": "tiny"}, ckpt2)
+            ckpt1 = tmp_path / "m1.safetensors"
+            ckpt2 = tmp_path / "m2.safetensors"
+            save_safetensors_checkpoint(
+                ckpt1,
+                {"state_dict": state_dict, "img_size": 64, "threshold": 0.4, "temperature": 1.0, "backbone": "tiny"},
+            )
+            save_safetensors_checkpoint(
+                ckpt2,
+                {"state_dict": state_dict, "img_size": 96, "threshold": 0.6, "temperature": 1.5, "backbone": "tiny"},
+            )
 
             loaded = load_models([str(ckpt1), str(ckpt2)], torch.device("cpu"))
 

@@ -84,7 +84,29 @@ class DatasetToolsTests(unittest.TestCase):
             self.assertEqual(out["manifest"]["unique_sources"], 2)
             self.assertEqual(out["manifest"]["skipped_future_runs"], 1)
             self.assertEqual(out["resume"]["remaining_candidates_estimate"], 1)
-            self.assertEqual(out["resume"]["recommended_command"], "./local.sh collect")
+            self.assertEqual(out["resume"]["recommended_command"], "./local.sh run")
+
+    def test_collection_status_recommends_train_when_targets_are_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "data_best"
+            write_stub(root / "train" / "ai" / "a.jpg")
+            write_stub(root / "train" / "real" / "b.jpg")
+            write_stub(root / "val" / "ai" / "c.jpg")
+            write_stub(root / "val" / "real" / "d.jpg")
+            write_stub(root / "test" / "ai" / "e.jpg")
+            write_stub(root / "test" / "real" / "f.jpg")
+            (root / "dataset_state.json").write_text(
+                json.dumps({"source_candidates": ["repo/a"], "full_targets_ok": True}),
+                encoding="utf-8",
+            )
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                dataset_tools.cmd_collection_status(str(root))
+            out = json.loads(buf.getvalue())
+
+            self.assertFalse(out["resume"]["resume_needed"])
+            self.assertEqual(out["resume"]["recommended_command"], "./local.sh train")
 
 
 if __name__ == "__main__":

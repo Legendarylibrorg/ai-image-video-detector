@@ -150,6 +150,55 @@ class BuildBestDatasetSourcesTests(unittest.TestCase):
 
         self.assertEqual(found, ["org/real-fake-images"])
 
+    def test_build_source_list_refetches_when_cache_policy_is_stale(self) -> None:
+        old_discover = build_best_dataset_sources.discover_hf_sources
+        try:
+            build_best_dataset_sources.discover_hf_sources = lambda **_: ["org/new-stronger-source"]
+            with tempfile.TemporaryDirectory() as tmpdir:
+                cache_path = Path(tmpdir) / "sources.txt"
+                cache_path.write_text("org/old-source\n", encoding="utf-8")
+                build_best_dataset_sources.save_cache_policy(
+                    cache_path,
+                    {
+                        "queries": ["old query"],
+                        "hf_discovery_limit": 5,
+                        "hf_max_sources": 10,
+                        "hf_min_downloads": 10,
+                        "hf_min_likes": 1,
+                        "hf_min_quality_score": 0.0,
+                        "hf_print_top": 0,
+                        "hf_query_pause_ms": 0,
+                    },
+                )
+                args = SimpleNamespace(
+                    hf_only=True,
+                    no_default_sources=True,
+                    sources_file="",
+                    extra_source=[],
+                    discover_hf=True,
+                    hf_cache_file=str(cache_path),
+                    hf_cache_only_if_present=True,
+                    hf_query=["better query"],
+                    hf_discovery_limit=5,
+                    hf_max_sources=10,
+                    hf_min_downloads=10,
+                    hf_min_likes=1,
+                    hf_min_quality_score=1.0,
+                    hf_print_top=0,
+                    hf_query_pause_ms=0,
+                    token_env="HF_TOKEN",
+                )
+
+                found = build_best_dataset_sources.build_source_list(args)
+                cached_sources = build_best_dataset_sources.read_sources_file(cache_path)
+                cached_policy = build_best_dataset_sources.load_cache_policy(cache_path)
+        finally:
+            build_best_dataset_sources.discover_hf_sources = old_discover
+
+        self.assertEqual(found, ["org/new-stronger-source"])
+        self.assertEqual(cached_sources, ["org/new-stronger-source"])
+        self.assertEqual(cached_policy, build_best_dataset_sources.discovery_policy(args))
+
 
 if __name__ == "__main__":
     unittest.main()

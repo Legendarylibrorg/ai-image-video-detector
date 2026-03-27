@@ -43,6 +43,18 @@ run_setup_step_with_retry() {
   done
 }
 
+run_setup_command() {
+  local stage="$1"
+  shift
+  if [[ "${DRY_RUN:-0}" == "1" ]]; then
+    echo "setup_stage=$stage status=run attempt=1/${SETUP_MAX_ATTEMPTS:-4}"
+    echo "[DRY_RUN] $*"
+    echo "setup_stage=$stage status=done"
+    return 0
+  fi
+  run_setup_step_with_retry "$stage" "$@"
+}
+
 ensure_python3() {
   if command -v python3 >/dev/null 2>&1; then
     return
@@ -57,6 +69,9 @@ prepare_local_dirs() {
 }
 
 persist_env_hf_token_if_present() {
+  if [[ "${HF_SETUP_SAVE_ENV:-1}" != "1" ]]; then
+    return
+  fi
   local env_file="${ENV_FILE:-${SETUP_ENV_FILE:-}}"
   local token=""
   token="$(current_hf_token)"
@@ -132,6 +147,7 @@ ensure_hf_token_ready() {
   token="$(current_hf_token)"
   if [[ -n "$token" ]]; then
     set_hf_token_vars "$token"
+    persist_env_hf_token_if_present
   fi
 
   prompt_for_hf_token_if_missing

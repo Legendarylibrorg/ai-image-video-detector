@@ -8,7 +8,7 @@ The basic Linux command path is:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
 cd ai-image-video-detector
@@ -21,6 +21,23 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh run
 ./local.sh status
 ```
+
+If you downloaded the GitHub ZIP instead, the extracted folder is usually `ai-image-video-detector-main`:
+
+```bash
+unzip ai-image-video-detector-main.zip
+cd ai-image-video-detector-main
+python3 -m venv .venv
+source .venv/bin/activate
+./local.sh deps
+./local.sh doctor
+printf "HF_TOKEN='your_token_here'\n" >> .env
+./local.sh smoke
+./local.sh run
+./local.sh status
+```
+
+If you are already inside that extracted repo root, `bash ./install.sh` also works.
 
 Shortcut installers:
 
@@ -55,7 +72,7 @@ Manual fallback:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 python3 -m venv .venv
 source .venv/bin/activate
@@ -90,6 +107,10 @@ Main surface:
   Run a tiny real Hugging Face collection plus real CUDA training smoke. Requires `HF_TOKEN` and a CUDA GPU.
 - `./local.sh status`
   Show training lock and key data and artifact paths.
+- `./local.sh collect-status`
+  Show the current collection/build state and the recommended next command.
+- `./local.sh train`
+  Train from data that is already collected on disk without starting a new collection pass.
 
 Everything else in the repo is internal support for the pipeline and is intentionally not part of the normal command surface.
 
@@ -101,7 +122,7 @@ Use `sudo` only for Linux package-manager commands such as:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 ```
 

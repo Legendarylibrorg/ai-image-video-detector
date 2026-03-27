@@ -559,8 +559,9 @@ def main():
         return
 
     test_dir = data_root / "test"
-    if test_dir.exists() and (out / "best.pt").exists():
-        best = torch.load(out / "best.pt", map_location=device)
+    best_path = resolve_checkpoint_path(out / "best.pt")
+    if test_dir.exists() and best_path.exists():
+        best = load_checkpoint(best_path, map_location=device)
         eval_model = build_model(
             backbone=best.get("backbone", args.backbone),
             pretrained_backbone=False,

@@ -10,7 +10,7 @@ import shutil
 import time
 from typing import Dict, List
 
-from dataset_builder_common import configure_hf_cache_env, count_existing_split_classes, targets_met
+from dataset_builder_common import HF_CACHE_DIR_DEFAULT, configure_hf_cache_env, count_existing_split_classes, targets_met
 from hf_data import download_dataset_file, list_dataset_repo_files, normalize_hf_token, snapshot_dataset_repo
 
 hf_hub_download = download_dataset_file
@@ -45,7 +45,19 @@ def done(have: Dict[str, Dict[str, int]], need: Dict[str, Dict[str, int]]) -> bo
 
 
 def count_existing(out: Path) -> Dict[str, Dict[str, int]]:
-    return count_existing_split_classes(out, ("train", "val"), ("ai", "real"), "*")
+    have = count_existing_split_classes(out, ("train", "val"), ("ai", "real"), "*")
+    for split in ("train", "val"):
+        for cls in ("ai", "real"):
+            split_dir = out / split / cls
+            if not split_dir.exists():
+                have[split][cls] = 0
+                continue
+            have[split][cls] = sum(
+                1
+                for path in split_dir.glob("*")
+                if path.is_file() and path.suffix.lower() in EXTS_LOWER
+            )
+    return have
 
 
 def _collect_snapshot_files(root: Path, prefixes: List[str]) -> List[Path]:
@@ -61,10 +73,17 @@ def _collect_snapshot_files(root: Path, prefixes: List[str]) -> List[Path]:
     return files
 
 
-def _download_with_retry(repo: str, filename: str, token: str | None, retries: int, sleep_ms: int) -> str | None:
+def _download_with_retry(
+    repo: str,
+    filename: str,
+    token: str | None,
+    cache_dir: str | None,
+    retries: int,
+    sleep_ms: int,
+) -> str | None:
     for attempt in range(retries):
         try:
-            return hf_hub_download(repo, filename, token=token)
+            return hf_hub_download(repo, filename, token=token, cache_dir=cache_dir)
         except Exception:
             if attempt + 1 >= retries:
                 return None
@@ -134,7 +153,7 @@ def main():
     ap.add_argument("--retries", type=int, default=5)
     ap.add_argument("--min-video-bytes", type=int, default=100000)
     ap.add_argument("--max-video-bytes", type=int, default=0)
-    ap.add_argument("--cache-dir", default="./.local/hf_hub")
+    ap.add_argument("--cache-dir", default=HF_CACHE_DIR_DEFAULT)
     ap.add_argument("--token-env", default="HF_TOKEN")
     args = ap.parse_args()
 
@@ -245,7 +264,14 @@ def main():
                         if split is None:
                             break
 
-                        local = _download_with_retry(repo, f, token, retries=args.retries, sleep_ms=args.sleep_ms)
+                        local = _download_with_retry(
+                            repo,
+                            f,
+                            token,
+                            args.cache_dir or None,
+                            retries=args.retries,
+                            sleep_ms=args.sleep_ms,
+                        )
                         if not local:
                             consecutive_failures += 1
                             if consecutive_failures >= 3:

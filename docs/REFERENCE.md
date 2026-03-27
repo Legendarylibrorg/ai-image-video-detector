@@ -10,6 +10,15 @@ This file keeps the README short and startup-focused while collecting the broade
 - stays in training-only mode; production serving is intentionally disabled
 - targets a simple local CUDA + PyTorch workflow, especially on RTX 4090-class hardware
 
+## Repo Layout
+
+- `local.sh`: small public entrypoint
+- `install.sh`: optional installer
+- `docs/`: user-facing documentation
+- `scripts/`: internal pipeline helpers and advanced wrappers
+- `src/ai_image_detector/`: Python package code
+- `tests/`: regression coverage
+
 ## Current pipeline shape
 
 The current pipeline is:
@@ -92,10 +101,8 @@ Normal users should start with:
 For stage-by-stage Linux usage:
 
 ```bash
-./local.sh collect
 ./local.sh collect-status
 ./local.sh train
-./local.sh retrain
 ```
 
 For command-level control, use:

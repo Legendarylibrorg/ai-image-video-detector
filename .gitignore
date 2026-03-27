@@ -15,11 +15,11 @@ dist/
 .env
 .env.*
 !.env.example
-!deploy/.env.example
 
 # Data and artifacts
 data/
 data_best/
+data_best_fast/
 video_data/
 artifacts/
 artifacts_ens/
