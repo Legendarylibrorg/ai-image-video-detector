@@ -7,7 +7,7 @@ The repo uses a pinned local virtualenv at `./.venv` for its Python dependencies
 
 ## Basic Linux commands
 
-Use this exact Linux sequence:
+Clone path:
 
 ```bash
 sudo apt-get update
@@ -25,7 +25,7 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh status
 ```
 
-If you downloaded the GitHub ZIP instead of cloning, the extracted folder is usually named `ai-image-video-detector-main`. Use:
+ZIP path:
 
 ```bash
 unzip ai-image-video-detector-main.zip
@@ -40,9 +40,7 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh status
 ```
 
-If you are already inside that extracted repo root, `bash ./install.sh` also works.
-
-If you already have the repo checked out, start at:
+Already inside the repo root:
 
 ```bash
 python3 -m venv .venv
@@ -54,6 +52,9 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh run
 ./local.sh status
 ```
+
+Run `bash ./install.sh` only from inside the repo root after cloning or unzipping.
+If you want the installer to fetch the repo for you, use the curl installer instead.
 
 Optional shortcuts:
 
@@ -81,7 +82,7 @@ The main operator commands after setup are:
 ./local.sh status
 ```
 
-Use `./local.sh run` for the normal path. `./local.sh smoke` is the quick check before the full run.
+Use `./local.sh run` for the normal path. `./local.sh smoke` is the tiny local end-to-end check before the full run.
 
 ## Where `sudo` is needed
 

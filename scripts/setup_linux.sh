@@ -24,21 +24,25 @@ source "$ROOT_DIR/scripts/lib/setup_common.sh"
 
 run_cmd() {
   if [[ "$DRY_RUN" == "1" ]]; then
-    echo "[DRY_RUN] $*"
+    printf "[DRY_RUN]"
+    printf " %q" "$@"
+    printf "\n"
   else
-    eval "$*"
+    "$@"
   fi
 }
 
 run_apt_bootstrap() {
+  local -a apt_packages=()
+  read -r -a apt_packages <<< "$APT_PACKAGES"
   if command -v sudo >/dev/null 2>&1; then
-    run_cmd "sudo apt-get update"
-    run_cmd "sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y $APT_PACKAGES"
-    run_cmd "sudo freshclam || true"
+    run_cmd sudo apt-get update
+    run_cmd sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "${apt_packages[@]}"
+    run_cmd sudo freshclam || true
   else
-    run_cmd "apt-get update"
-    run_cmd "env DEBIAN_FRONTEND=noninteractive apt-get install -y $APT_PACKAGES"
-    run_cmd "freshclam || true"
+    run_cmd apt-get update
+    run_cmd env DEBIAN_FRONTEND=noninteractive apt-get install -y "${apt_packages[@]}"
+    run_cmd freshclam || true
   fi
 }
 
@@ -130,7 +134,7 @@ main() {
   local attempt=1
   while true; do
     echo "setup_stage=pipeline_train_all_types status=run setup_attempt=$attempt/$SETUP_MAX_ATTEMPTS"
-    if run_cmd "bash scripts/do.sh train-all-types"; then
+    if run_cmd bash scripts/do.sh train-all-types; then
       mark_stage_done "pipeline_train_all_types"
       echo "setup_stage=pipeline_train_all_types status=done"
       print_next_step

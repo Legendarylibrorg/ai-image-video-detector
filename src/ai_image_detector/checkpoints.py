@@ -23,11 +23,11 @@ def _json_default(value: Any) -> Any:
 
 def resolve_checkpoint_path(preferred_pt_path: str | Path) -> Path:
     preferred = Path(preferred_pt_path)
-    if preferred.exists():
-        return preferred
     sft = preferred.with_suffix(".safetensors")
     if sft.exists():
         return sft
+    if preferred.exists():
+        return preferred
     return preferred
 
 

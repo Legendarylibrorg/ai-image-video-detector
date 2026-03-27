@@ -532,6 +532,8 @@ def main():
                 torch.save(ckpt, out / "best.pt")
                 if args.save_safetensors:
                     save_safetensors_checkpoint(out / "best.safetensors", ckpt)
+                preferred_best = (out / "best.safetensors") if (out / "best.safetensors").exists() else (out / "best.pt")
+                (out / "best_checkpoint.txt").write_text(str(preferred_best), encoding="utf-8")
                 (out / "best_metrics.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
                 (out / "best_group_metrics.json").write_text(json.dumps(grouped, indent=2), encoding="utf-8")
                 (out / "calibration.json").write_text(
@@ -541,6 +543,23 @@ def main():
                             "temperature": float(temperature),
                             "objective": args.threshold_objective,
                             "metrics": report,
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+                (out / "best_model_summary.json").write_text(
+                    json.dumps(
+                        {
+                            "epoch": epoch,
+                            "preferred_checkpoint": str(preferred_best),
+                            "metrics": report,
+                            "calibration": {
+                                "threshold": float(threshold),
+                                "temperature": float(temperature),
+                                "objective": args.threshold_objective,
+                                "objective_score": float(threshold_score) if threshold_score is not None else None,
+                            },
                         },
                         indent=2,
                     ),
@@ -621,17 +640,21 @@ def main():
     if args.export_release and (out / "best.pt").exists():
         rel = out / "releases" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         rel.mkdir(parents=True, exist_ok=True)
+        preferred_release = (out / "best.safetensors") if (out / "best.safetensors").exists() else (out / "best.pt")
         for name in (
-            "best.pt",
             "best_metrics.json",
             "best_group_metrics.json",
             "calibration.json",
             "test_metrics.json",
             "config.json",
+            "best_checkpoint.txt",
+            "best_model_summary.json",
         ):
             src = out / name
             if src.exists():
                 shutil.copy2(src, rel / name)
+        if preferred_release.exists():
+            shutil.copy2(preferred_release, rel / preferred_release.name)
         (out / "latest_release.txt").write_text(str(rel), encoding="utf-8")
         print(f"saved release bundle to {rel}")
 

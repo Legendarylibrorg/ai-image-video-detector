@@ -49,7 +49,7 @@ main pipeline commands:
   ./local.sh status   # current pipeline and artifact summary
 
 optional validation:
-  ./local.sh smoke      # quick collection sanity check
+  ./local.sh smoke      # tiny local end-to-end pipeline smoke
   ./local.sh smoke-real # tiny real HF + CUDA smoke on a tokenized GPU box
 
 troubleshooting:

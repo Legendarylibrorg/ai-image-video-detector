@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import subprocess
+import os
 import unittest
 
 
@@ -19,6 +20,15 @@ class DoShTests(unittest.TestCase):
             text=True,
         )
         return proc.stdout
+
+    def run_bash_proc(self, script: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["bash", "-lc", script],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
 
     def test_best_profile_includes_local_sources_when_hf_only_disabled(self) -> None:
         out = self.run_bash(
@@ -110,6 +120,10 @@ class DoShTests(unittest.TestCase):
         self.assertIn("--max-samples-per-source\n40000\n", out)
         self.assertIn("--acceptance-warmup-samples\n192\n", out)
         self.assertIn("--min-acceptance-rate\n0.02\n", out)
+        self.assertIn("--max-per-source-class\n12000\n", out)
+        self.assertIn("--max-per-source-split-class\n4000\n", out)
+        self.assertIn("--min-hf-sources-per-class\n16\n", out)
+        self.assertIn("--min-hf-sources-per-split-class\n10\n", out)
         self.assertIn("--hf-discovery-limit\n120\n", out)
         self.assertIn("--hf-max-sources\n280\n", out)
         self.assertIn("--hf-min-quality-score\n1.95\n", out)
@@ -123,6 +137,7 @@ class DoShTests(unittest.TestCase):
         self.assertIn("--cache-dir\n./.local/hf\n", out)
         self.assertIn("--repo-base-pause-ms\n150\n", out)
         self.assertIn("--repo-cooldown-ms\n12000\n", out)
+        self.assertIn("--min-video-bytes\n200000\n", out)
 
     def test_collect_diverse_cycle_uses_two_snapshot_workers_by_default(self) -> None:
         out = self.run_bash(
@@ -217,6 +232,86 @@ class DoShTests(unittest.TestCase):
             "printf '%s\\n' \"$HF_TOKEN\""
         )
         self.assertEqual(out.strip().splitlines()[-1], "from_file")
+
+    def test_load_env_file_treats_env_as_data_not_shell_code(self) -> None:
+        out = self.run_bash(
+            "tmpenv=$(mktemp); "
+            "marker=$(mktemp); rm -f \"$marker\"; "
+            "printf 'HF_TOKEN=from_file\\nprintf hacked > %s\\n' \"$marker\" > \"$tmpenv\"; "
+            "ENV_FILE=\"$tmpenv\"; "
+            "source scripts/do.sh; "
+            "load_env_file; "
+            "[[ ! -e \"$marker\" ]] && printf '%s %s\\n' \"$HF_TOKEN\" safe"
+        )
+        self.assertEqual(out.strip().splitlines()[-1], "from_file safe")
+
+    def test_load_env_file_ignores_inline_comments_for_plain_and_quoted_values(self) -> None:
+        out = self.run_bash(
+            "tmpenv=$(mktemp); "
+            "printf 'HF_TOKEN=from_file # note\\nHUGGINGFACE_HUB_TOKEN=\"from_hub\" # note\\n' > \"$tmpenv\"; "
+            "ENV_FILE=\"$tmpenv\"; "
+            "HF_TOKEN=''; "
+            "HUGGINGFACE_HUB_TOKEN=''; "
+            "source scripts/do.sh; "
+            "load_env_file; "
+            "printf '%s %s\\n' \"$HF_TOKEN\" \"$HUGGINGFACE_HUB_TOKEN\""
+        )
+        self.assertEqual(out.strip().splitlines()[-1], "from_file from_hub")
+
+    def test_train_existing_pipeline_passes_collected_and_prepared_roots_to_4090_wrapper(self) -> None:
+        out = self.run_bash("source scripts/do.sh; declare -f train_existing_pipeline")
+        self.assertIn('PIPELINE_COLLECTED_DATA_DIR="$collected_root"', out)
+        self.assertIn('PIPELINE_PREPARED_DATA_DIR="$PREPARED_IMAGE_DATA_DIR"', out)
+        self.assertIn('TRAIN_READY_DATA_DIR="$PREPARED_IMAGE_DATA_DIR"', out)
+
+    def test_require_pipeline_collection_data_rejects_partial_dataset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "data_best"
+            for split in ("train", "val", "test"):
+                for cls in ("ai", "real"):
+                    bucket = root / split / cls
+                    bucket.mkdir(parents=True, exist_ok=True)
+                    (bucket / f"{split}_{cls}.jpg").write_bytes(b"x")
+
+            proc = self.run_bash_proc(
+                f"source scripts/do.sh; "
+                f"DATA_DIR='{root}'; "
+                "PIPELINE_MIN_TRAIN_PER_CLASS=2; "
+                "PIPELINE_MIN_VAL_PER_CLASS=1; "
+                "PIPELINE_MIN_TEST_PER_CLASS=1; "
+                "require_pipeline_collection_data \"$DATA_DIR\""
+            )
+
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("insufficient_image_bucket=", proc.stdout + proc.stderr)
+
+    def test_require_pipeline_collection_data_accepts_successful_build_report_without_explicit_minima(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "data_best"
+            for split in ("train", "val", "test"):
+                for cls in ("ai", "real"):
+                    bucket = root / split / cls
+                    bucket.mkdir(parents=True, exist_ok=True)
+                    (bucket / f"{split}_{cls}.jpg").write_bytes(b"x")
+            (root / "dataset_build_report.json").write_text('{"full_targets_ok": true}\n', encoding="utf-8")
+
+            proc = self.run_bash_proc(
+                f"source scripts/do.sh; "
+                f"DATA_DIR='{root}'; "
+                "unset PIPELINE_MIN_TRAIN_PER_CLASS PIPELINE_MIN_VAL_PER_CLASS PIPELINE_MIN_TEST_PER_CLASS; "
+                "unset TRAIN_PER_CLASS VAL_PER_CLASS TEST_PER_CLASS; "
+                "require_pipeline_collection_data \"$DATA_DIR\""
+            )
+
+        self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        self.assertIn("collection_min_counts=skipped reason=build_report_ok", proc.stdout + proc.stderr)
+
+    def test_run_pipeline_training_stage_enforces_count_gate_on_prepared_data(self) -> None:
+        out = self.run_bash("source scripts/do.sh; declare -f run_pipeline_training_stage; declare -f prepare_training_image_data")
+        self.assertIn('require_pipeline_collection_data "${DATA_DIR:-./data_best}"', out)
+        self.assertIn('TRAIN_REQUIRE_MIN_COUNTS=1 with_training_lock train_existing_pipeline', out)
+        self.assertIn('if [[ "${TRAIN_REQUIRE_MIN_COUNTS:-0}" == "1" ]]; then', out)
+        self.assertIn('PIPELINE_MIN_TRAIN_PER_CLASS="$train_min"', out)
 
     def test_wait_for_training_to_finish_clears_stale_lock(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

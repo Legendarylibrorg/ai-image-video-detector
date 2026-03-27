@@ -44,6 +44,17 @@ class CheckpointsTests(unittest.TestCase):
         self.assertEqual(loaded, fake_ckpt)
         mock_load.assert_called_once_with(path, map_location="cpu")
 
+    def test_resolve_checkpoint_path_prefers_safetensors_when_both_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pt_path = Path(tmp) / "model.pt"
+            sft_path = Path(tmp) / "model.safetensors"
+            pt_path.write_bytes(b"pt")
+            sft_path.write_bytes(b"sft")
+
+            resolved = checkpoints.resolve_checkpoint_path(pt_path)
+
+        self.assertEqual(resolved, sft_path)
+
     def test_train_module_does_not_call_torch_load_for_best_checkpoint_eval(self) -> None:
         train_text = (ROOT / "src" / "ai_image_detector" / "train.py").read_text(encoding="utf-8")
         self.assertIn("best = load_checkpoint(best_path, map_location=device)", train_text)
@@ -54,3 +65,10 @@ class CheckpointsTests(unittest.TestCase):
         self.assertIn("from ai_image_detector.checkpoints import load_checkpoint", distill_text)
         self.assertIn("ckpt = load_checkpoint(resume_path, map_location=device)", distill_text)
         self.assertNotIn("ckpt = torch.load(resume_path, map_location=device)", distill_text)
+
+    def test_distill_script_writes_safetensors_and_summary_artifacts(self) -> None:
+        distill_text = (ROOT / "scripts" / "train_distill.py").read_text(encoding="utf-8")
+        self.assertIn("save_safetensors_checkpoint", distill_text)
+        self.assertIn('out / "best.safetensors"', distill_text)
+        self.assertIn('out / "best_checkpoint.txt"', distill_text)
+        self.assertIn('out / "best_model_summary.json"', distill_text)

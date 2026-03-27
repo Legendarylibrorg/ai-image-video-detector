@@ -1,21 +1,14 @@
 HF_CACHE_DIR_DEFAULT="${HF_CACHE_DIR_DEFAULT:-./.local/hf}"
 
-read_cmd_output_into_array() {
-  local array_name="$1"
-  shift
-  local line=""
-  eval "$array_name=()"
-  while IFS= read -r line; do
-    eval "$array_name+=(\"\$line\")"
-  done < <("$@")
-}
-
 run_image_dataset_builder() {
   local out="$1"
   local query_csv="$2"
   shift 2
   local -a query_args=()
-  read_cmd_output_into_array query_args print_hf_query_args "$query_csv"
+  local line=""
+  while IFS= read -r line; do
+    query_args+=("$line")
+  done < <(print_hf_query_args "$query_csv")
   run_repo_python scripts/build_best_dataset.py \
     --out "$out" \
     "$@" \
@@ -28,7 +21,10 @@ run_image_dataset_discovery() {
   local query_csv="$3"
   shift 3
   local -a query_args=()
-  read_cmd_output_into_array query_args print_hf_query_args "$query_csv"
+  local line=""
+  while IFS= read -r line; do
+    query_args+=("$line")
+  done < <(print_hf_query_args "$query_csv")
   run_repo_python_with_timeout "$timeout_sec" scripts/build_best_dataset.py \
     --out "$out" \
     "$@" \
@@ -206,7 +202,10 @@ collect_image_data() {
   local out="${DATA_DIR:-./data_best}"
   local query_csv="${BEST_DS_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}"
   local -a build_args=()
-  read_cmd_output_into_array build_args print_image_collection_args best
+  local line=""
+  while IFS= read -r line; do
+    build_args+=("$line")
+  done < <(print_image_collection_args best)
   run_image_dataset_build "$out" "$query_csv" "${build_args[@]}"
 }
 
@@ -214,7 +213,10 @@ collect_fast_data() {
   local out="${DATA_DIR:-./data_best_fast}"
   local query_csv="${FAST_HF_QUERIES:-${BEST_DS_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}}"
   local -a build_args=()
-  read_cmd_output_into_array build_args print_image_collection_args fast
+  local line=""
+  while IFS= read -r line; do
+    build_args+=("$line")
+  done < <(print_image_collection_args fast)
   run_image_dataset_build "$out" "$query_csv" "${build_args[@]}"
 }
 
@@ -238,13 +240,13 @@ print_diverse_common_args() {
   print_cli_flag_value_from_env_triplets \
     --stream-buffer-size "DIVERSE_STREAM_BUFFER_SIZE" "16000" \
     --max-samples-per-source "DIVERSE_MAX_SAMPLES_PER_SOURCE" "40000" \
-    --max-per-source-class "DIVERSE_MAX_PER_SOURCE_CLASS" "16000" \
-    --max-per-source-split-class "DIVERSE_MAX_PER_SOURCE_SPLIT_CLASS" "5500" \
+    --max-per-source-class "DIVERSE_MAX_PER_SOURCE_CLASS" "12000" \
+    --max-per-source-split-class "DIVERSE_MAX_PER_SOURCE_SPLIT_CLASS" "4000" \
     --acceptance-warmup-samples "DIVERSE_ACCEPTANCE_WARMUP_SAMPLES" "192" \
     --min-acceptance-rate "DIVERSE_MIN_ACCEPTANCE_RATE" "0.02" \
     --min-hf-sources-with-accepted "DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED" "24" \
-    --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "14" \
-    --min-hf-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "8" \
+    --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "16" \
+    --min-hf-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "10" \
     --repo-base-pause-ms "DIVERSE_REPO_BASE_PAUSE_MS" "150" \
     --repo-jitter-ms "DIVERSE_REPO_JITTER_MS" "150" \
     --repo-cooldown-ms "DIVERSE_REPO_COOLDOWN_MS" "15000" \
@@ -290,7 +292,10 @@ print_diverse_audit_args() {
 audit_image_dataset() {
   local out="${1:-${DATA_DIR:-./data_best}}"
   local -a audit_args=()
-  read_cmd_output_into_array audit_args print_diverse_audit_args 1
+  local line=""
+  while IFS= read -r line; do
+    audit_args+=("$line")
+  done < <(print_diverse_audit_args 1)
   run_repo_python scripts/audit_diversity.py \
     --data "$out" \
     "${audit_args[@]}"
@@ -306,11 +311,18 @@ collect_diverse_image_data() {
   local -a cache_args=(--no-discover-hf --sources-file "$hf_cache")
   local -a full_args=()
   local -a audit_args=()
+  local line=""
 
-  read_cmd_output_into_array common_args print_diverse_common_args
+  while IFS= read -r line; do
+    common_args+=("$line")
+  done < <(print_diverse_common_args)
   full_args=("${common_args[@]}")
-  read_cmd_output_into_array discover_args print_diverse_discovery_args
-  read_cmd_output_into_array audit_args print_diverse_audit_args
+  while IFS= read -r line; do
+    discover_args+=("$line")
+  done < <(print_diverse_discovery_args)
+  while IFS= read -r line; do
+    audit_args+=("$line")
+  done < <(print_diverse_audit_args)
 
   if [[ "${DIVERSE_SKIP_DISCOVERY:-0}" != "1" ]]; then
     if ! run_image_dataset_discovery "$timeout_sec" "$out" "$query_csv" "${common_args[@]}" "${discover_args[@]}"; then
@@ -351,13 +363,16 @@ print_video_collection_args() {
     --chunk-pause-ms "VIDEO_CHUNK_PAUSE_MS" "250" \
     --repo-cooldown-ms "VIDEO_REPO_COOLDOWN_MS" "12000" \
     --retries "VIDEO_RETRIES" "5" \
-    --min-video-bytes "VIDEO_MIN_BYTES" "100000" \
+    --min-video-bytes "VIDEO_MIN_BYTES" "200000" \
     --max-video-bytes "VIDEO_MAX_BYTES" "0"
 }
 
 collect_video_data() {
   local -a video_args=()
-  read_cmd_output_into_array video_args print_video_collection_args
+  local line=""
+  while IFS= read -r line; do
+    video_args+=("$line")
+  done < <(print_video_collection_args)
   run_repo_python scripts/build_video_dataset.py "${video_args[@]}"
   run_malware_scan "${VIDEO_OUT:-./video_data}"
 }
@@ -381,5 +396,6 @@ run_pipeline_collection_stage() {
 
 run_simple_collection_smoke() {
   wait_for_training_to_finish "pipeline_stage=smoke"
-  collect_fast_data
+  ensure_env
+  bash scripts/smoke_resume_eval.sh
 }

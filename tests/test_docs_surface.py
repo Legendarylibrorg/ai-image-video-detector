@@ -62,6 +62,9 @@ class DocsSurfaceTests(unittest.TestCase):
 
     def test_startup_doc_marks_sudo_only_for_system_commands(self) -> None:
         text = (ROOT / "docs" / "STARTUP.md").read_text(encoding="utf-8")
+        self.assertIn("Clone path:", text)
+        self.assertIn("ZIP path:", text)
+        self.assertIn("Already inside the repo root:", text)
         self.assertIn("sudo apt-get update", text)
         self.assertIn(
             "sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon",
@@ -73,6 +76,7 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("unzip ai-image-video-detector-main.zip", text)
         self.assertIn("cd ai-image-video-detector-main", text)
         self.assertIn("bash ./install.sh", text)
+        self.assertIn("Run `bash ./install.sh` only from inside the repo root", text)
         self.assertIn("Do not use `sudo` for repo commands", text)
         self.assertIn("pinned local virtualenv at `./.venv`", text)
         self.assertIn("python3 -m venv .venv", text)
@@ -93,7 +97,9 @@ class DocsSurfaceTests(unittest.TestCase):
 
     def test_commands_doc_starts_with_linux_quick_start(self) -> None:
         text = (ROOT / "docs" / "COMMANDS.md").read_text(encoding="utf-8")
-        self.assertIn("The basic Linux command path is", text)
+        self.assertIn("Clone path:", text)
+        self.assertIn("ZIP path:", text)
+        self.assertIn("Already inside the repo root:", text)
         self.assertIn("repo-local Python environment is `./.venv`", text)
         self.assertIn("huggingface_hub", text)
         self.assertIn("curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash", text)
@@ -105,6 +111,7 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("curl ca-certificates git unzip python3", text)
         self.assertIn("./local.sh setup", text)
         self.assertIn("bash ./install.sh", text)
+        self.assertIn("Run `bash ./install.sh` only from inside the repo root", text)
         self.assertIn("printf \"HF_TOKEN='your_token_here'\\n\" >> .env", text)
         self.assertIn("./local.sh smoke", text)
         self.assertIn("python3 -m venv .venv", text)
