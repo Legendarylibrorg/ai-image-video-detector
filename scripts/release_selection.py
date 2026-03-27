@@ -32,6 +32,19 @@ def _use_metadata_features(config: dict[str, Any]) -> bool:
     return False
 
 
+def _selection_sort_key(item: dict[str, Any]) -> tuple[float | int, ...]:
+    return (
+        1 if item["has_test_metrics"] else 0,
+        item["auc"],
+        item["balanced_accuracy"],
+        item["precision_ai"],
+        item["recall_ai"],
+        item["precision_real"],
+        item["recall_real"],
+        1 if item["use_metadata_features"] else 0,
+    )
+
+
 def public_model_candidates(ens_out: Path) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     for model_dir in iter_member_dirs(ens_out):
@@ -91,23 +104,15 @@ def select_public_model(ens_out: Path) -> dict[str, Any] | None:
     if not candidates:
         return None
 
-    candidates.sort(
-        key=lambda item: (
-            1 if item["has_test_metrics"] else 0,
-            1 if item["use_metadata_features"] else 0,
-            item["auc"],
-            item["balanced_accuracy"],
-            item["precision_ai"],
-            item["recall_ai"],
-        ),
-        reverse=True,
-    )
+    candidates.sort(key=_selection_sort_key, reverse=True)
     chosen = dict(candidates[0])
-    chosen["selection_reason"] = (
-        "best_promotable_metadata_aware_model"
-        if chosen["use_metadata_features"]
-        else "best_promotable_pixel_model_fallback"
-    )
+    metadata_candidates_exist = any(bool(item["use_metadata_features"]) for item in candidates)
+    if chosen["use_metadata_features"]:
+        chosen["selection_reason"] = "best_promotable_metadata_aware_model"
+    elif metadata_candidates_exist:
+        chosen["selection_reason"] = "best_quality_promotable_pixel_model"
+    else:
+        chosen["selection_reason"] = "best_promotable_pixel_model"
     return chosen
 
 

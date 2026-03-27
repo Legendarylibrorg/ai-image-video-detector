@@ -150,6 +150,15 @@ def extract_license_markers(ds: object) -> set[str]:
     return markers
 
 
+def matched_useful_keyword_groups(text: str) -> set[str]:
+    lowered = text.lower()
+    return {
+        name
+        for name, keywords in USEFUL_KEYWORD_GROUPS.items()
+        if any(keyword in lowered for keyword in keywords)
+    }
+
+
 def cache_policy_path(cache_path: Path) -> Path:
     return cache_path.with_name(cache_path.name + ".policy.json")
 
@@ -227,9 +236,15 @@ def discover_hf_sources(
                     continue
                 low = ds_id.lower()
                 tags = [str(t).lower() for t in (getattr(ds, "tags", None) or [])]
-                looks_image = any("image" in t for t in tags) or any(k in low for k in ["image", "img", "cifake"])
-                looks_detection = any(k in low for k in ["fake", "deepfake", "generated", "synthetic", "real"])
-                if not (looks_image and looks_detection):
+                useful_text = " ".join([low, *tags])
+                matched_groups = matched_useful_keyword_groups(useful_text)
+                looks_image = (
+                    any("image" in t for t in tags)
+                    or any(k in low for k in ["image", "img", "cifake"])
+                    or any(tag in useful_text for tag in ("image-classification", "computer-vision"))
+                )
+                has_real_image_domain_signal = any(group != "detector_labels" for group in matched_groups)
+                if not (looks_image or has_real_image_domain_signal):
                     continue
                 downloads = int(getattr(ds, "downloads", 0) or 0)
                 likes = int(getattr(ds, "likes", 0) or 0)
@@ -239,12 +254,9 @@ def discover_hf_sources(
                 if require_open_license and not (license_markers & allowed_licenses):
                     continue
                 score = min(3.0, math.log10(max(1, downloads) + 1.0)) + min(2.0, math.log10(max(1, likes) + 1.0))
-                useful_text = " ".join([ds_id.lower(), *tags, *sorted(license_markers)])
-                useful_groups = sum(
-                    1
-                    for keywords in USEFUL_KEYWORD_GROUPS.values()
-                    if any(keyword in useful_text for keyword in keywords)
-                )
+                useful_text = " ".join([low, *tags, *sorted(license_markers)])
+                matched_groups = matched_useful_keyword_groups(useful_text)
+                useful_groups = len(matched_groups)
                 score += min(1.5, 0.22 * float(useful_groups))
                 if "cc0-1.0" in license_markers or "apache-2.0" in license_markers or "mit" in license_markers:
                     score += 0.1

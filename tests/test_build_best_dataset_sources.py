@@ -166,6 +166,44 @@ class BuildBestDatasetSourcesTests(unittest.TestCase):
 
         self.assertEqual(found, ["org/open-real-fake-images"])
 
+    def test_discover_hf_sources_keeps_real_only_visual_datasets(self) -> None:
+        class _VisualRealApi:
+            def __init__(self, token: str | None = None) -> None:
+                self.token = token
+
+            def list_datasets(self, *, search=None, limit=None, sort=None):
+                return [
+                    _FakeDataset(
+                        "org/dslr-photo-corpus",
+                        downloads=700,
+                        likes=25,
+                        tags=["computer-vision", "license:apache-2.0"],
+                    ),
+                    _FakeDataset(
+                        "org/audio-corpus",
+                        downloads=900,
+                        likes=40,
+                        tags=["audio", "license:apache-2.0"],
+                    ),
+                ]
+
+        old_api = build_best_dataset_sources.HfApi
+        try:
+            build_best_dataset_sources.HfApi = _VisualRealApi
+            found = build_best_dataset_sources.discover_hf_sources(
+                queries=["dslr photo dataset"],
+                per_query_limit=5,
+                max_sources=10,
+                min_downloads=10,
+                min_likes=1,
+                min_quality_score=0.0,
+                print_top_n=0,
+            )
+        finally:
+            build_best_dataset_sources.HfApi = old_api
+
+        self.assertEqual(found, ["org/dslr-photo-corpus"])
+
     def test_build_source_list_falls_back_to_live_discovery_when_cache_is_empty(self) -> None:
         old_discover = build_best_dataset_sources.discover_hf_sources
         try:
