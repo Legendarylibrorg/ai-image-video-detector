@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
 TMP="$(mktemp -d)"
 VENV_DIR="${VENV_DIR:-./.venv}"
+source "$ROOT_DIR/scripts/lib/core.sh"
 BASE_DATA="$TMP/data_best"
 NEW_DATA="$TMP/data_new"
 READY_DATA="$TMP/training_ready"
@@ -11,26 +14,14 @@ REPORTS="$TMP/reports"
 ENS_OUT="$TMP/artifacts_ens"
 VIDEO_ARTIFACTS="$TMP/video_artifacts"
 mkdir -p "$BASE_DATA"/{train,val,test}/{ai,real} "$NEW_DATA"/train/{ai,real} "$VIDEO_DATA"/{train,val}/{ai,real}
-
-if [[ -f "$VENV_DIR/bin/activate" ]]; then
-  # shellcheck disable=SC1090
-  source "$VENV_DIR/bin/activate"
-fi
-
-repo_python() {
-  local python_bin="${VENV_DIR}/bin/python"
-  if [[ -x "$python_bin" ]]; then
-    "$python_bin" "$@"
-    return 0
-  fi
-  python "$@"
-}
+ensure_env
 
 repo_python - <<'PY' "$BASE_DATA" "$NEW_DATA"
 from pathlib import Path
 import sys
 from PIL import Image
 import numpy as np
+import piexif
 
 base = Path(sys.argv[1])
 new = Path(sys.argv[2])
@@ -74,7 +65,38 @@ def make_real_image(seed: int) -> np.ndarray:
     return np.clip(base, 0, 255).astype("uint8")
 
 
-for split, n in [("train", 8), ("val", 4), ("test", 4)]:
+def save_labeled_image(path: Path, arr: np.ndarray, cls: str) -> None:
+    image = Image.fromarray(arr, mode="RGB")
+    if cls == "ai":
+        exif_dict = {
+            "0th": {
+                piexif.ImageIFD.Software: b"Stable Diffusion WebUI",
+            },
+            "Exif": {
+                piexif.ExifIFD.UserComment: b"prompt: cinematic portrait; steps: 28; sampler: euler",
+            },
+            "GPS": {},
+            "Interop": {},
+            "1st": {},
+            "thumbnail": None,
+        }
+    else:
+        exif_dict = {
+            "0th": {
+                piexif.ImageIFD.Make: b"Canon",
+                piexif.ImageIFD.Model: b"EOS R6",
+                piexif.ImageIFD.DateTime: b"2024:01:02 03:04:05",
+            },
+            "Exif": {},
+            "GPS": {},
+            "Interop": {},
+            "1st": {},
+            "thumbnail": None,
+        }
+    image.save(path, format="JPEG", quality=92, exif=piexif.dump(exif_dict))
+
+
+for split, n in [("train", 16), ("val", 8), ("test", 8)]:
     split_seed = {"train": 1000, "val": 2000, "test": 3000}[split]
     for cls in ["ai", "real"]:
         d = base / split / cls
@@ -83,14 +105,14 @@ for split, n in [("train", 8), ("val", 4), ("test", 4)]:
             class_offset = 0 if cls == "ai" else 500
             seed = split_seed + class_offset + i
             arr = make_ai_image(seed) if cls == "ai" else make_real_image(seed)
-            Image.fromarray(arr, mode="RGB").save(d / f"{cls}_{i}.jpg", quality=92)
+            save_labeled_image(d / f"{cls}_{i}.jpg", arr, cls)
 
 for cls in ["ai", "real"]:
     d = new / "train" / cls
     d.mkdir(parents=True, exist_ok=True)
     seed = 4000 if cls == "ai" else 4500
     arr = make_ai_image(seed) if cls == "ai" else make_real_image(seed)
-    Image.fromarray(arr, mode="RGB").save(d / f"extra_{cls}.jpg", quality=92)
+    save_labeled_image(d / f"extra_{cls}.jpg", arr, cls)
 PY
 
 export PYTHONPYCACHEPREFIX="$TMP/pycache"
@@ -99,7 +121,8 @@ export TRAIN_NO_COMPILE=1
 export TRAIN_NUM_WORKERS=0
 export PIPELINE_MIN_FREE_GB=0
 export MALWARE_SCAN=0
-export RUN_METADATA_MEMBER=1
+export RUN_METADATA_MEMBER=0
+export TRAIN_ENSEMBLE_PROFILE=smoke
 
 ENSEMBLE_MODELS=()
 
@@ -114,36 +137,17 @@ collect_ensemble_model_paths() {
   done
 }
 
-clone_smoke_member() {
-  local target_dir="$1"
-  rm -rf "$target_dir"
-  mkdir -p "$target_dir"
-  cp -R "$ENS_OUT/m1/." "$target_dir/"
-}
-
 repo_python scripts/prepare_training_data.py \
   --base "$BASE_DATA" \
   --incremental "$NEW_DATA" \
   --out "$READY_DATA" \
   --copy
 
-aid-train \
-  --data "$READY_DATA" \
-  --out "$ENS_OUT/m1" \
-  --epochs 2 \
-  --batch-size 8 \
-  --img-size 256 \
-  --lr 2e-4 \
-  --loss focal \
-  --focal-gamma 2.0 \
-  --backbone tiny \
-  --num-workers 0 \
-  --no-pretrained-backbone \
-  --no-compile
-
-for member in m2 m3 m4 m5_metadata; do
-  clone_smoke_member "$ENS_OUT/$member"
-done
+TRAIN_PATIENCE="${TRAIN_PATIENCE:-2}" \
+TRAIN_MIN_DELTA="${TRAIN_MIN_DELTA:-0.0}" \
+TRAIN_DEGENERATE_PATIENCE="${TRAIN_DEGENERATE_PATIENCE:-2}" \
+METADATA_MEMBER_EPOCHS="${METADATA_MEMBER_EPOCHS:-2}" \
+bash scripts/train_ensemble.sh "$READY_DATA" "$ENS_OUT" 2
 
 collect_ensemble_model_paths
 
@@ -229,7 +233,6 @@ for f in \
   "$ENS_OUT/m2/best.safetensors" \
   "$ENS_OUT/m3/best.safetensors" \
   "$ENS_OUT/m4/best.safetensors" \
-  "$ENS_OUT/m5_metadata/best.safetensors" \
   "$ENS_OUT/m1/calibration.json" \
   "$ENS_OUT/ensemble_config.json" \
   "$ENS_OUT/domain_config.json" \

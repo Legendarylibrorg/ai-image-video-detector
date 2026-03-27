@@ -21,17 +21,17 @@ class LocalShTests(unittest.TestCase):
         )
 
         out = proc.stdout
-        self.assertIn("usage: ./local.sh [setup|venv|deps|doctor|collect|run|status|smoke|smoke-real|collect-status|train|retrain|finetune|continuous]", out)
-        self.assertIn("basic linux commands inside the repo", out.lower())
+        self.assertIn("usage: ./local.sh [setup|deps|doctor|docker-doctor|collect|run|status|smoke|smoke-real|collect-status|train|retrain|finetune|continuous]", out)
+        self.assertIn("linux bash commands", out.lower())
+        self.assertIn("native linux", out.lower())
         self.assertIn("sudo apt-get update", out)
         self.assertIn("git unzip python3", out)
         self.assertIn("./local.sh setup", out)
         self.assertIn("printf \"HF_TOKEN='your_token_here'\\n\" >> .env", out)
         self.assertIn("./local.sh smoke", out)
-        self.assertIn("python3 -m venv .venv", out)
-        self.assertIn("source .venv/bin/activate", out)
         self.assertIn("./local.sh deps", out)
         self.assertIn("./local.sh doctor", out)
+        self.assertIn("./local.sh docker-doctor", out)
         self.assertIn("./local.sh smoke-real", out)
         self.assertIn("./local.sh collect", out)
         self.assertIn("./local.sh run", out)
@@ -41,11 +41,13 @@ class LocalShTests(unittest.TestCase):
         self.assertIn("./local.sh retrain", out)
         self.assertIn("./local.sh finetune", out)
         self.assertIn("./local.sh continuous", out)
-        self.assertIn("does not pause to prompt for HF_TOKEN by default", out)
-        self.assertIn("repo-local venv", out.lower())
+        self.assertIn("/opt/aid-venv", out)
+        self.assertIn("source checkout is mounted read-only", out)
+        self.assertIn("setup creates or reuses ./.venv", out)
         self.assertNotIn("advanced aliases still work", out.lower())
         self.assertNotIn("detect <image>", out)
         self.assertNotIn("./local.sh deps-update", out)
+        self.assertNotIn("./local.sh venv", out)
 
     def test_setup_uses_linux_setup_path_in_dry_run(self) -> None:
         proc = subprocess.run(
@@ -68,23 +70,6 @@ class LocalShTests(unittest.TestCase):
         self.assertIn("[DRY_RUN] env UPGRADE_TOOLCHAIN=0 bash scripts/install_deps.sh", out)
         self.assertIn("[DRY_RUN] env DOCTOR_REQUIRE_TOKEN=0 bash scripts/doctor.sh", out)
         self.assertIn("setup_status=ready", out)
-
-    def test_hidden_venv_command_creates_custom_venv(self) -> None:
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            venv_dir = Path(tmpdir) / "repo-venv"
-            proc = subprocess.run(
-                ["bash", "./local.sh", "venv"],
-                cwd=ROOT,
-                check=True,
-                capture_output=True,
-                text=True,
-                env={**os.environ, "VENV_DIR": str(venv_dir)},
-            )
-
-        self.assertIn("venv_status=", proc.stdout)
-        self.assertIn(str(venv_dir), proc.stdout)
 
     def test_deps_command_runs_install_script(self) -> None:
         proc = subprocess.run(
@@ -117,9 +102,11 @@ class LocalShTests(unittest.TestCase):
 
     def test_retrain_and_continuous_commands_route_to_supported_pipeline_paths(self) -> None:
         text = (ROOT / "local.sh").read_text(encoding="utf-8")
+        self.assertIn("docker-doctor)", text)
         self.assertIn("retrain)", text)
         self.assertIn("finetune)", text)
         self.assertIn("continuous)", text)
+        self.assertIn('DOCTOR_REQUIRE_DOCKER=1 bash scripts/doctor.sh "$@"', text)
         self.assertIn('run_do retrain "$@"', text)
         self.assertIn('run_do finetune "$@"', text)
         self.assertIn('run_do continuous "$@"', text)

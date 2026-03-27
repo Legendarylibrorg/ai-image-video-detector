@@ -10,25 +10,33 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class InstallDepsSurfaceTests(unittest.TestCase):
-    def test_install_deps_verifies_huggingface_python_and_cli(self) -> None:
+    def test_install_deps_scopes_dependency_checks_by_extra(self) -> None:
         text = (ROOT / "scripts" / "install_deps.sh").read_text(encoding="utf-8")
-        self.assertIn("import ai_image_detector", text)
-        self.assertIn("import numpy", text)
-        self.assertIn("import piexif", text)
-        self.assertIn("import safetensors", text)
-        self.assertIn("import sklearn", text)
-        self.assertIn("import torchvision", text)
-        self.assertIn("import huggingface_hub", text)
-        self.assertIn("import cv2", text)
+        self.assertIn('DEPS_EXTRA="${DEPS_EXTRA:-pipeline}"', text)
+        self.assertIn('DEPS_STAMP_FILE="${DEPS_STAMP_FILE:-$VENV_DIR/.deps_stamp.${DEPS_PROFILE_TAG}}"', text)
+        self.assertIn("extra_enabled()", text)
+        self.assertIn("verify_python_deps()", text)
+        self.assertIn("verify_required_commands()", text)
+        self.assertIn('modules = {"ai_image_detector"}', text)
+        self.assertIn('modules.update({"numpy", "PIL", "safetensors", "torch", "torchvision"})', text)
+        self.assertIn('modules.update({"piexif", "sklearn"})', text)
+        self.assertIn('modules.update({"datasets", "huggingface_hub", "PIL"})', text)
+        self.assertIn('modules.add("cv2")', text)
         self.assertIn("command -v hf", text)
         self.assertIn("command -v aid-train", text)
         self.assertIn("command -v aid-video-train", text)
         self.assertNotIn("command -v aid-dataset", text)
-        self.assertIn("deps_fail=huggingface_cli_missing", text)
-        self.assertIn("deps_fail=repo_cli_missing", text)
+        self.assertIn("deps_fail=huggingface_cli_missing extra=$DEPS_EXTRA", text)
+        self.assertIn("deps_fail=repo_cli_missing cli=aid-train extra=$DEPS_EXTRA", text)
         self.assertIn("PIP_DISABLE_PIP_VERSION_CHECK=1", text)
         self.assertIn("python -m pip install --progress-bar off", text)
         self.assertIn('"$UPGRADE_TOOLCHAIN" != "1"', text)
+
+    def test_install_deps_uses_lock_only_for_full_pipeline_profile(self) -> None:
+        text = (ROOT / "scripts" / "install_deps.sh").read_text(encoding="utf-8")
+        self.assertIn('if [[ -s "$LOCK_FILE" && "$DEPS_EXTRA" == "pipeline" ]]; then', text)
+        self.assertIn('echo "deps_lock=skip extra=$DEPS_EXTRA fallback=pyproject_resolve"', text)
+        self.assertIn('pip_cmd install --upgrade --upgrade-strategy eager -e ".[${DEPS_EXTRA}]"', text)
 
     def test_update_deps_lock_emits_direct_dependency_lock(self) -> None:
         text = (ROOT / "scripts" / "update_deps_lock.sh").read_text(encoding="utf-8")

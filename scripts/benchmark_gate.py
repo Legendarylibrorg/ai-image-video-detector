@@ -6,12 +6,13 @@ from pathlib import Path
 import sys
 
 from release_selection import select_public_model
+from script_support import read_json_dict
 
 
 def _read_json(path: Path) -> dict:
     if not path.exists():
         raise FileNotFoundError(path)
-    return json.loads(path.read_text(encoding="utf-8"))
+    return read_json_dict(path)
 
 
 def _metric(obj: dict, *names: str, default: float | None = None) -> float:
@@ -21,6 +22,45 @@ def _metric(obj: dict, *names: str, default: float | None = None) -> float:
     if default is None:
         raise KeyError(names[0] if names else "metric")
     return float(default)
+
+
+def _check_model_metrics(
+    *,
+    prefix: str,
+    metrics: dict,
+    min_auc: float,
+    min_f1: float,
+    min_precision: float,
+    min_recall: float,
+    max_ece: float,
+    max_brier: float,
+    checks: dict[str, float | str],
+    failures: list[str],
+) -> None:
+    auc = _metric(metrics, "auc", default=0.0)
+    f1 = _metric(metrics, "f1", default=0.0)
+    precision = _metric(metrics, "precision", "precision_ai", default=0.0)
+    recall = _metric(metrics, "recall", "recall_ai", default=0.0)
+    ece = _metric(metrics, "ece", default=1.0)
+    brier = _metric(metrics, "brier", default=1.0)
+    checks[f"{prefix}_auc"] = auc
+    checks[f"{prefix}_f1"] = f1
+    checks[f"{prefix}_precision"] = precision
+    checks[f"{prefix}_recall"] = recall
+    checks[f"{prefix}_ece"] = ece
+    checks[f"{prefix}_brier"] = brier
+    if auc < min_auc:
+        failures.append(f"{prefix}_auc {auc:.4f} < {min_auc:.4f}")
+    if f1 < min_f1:
+        failures.append(f"{prefix}_f1 {f1:.4f} < {min_f1:.4f}")
+    if precision < min_precision:
+        failures.append(f"{prefix}_precision {precision:.4f} < {min_precision:.4f}")
+    if recall < min_recall:
+        failures.append(f"{prefix}_recall {recall:.4f} < {min_recall:.4f}")
+    if ece > max_ece:
+        failures.append(f"{prefix}_ece {ece:.4f} > {max_ece:.4f}")
+    if brier > max_brier:
+        failures.append(f"{prefix}_brier {brier:.4f} > {max_brier:.4f}")
 
 
 def main() -> int:
@@ -47,30 +87,18 @@ def main() -> int:
     checks: dict[str, float | str] = {}
 
     test_metrics = _read_json(ens / "test_metrics.json")
-    image_auc = _metric(test_metrics, "auc", default=0.0)
-    image_f1 = _metric(test_metrics, "f1", default=0.0)
-    image_precision = _metric(test_metrics, "precision", "precision_ai", default=0.0)
-    image_recall = _metric(test_metrics, "recall", "recall_ai", default=0.0)
-    image_ece = _metric(test_metrics, "ece", default=1.0)
-    image_brier = _metric(test_metrics, "brier", default=1.0)
-    checks["image_auc"] = image_auc
-    checks["image_f1"] = image_f1
-    checks["image_precision"] = image_precision
-    checks["image_recall"] = image_recall
-    checks["image_ece"] = image_ece
-    checks["image_brier"] = image_brier
-    if image_auc < args.min_image_auc:
-        failures.append(f"image_auc {image_auc:.4f} < {args.min_image_auc:.4f}")
-    if image_f1 < args.min_image_f1:
-        failures.append(f"image_f1 {image_f1:.4f} < {args.min_image_f1:.4f}")
-    if image_precision < args.min_image_precision:
-        failures.append(f"image_precision {image_precision:.4f} < {args.min_image_precision:.4f}")
-    if image_recall < args.min_image_recall:
-        failures.append(f"image_recall {image_recall:.4f} < {args.min_image_recall:.4f}")
-    if image_ece > args.max_image_ece:
-        failures.append(f"image_ece {image_ece:.4f} > {args.max_image_ece:.4f}")
-    if image_brier > args.max_image_brier:
-        failures.append(f"image_brier {image_brier:.4f} > {args.max_image_brier:.4f}")
+    _check_model_metrics(
+        prefix="image",
+        metrics=test_metrics,
+        min_auc=args.min_image_auc,
+        min_f1=args.min_image_f1,
+        min_precision=args.min_image_precision,
+        min_recall=args.min_image_recall,
+        max_ece=args.max_image_ece,
+        max_brier=args.max_image_brier,
+        checks=checks,
+        failures=failures,
+    )
 
     robust_eval = _read_json(ens / "robust_eval.json")
     clean_metrics = robust_eval.get("clean")
@@ -160,30 +188,18 @@ def main() -> int:
         if not public_test_metrics:
             failures.append(f"missing {public_dir / 'test_metrics.json'}")
         else:
-            public_auc = _metric(public_test_metrics, "auc", default=0.0)
-            public_f1 = _metric(public_test_metrics, "f1", default=0.0)
-            public_precision = _metric(public_test_metrics, "precision", "precision_ai", default=0.0)
-            public_recall = _metric(public_test_metrics, "recall", "recall_ai", default=0.0)
-            public_ece = _metric(public_test_metrics, "ece", default=1.0)
-            public_brier = _metric(public_test_metrics, "brier", default=1.0)
-            checks["public_model_auc"] = public_auc
-            checks["public_model_f1"] = public_f1
-            checks["public_model_precision"] = public_precision
-            checks["public_model_recall"] = public_recall
-            checks["public_model_ece"] = public_ece
-            checks["public_model_brier"] = public_brier
-            if public_auc < args.min_image_auc:
-                failures.append(f"public_model_auc {public_auc:.4f} < {args.min_image_auc:.4f}")
-            if public_f1 < args.min_image_f1:
-                failures.append(f"public_model_f1 {public_f1:.4f} < {args.min_image_f1:.4f}")
-            if public_precision < args.min_image_precision:
-                failures.append(f"public_model_precision {public_precision:.4f} < {args.min_image_precision:.4f}")
-            if public_recall < args.min_image_recall:
-                failures.append(f"public_model_recall {public_recall:.4f} < {args.min_image_recall:.4f}")
-            if public_ece > args.max_image_ece:
-                failures.append(f"public_model_ece {public_ece:.4f} > {args.max_image_ece:.4f}")
-            if public_brier > args.max_image_brier:
-                failures.append(f"public_model_brier {public_brier:.4f} > {args.max_image_brier:.4f}")
+            _check_model_metrics(
+                prefix="public_model",
+                metrics=public_test_metrics,
+                min_auc=args.min_image_auc,
+                min_f1=args.min_image_f1,
+                min_precision=args.min_image_precision,
+                min_recall=args.min_image_recall,
+                max_ece=args.max_image_ece,
+                max_brier=args.max_image_brier,
+                checks=checks,
+                failures=failures,
+            )
 
     out = {"ok": len(failures) == 0, "checks": checks, "failures": failures}
     print(json.dumps(out, indent=2))

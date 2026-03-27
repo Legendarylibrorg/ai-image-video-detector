@@ -70,6 +70,26 @@ class DoctorShTests(unittest.TestCase):
         self.assertIn("doctor_fail: nvidia_smi_missing gpu_required=1", proc.stdout)
         self.assertIn("doctor_fail: clamscan_missing clamav_required=1", proc.stdout)
 
+    def test_doctor_can_require_docker(self) -> None:
+        env = os.environ.copy()
+        env.update(
+            {
+                "DOCTOR_REQUIRE_DOCKER": "1",
+                "DOCTOR_REQUIRE_TOKEN": "0",
+            }
+        )
+        proc = subprocess.run(
+            ["bash", "scripts/doctor.sh"],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("doctor_ok: docker_path_ready path=", proc.stdout)
+        self.assertIn("doctor_fail: docker_missing docker_required=1", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

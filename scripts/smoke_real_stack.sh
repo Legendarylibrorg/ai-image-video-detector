@@ -67,7 +67,6 @@ python scripts/build_best_dataset.py \
   --max-per-source-split-class 16 \
   --jpeg-quality 90 \
   --hardneg-fraction 0 \
-  --hf-only \
   --no-default-sources \
   --no-discover-hf \
   --extra-source "$SOURCE_ID" \

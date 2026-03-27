@@ -11,6 +11,7 @@ TOKEN_CHECK_TIMEOUT_SEC="${DOCTOR_TOKEN_CHECK_TIMEOUT_SEC:-12}"
 DOCTOR_REQUIRE_TOKEN="${DOCTOR_REQUIRE_TOKEN:-0}"
 DOCTOR_REQUIRE_GPU="${DOCTOR_REQUIRE_GPU:-0}"
 DOCTOR_REQUIRE_CLAMAV="${DOCTOR_REQUIRE_CLAMAV:-0}"
+DOCTOR_REQUIRE_DOCKER="${DOCTOR_REQUIRE_DOCKER:-0}"
 
 ok_count=0
 warn_count=0
@@ -93,6 +94,41 @@ check_clamav() {
   emit_ok "clamscan_ready=1"
 }
 
+check_docker_stack() {
+  local compose_file="$ROOT_DIR/docker-compose.yml"
+  local dockerfile_cpu="$ROOT_DIR/Dockerfile"
+  local dockerfile_gpu="$ROOT_DIR/Dockerfile.gpu"
+
+  local path=""
+  for path in "$compose_file" "$dockerfile_cpu" "$dockerfile_gpu"; do
+    if [[ -f "$path" ]]; then
+      emit_ok "docker_path_ready path=$path"
+    else
+      emit_fail "docker_path_missing path=$path"
+    fi
+  done
+
+  if ! command -v docker >/dev/null 2>&1; then
+    if [[ "$DOCTOR_REQUIRE_DOCKER" == "1" ]]; then
+      emit_fail "docker_missing docker_required=1"
+    else
+      emit_warn "docker_missing"
+    fi
+    return
+  fi
+  emit_ok "docker_cli_ready=1"
+
+  if docker compose version >/dev/null 2>&1; then
+    emit_ok "docker_compose_ready=1"
+  else
+    if [[ "$DOCTOR_REQUIRE_DOCKER" == "1" ]]; then
+      emit_fail "docker_compose_missing docker_required=1"
+    else
+      emit_warn "docker_compose_missing"
+    fi
+  fi
+}
+
 check_cache_paths() {
   local cache1="${BEST_DS_CACHE_DIR:-$ROOT_DIR/.local/hf}"
   local cache2="${VIDEO_CACHE_DIR:-$ROOT_DIR/.local/hf}"
@@ -126,6 +162,48 @@ check_cache_paths() {
     fi
     emit_ok "cache_dir_ready path=$d"
   done
+}
+
+check_isolation_posture() {
+  local in_container=0
+  local virt_type=""
+  if [[ -f "/.dockerenv" ]]; then
+    in_container=1
+  elif grep -Eq "(docker|containerd|kubepods|podman)" /proc/1/cgroup 2>/dev/null; then
+    in_container=1
+  fi
+
+  if command -v systemd-detect-virt >/dev/null 2>&1; then
+    virt_type="$(systemd-detect-virt 2>/dev/null || true)"
+  fi
+
+  local in_vm=0
+  if [[ -n "$virt_type" && "$virt_type" != "docker" && "$virt_type" != "container-other" && "$virt_type" != "podman" ]]; then
+    in_vm=1
+  fi
+
+  if [[ "$in_vm" == "1" && "$in_container" == "1" ]]; then
+    emit_ok "isolation=vm_plus_container virt=$virt_type"
+  elif [[ "$in_vm" == "1" ]]; then
+    emit_warn "isolation=vm_only virt=$virt_type prefer_compose_inside_vm=1"
+  elif [[ "$in_container" == "1" ]]; then
+    emit_warn "isolation=container_only prefer_dedicated_vm=1"
+  else
+    emit_warn "isolation=host_only highest_supply_chain_risk=1"
+  fi
+
+  if [[ "$in_container" == "1" ]]; then
+    if [[ -w "$ROOT_DIR/README.md" ]]; then
+      emit_warn "source_checkout_writable_in_container=1 prefer_read_only_source_mount=1"
+    else
+      emit_ok "source_checkout_read_only_in_container=1"
+    fi
+    if [[ "$VENV_DIR" == "$ROOT_DIR"* ]]; then
+      emit_warn "container_venv_inside_checkout=1 prefer_isolated_venv_volume=1"
+    else
+      emit_ok "container_venv_isolated_from_checkout=1 path=$VENV_DIR"
+    fi
+  fi
 }
 
 check_venv_and_deps() {
@@ -208,10 +286,12 @@ PY
 load_env_file
 check_disk_space
 check_gpu
+check_isolation_posture
 check_cache_paths
 check_venv_and_deps
 check_hf_token
 check_clamav
+check_docker_stack
 
 echo "doctor_summary ok=$ok_count warn=$warn_count fail=$fail_count"
 if (( fail_count > 0 )); then

@@ -18,8 +18,9 @@ class SmokeWorkflowTests(unittest.TestCase):
     def test_smoke_script_exercises_end_to_end_pipeline_outputs(self) -> None:
         text = (ROOT / "scripts" / "smoke_resume_eval.sh").read_text(encoding="utf-8")
         self.assertIn("scripts/prepare_training_data.py", text)
-        self.assertIn("aid-train", text)
-        self.assertIn("clone_smoke_member", text)
+        self.assertIn("scripts/train_ensemble.sh", text)
+        self.assertIn('export TRAIN_ENSEMBLE_PROFILE=smoke', text)
+        self.assertIn('export RUN_METADATA_MEMBER=0', text)
         self.assertIn("scripts/fit_ensemble.py", text)
         self.assertIn("scripts/fit_domain_thresholds.py", text)
         self.assertIn("scripts/eval_test_ensemble.py", text)
@@ -34,7 +35,8 @@ class SmokeWorkflowTests(unittest.TestCase):
         self.assertIn("release_manifest.json", text)
         self.assertIn("robust_eval.json", text)
         self.assertIn("collect_ensemble_model_paths", text)
-        self.assertIn('"$ENS_OUT/m5_metadata/best.safetensors"', text)
+        self.assertNotIn('"$ENS_OUT/m5_metadata/best.safetensors"', text)
+        self.assertNotIn("clone_smoke_member", text)
 
 
 if __name__ == "__main__":

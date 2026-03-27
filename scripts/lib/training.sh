@@ -202,25 +202,34 @@ prepare_training_image_data() {
   PREPARED_IMAGE_DATA_DIR="$out_root"
 }
 
+run_prepared_max_quality_pipeline() {
+  local collected_root="$1"
+  local disable_video_train="${2:-0}"
+  local -a env_args=(
+    DATA_DIR="$PREPARED_IMAGE_DATA_DIR"
+    TRAIN_READY_DATA_DIR="$PREPARED_IMAGE_DATA_DIR"
+    PIPELINE_COLLECTED_DATA_DIR="$collected_root"
+    PIPELINE_PREPARED_DATA_DIR="$PREPARED_IMAGE_DATA_DIR"
+    SKIP_DATA=1
+    RUN_VIDEO_DATA_PULL=0
+  )
+  if [[ "$disable_video_train" == "1" ]]; then
+    env_args+=(RUN_VIDEO_TRAIN=0)
+  fi
+  env "${env_args[@]}" bash scripts/max_quality_4090.sh
+}
+
 train_image_pipeline() {
   prepare_training_image_data
   local collected_root="${DATA_DIR:-./data_best}"
-  env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
-    TRAIN_READY_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
-    PIPELINE_COLLECTED_DATA_DIR="$collected_root" \
-    PIPELINE_PREPARED_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
-    SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 RUN_VIDEO_TRAIN=0 bash scripts/max_quality_4090.sh
+  run_prepared_max_quality_pipeline "$collected_root" 1
 }
 
 train_all_pipeline() {
   prepare_training_image_data
   require_video_training_data "${VIDEO_OUT:-./video_data}"
   local collected_root="${DATA_DIR:-./data_best}"
-  env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
-    TRAIN_READY_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
-    PIPELINE_COLLECTED_DATA_DIR="$collected_root" \
-    PIPELINE_PREPARED_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
-    SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 bash scripts/max_quality_4090.sh
+  run_prepared_max_quality_pipeline "$collected_root"
 }
 
 train_existing_pipeline() {
@@ -228,93 +237,60 @@ train_existing_pipeline() {
   local collected_root="${DATA_DIR:-./data_best}"
   if have_complete_video_training_data "${VIDEO_OUT:-./video_data}"; then
     echo "train_mode=image_plus_video"
-    env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
-      TRAIN_READY_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
-      PIPELINE_COLLECTED_DATA_DIR="$collected_root" \
-      PIPELINE_PREPARED_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
-      SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 bash scripts/max_quality_4090.sh
+    run_prepared_max_quality_pipeline "$collected_root"
     return
   fi
   echo "train_mode=image_only reason=video_data_missing"
-  env DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
-    TRAIN_READY_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
-    PIPELINE_COLLECTED_DATA_DIR="$collected_root" \
-    PIPELINE_PREPARED_DATA_DIR="$PREPARED_IMAGE_DATA_DIR" \
-    SKIP_DATA=1 RUN_VIDEO_DATA_PULL=0 RUN_VIDEO_TRAIN=0 bash scripts/max_quality_4090.sh
+  run_prepared_max_quality_pipeline "$collected_root" 1
 }
 
-run_pipeline_training_stage() {
-  local train_min="${PIPELINE_MIN_TRAIN_PER_CLASS:-${TRAIN_PER_CLASS:-0}}"
-  local val_min="${PIPELINE_MIN_VAL_PER_CLASS:-${VAL_PER_CLASS:-0}}"
-  local test_min="${PIPELINE_MIN_TEST_PER_CLASS:-${TEST_PER_CLASS:-0}}"
-  wait_for_training_to_finish "pipeline_stage=train"
-  PIPELINE_MIN_TRAIN_PER_CLASS="$train_min" \
-  PIPELINE_MIN_VAL_PER_CLASS="$val_min" \
-  PIPELINE_MIN_TEST_PER_CLASS="$test_min" \
-  require_pipeline_collection_data "${DATA_DIR:-./data_best}"
-  PIPELINE_MIN_TRAIN_PER_CLASS="$train_min" \
-  PIPELINE_MIN_VAL_PER_CLASS="$val_min" \
-  PIPELINE_MIN_TEST_PER_CLASS="$test_min" \
-  TRAIN_REQUIRE_MIN_COUNTS=1 with_training_lock train_existing_pipeline
+run_benchmark_gate() {
+  local -a gate_args=(
+    --ens-out "${ENS_OUT:-./artifacts_ens}"
+    --video-out "${VIDEO_ARTIFACTS_OUT:-./video_artifacts}"
+    --min-image-auc "${GATE_MIN_IMAGE_AUC:-0.96}"
+    --min-image-f1 "${GATE_MIN_IMAGE_F1:-0.92}"
+    --min-image-precision "${GATE_MIN_IMAGE_PRECISION:-0.90}"
+    --min-image-recall "${GATE_MIN_IMAGE_RECALL:-0.90}"
+    --max-image-ece "${GATE_MAX_IMAGE_ECE:-0.05}"
+    --max-image-brier "${GATE_MAX_IMAGE_BRIER:-0.08}"
+    --min-robust-worst-auc "${GATE_MIN_ROBUST_WORST_AUC:-0.90}"
+    --min-robust-worst-f1 "${GATE_MIN_ROBUST_WORST_F1:-0.85}"
+    --max-robust-auc-drop "${GATE_MAX_ROBUST_AUC_DROP:-0.08}"
+    --min-video-acc "${GATE_MIN_VIDEO_ACC:-0.86}"
+  )
+
+  if [[ "${GATE_ALLOW_MISSING_VIDEO:-auto}" == "1" ]]; then
+    gate_args+=(--skip-video)
+  elif [[ "${GATE_ALLOW_MISSING_VIDEO:-auto}" != "0" ]] && ! have_complete_video_training_data; then
+    gate_args+=(--skip-video)
+  fi
+
+  run_repo_python scripts/benchmark_gate.py "${gate_args[@]}"
 }
 
-run_pipeline_validation_stage() {
-  validate_train_artifacts
+run_retrain_pipeline() {
+  bash scripts/do.sh train-existing
+  run_benchmark_gate
+}
+
+run_review_queue_ingest() {
+  run_repo_python scripts/review_queue_to_dataset.py \
+    --queue "${REVIEW_QUEUE_DIR:-./incoming_review_queue}" \
+    --dst "${NEW_DATA_DST:-./data_new/train}" || true
+}
+
+run_weekly_retrain_cycle() {
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) weekly_retrain_start"
+  run_review_queue_ingest
+  run_retrain_pipeline
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) weekly_retrain_gate_passed"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) weekly_retrain_done"
 }
 
 run_full_pipeline() {
   wait_for_training_to_finish "pipeline"
   with_training_lock bash scripts/max_quality_4090.sh
-}
-
-validate_train_artifacts() {
-  local ens_dir="${ENS_OUT:-./artifacts_ens}"
-  local vid_best_sft="${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/best_video.safetensors"
-  local missing=0
-  local video_required=0
-  local model_count=0
-  shopt -s nullglob
-  local -a ensemble_models=("$ens_dir"/m*/best.safetensors)
-  shopt -u nullglob
-
-  case "${VALIDATE_REQUIRE_VIDEO:-auto}" in
-    1|true|yes|always)
-      video_required=1
-      ;;
-    0|false|no|never)
-      video_required=0
-      ;;
-    *)
-      if have_complete_video_training_data "${VIDEO_OUT:-./video_data}"; then
-        video_required=1
-      fi
-      ;;
-  esac
-
-  model_count="${#ensemble_models[@]}"
-  if (( model_count < 4 )); then
-    echo "missing_artifact=ensemble_models have=$model_count need=4"
-    missing=1
-  fi
-
-  for p in "$ens_dir/test_metrics.json" "$ens_dir/prod_manifest.json"; do
-    if [[ ! -f "$p" ]]; then
-      echo "missing_artifact=$p"
-      missing=1
-    fi
-  done
-  if [[ "$video_required" == "1" && ! -f "$vid_best_sft" ]]; then
-    echo "missing_artifact=$vid_best_sft"
-    missing=1
-  elif [[ "$video_required" != "1" ]]; then
-    echo "artifact_validation_video=skipped reason=video_optional"
-  fi
-
-  if [[ "$missing" == "1" ]]; then
-    echo "artifact_validation=failed"
-    return 1
-  fi
-  echo "artifact_validation=ok"
 }
 
 train_video_only() {

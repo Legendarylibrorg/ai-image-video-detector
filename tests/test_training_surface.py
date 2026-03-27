@@ -59,25 +59,21 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertEqual(lines[3], "True")
         self.assertEqual(lines[4], "False")
 
-    def test_local_retrain_defaults_to_train_existing(self) -> None:
-        text = (ROOT / "scripts" / "local_retrain_4090.sh").read_text(encoding="utf-8")
-        self.assertIn('source "$ROOT_DIR/scripts/lib/core.sh"', text)
-        self.assertIn('source "$ROOT_DIR/scripts/lib/training.sh"', text)
+    def test_retrain_logic_lives_in_shared_training_helpers(self) -> None:
+        text = (ROOT / "scripts" / "lib" / "training.sh").read_text(encoding="utf-8")
+        self.assertIn("run_prepared_max_quality_pipeline()", text)
+        self.assertIn("run_benchmark_gate()", text)
+        self.assertIn("run_retrain_pipeline()", text)
         self.assertIn("bash scripts/do.sh train-existing", text)
-        self.assertNotIn("start-v2", text)
         self.assertIn("--skip-video", text)
         self.assertIn('--min-image-auc "${GATE_MIN_IMAGE_AUC:-0.96}"', text)
         self.assertIn('--min-image-f1 "${GATE_MIN_IMAGE_F1:-0.92}"', text)
         self.assertIn('--min-robust-worst-auc "${GATE_MIN_ROBUST_WORST_AUC:-0.90}"', text)
         self.assertIn('--max-robust-auc-drop "${GATE_MAX_ROBUST_AUC_DROP:-0.08}"', text)
         self.assertIn("run_repo_python scripts/benchmark_gate.py", text)
-        self.assertNotIn('PIPELINE_CMD="${PIPELINE_CMD:-}"', text)
-        self.assertNotIn("unsupported_pipeline_cmd=", text)
-        self.assertNotIn('PIPELINE_MODE="${PIPELINE_MODE:-}"', text)
-        self.assertNotIn("unsupported_pipeline_mode=", text)
-        self.assertNotIn('eval "$PIPELINE_CMD"', text)
-        self.assertNotIn("video_bucket_has_files()", text)
-        self.assertNotIn("have_complete_video_training_data()", text)
+        self.assertIn('run_prepared_max_quality_pipeline "$collected_root" 1', text)
+        self.assertIn('run_prepared_max_quality_pipeline "$collected_root"', text)
+        self.assertFalse((ROOT / "scripts" / "local_retrain_4090.sh").exists())
 
     def test_metadata_finetune_wrapper_uses_metadata_features_and_existing_checkpoint(self) -> None:
         text = (ROOT / "scripts" / "metadata_finetune_4090.sh").read_text(encoding="utf-8")
@@ -120,11 +116,23 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertIn('export RUN_DOMAIN_THRESHOLDS="${RUN_DOMAIN_THRESHOLDS:-1}"', text)
         self.assertIn('export RUN_ROBUST_EVAL="${RUN_ROBUST_EVAL:-1}"', text)
         self.assertIn('export BEST_DS_HF_MIN_QUALITY_SCORE="${BEST_DS_HF_MIN_QUALITY_SCORE:-1.95}"', text)
-        self.assertIn('export BEST_DS_MAX_PER_SOURCE_CLASS="${BEST_DS_MAX_PER_SOURCE_CLASS:-12000}"', text)
-        self.assertIn('export BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS="${BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS:-3500}"', text)
-        self.assertIn('export BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS="${BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS:-10}"', text)
+        self.assertIn('export BEST_DS_MAX_PER_SOURCE_CLASS="${BEST_DS_MAX_PER_SOURCE_CLASS:-10000}"', text)
+        self.assertIn('export BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS="${BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS:-3000}"', text)
+        self.assertIn('export BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS="${BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS:-12}"', text)
+        self.assertIn('export BEST_DS_MIN_SIDE="${BEST_DS_MIN_SIDE:-160}"', text)
+        self.assertIn('export BEST_DS_MAX_ASPECT_RATIO="${BEST_DS_MAX_ASPECT_RATIO:-4.0}"', text)
         self.assertIn('export TRAIN_PATIENCE="${TRAIN_PATIENCE:-5}"', text)
         self.assertIn('export VIDEO_MIN_BYTES="${VIDEO_MIN_BYTES:-200000}"', text)
+
+    def test_train_ensemble_uses_shared_member_train_helper(self) -> None:
+        text = (ROOT / "scripts" / "train_ensemble.sh").read_text(encoding="utf-8")
+        self.assertIn("run_member_train()", text)
+        self.assertIn('run_member_train "$OUT_DIR/m1"', text)
+        self.assertIn('run_member_train "$OUT_DIR/m2"', text)
+        self.assertIn('run_member_train "$OUT_DIR/m3"', text)
+        self.assertIn('run_member_train "$OUT_DIR/m4"', text)
+        self.assertIn('--threshold-objective balanced', text)
+        self.assertIn('"${common_args[@]}"', text)
 
     def test_full_pipeline_passes_quality_collection_guardrails(self) -> None:
         text = (ROOT / "scripts" / "full_pipeline_4090.sh").read_text(encoding="utf-8")
@@ -132,6 +140,8 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertIn('--min-hf-sources-per-split-class "$BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS"', text)
         self.assertIn('--hf-query-pause-ms "$BEST_DS_HF_QUERY_PAUSE_MS"', text)
         self.assertIn('--transient-error-cooldown-ms "$BEST_DS_TRANSIENT_ERROR_COOLDOWN_MS"', text)
+        self.assertNotIn("BEST_DS_LOCAL_", text)
+        self.assertNotIn("--local-source", text)
         self.assertIn('--min-video-bytes "$VIDEO_MIN_BYTES"', text)
         self.assertIn('PIPELINE_RELEASE_OUT="${PIPELINE_RELEASE_OUT:-$ENS_OUT/release}"', text)
         self.assertIn("write_release_bundle()", text)
@@ -147,19 +157,22 @@ class TrainingSurfaceTests(unittest.TestCase):
         text = (ROOT / "scripts" / "continuous_training.sh").read_text(encoding="utf-8")
         self.assertIn("Continuous collection + retraining loop", text)
         self.assertIn('source "$ROOT_DIR/scripts/lib/core.sh"', text)
+        self.assertIn('source "$ROOT_DIR/scripts/lib/training.sh"', text)
         self.assertIn('PIPELINE_WAIT_FOR_TRAINING_SEC="${PIPELINE_WAIT_FOR_TRAINING_SEC:-$CHECK_WHILE_TRAINING_SEC}"', text)
         self.assertIn('wait_for_training_to_finish "continuous_training"', text)
         self.assertIn("continuous_training_collect_start", text)
         self.assertIn("bash scripts/do.sh collect", text)
         self.assertIn("continuous_training_retrain_start", text)
-        self.assertIn("bash scripts/weekly_retrain_v3.sh", text)
+        self.assertIn("run_weekly_retrain_cycle", text)
         self.assertNotIn("is_training_active()", text)
 
-    def test_weekly_retrain_uses_repo_python_for_review_queue_ingest(self) -> None:
-        text = (ROOT / "scripts" / "weekly_retrain_v3.sh").read_text(encoding="utf-8")
-        self.assertIn('source "$ROOT_DIR/scripts/lib/core.sh"', text)
+    def test_weekly_retrain_logic_uses_repo_python_for_review_queue_ingest(self) -> None:
+        text = (ROOT / "scripts" / "lib" / "training.sh").read_text(encoding="utf-8")
+        self.assertIn("run_review_queue_ingest()", text)
         self.assertIn("run_repo_python scripts/review_queue_to_dataset.py", text)
         self.assertNotIn("\npython scripts/review_queue_to_dataset.py", text)
+        self.assertIn("run_weekly_retrain_cycle()", text)
+        self.assertFalse((ROOT / "scripts" / "weekly_retrain_v3.sh").exists())
 
 
 if __name__ == "__main__":

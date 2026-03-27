@@ -30,40 +30,36 @@ class DoShTests(unittest.TestCase):
             text=True,
         )
 
-    def test_best_profile_includes_local_sources_when_hf_only_disabled(self) -> None:
-        out = self.run_bash(
-            "source scripts/do.sh; "
-            "BEST_DS_HF_ONLY=0; "
-            "BEST_DS_LOCAL_SOURCES='/tmp/a,/tmp/b'; "
-            "print_image_collection_args best"
-        )
-
-        self.assertIn("--local-source\n/tmp/a\n", out)
-        self.assertIn("--local-source\n/tmp/b\n", out)
-        self.assertNotIn("--hf-only\n", out)
-
-    def test_best_profile_defaults_to_hf_only(self) -> None:
+    def test_best_profile_defaults_to_hf_sources_only(self) -> None:
         out = self.run_bash("source scripts/do.sh; print_image_collection_args best")
-        self.assertIn("--hf-only\n", out)
+        self.assertNotIn("--local-source\n", out)
+        self.assertNotIn("--local-source-real\n", out)
+        self.assertNotIn("--local-source-ai\n", out)
         self.assertIn("--cache-dir\n./.local/hf\n", out)
         self.assertIn("--hf-cache-only-if-present\n", out)
         self.assertIn("--quiet-progress\n", out)
 
     def test_best_profile_emits_split_source_diversity_gate(self) -> None:
         out = self.run_bash("source scripts/do.sh; print_image_collection_args best")
-        self.assertIn("--min-hf-sources-per-split-class\n10\n", out)
-        self.assertIn("--max-per-source-class\n12000\n", out)
-        self.assertIn("--max-per-source-split-class\n4000\n", out)
+        self.assertIn("--min-hf-sources-per-split-class\n12\n", out)
+        self.assertIn("--max-per-source-class\n10000\n", out)
+        self.assertIn("--max-per-source-split-class\n3000\n", out)
         self.assertIn("--hardneg-fraction\n0.35\n", out)
+        self.assertIn("--min-side\n160\n", out)
+        self.assertIn("--max-aspect-ratio\n4.0\n", out)
 
-    def test_fast_profile_defaults_to_hf_only_and_split_source_gate(self) -> None:
+    def test_fast_profile_defaults_to_hf_sources_only_and_split_source_gate(self) -> None:
         out = self.run_bash("source scripts/do.sh; print_image_collection_args fast")
-        self.assertIn("--hf-only\n", out)
+        self.assertNotIn("--local-source\n", out)
+        self.assertNotIn("--local-source-real\n", out)
+        self.assertNotIn("--local-source-ai\n", out)
         self.assertIn("--cache-dir\n./.local/hf\n", out)
         self.assertIn("--min-hf-sources-per-split-class\n6\n", out)
         self.assertIn("--max-per-source-class\n3000\n", out)
         self.assertIn("--max-per-source-split-class\n1000\n", out)
         self.assertIn("--hardneg-fraction\n0.25\n", out)
+        self.assertIn("--min-side\n160\n", out)
+        self.assertIn("--max-aspect-ratio\n4.0\n", out)
 
     def test_usage_lists_simple_aliases(self) -> None:
         out = self.run_bash("source scripts/do.sh; print_usage")
@@ -82,37 +78,6 @@ class DoShTests(unittest.TestCase):
         self.assertIn("usage: bash scripts/do.sh", proc.stdout)
         self.assertNotIn("start", proc.stdout)
 
-    def test_pipeline_stage_is_resumable(self) -> None:
-        out = self.run_bash(
-            "tmpdir=$(mktemp -d); "
-            "source scripts/do.sh; "
-            "PIPELINE_STAGE_DIR=\"$tmpdir\"; "
-            "call_file=\"$tmpdir/calls\"; "
-            "run_pipeline_stage sample bash -lc 'echo first >> \"$0\"' \"$call_file\"; "
-            "run_pipeline_stage sample bash -lc 'echo second >> \"$0\"' \"$call_file\"; "
-            "wc -l < \"$call_file\""
-        )
-        self.assertEqual(out.strip().splitlines()[-1].strip(), "1")
-
-    def test_pipeline_stage_retries_before_success(self) -> None:
-        out = self.run_bash(
-            "tmpdir=$(mktemp -d); "
-            "source scripts/do.sh; "
-            "PIPELINE_STAGE_DIR=\"$tmpdir\"; "
-            "PIPELINE_MAX_ATTEMPTS=3; "
-            "PIPELINE_RETRY_SLEEP_SEC=0; "
-            "attempt_file=\"$tmpdir/attempts\"; "
-            "run_pipeline_stage retry bash -lc "
-            "'count=0; "
-            "[[ -f \"$0\" ]] && count=$(cat \"$0\"); "
-            "count=$((count + 1)); "
-            "printf \"%s\\n\" \"$count\" > \"$0\"; "
-            "[[ \"$count\" -ge 2 ]]' "
-            "\"$attempt_file\"; "
-            "cat \"$attempt_file\""
-        )
-        self.assertEqual(out.strip().splitlines()[-1], "2")
-
     def test_diverse_profile_emits_rate_limit_tuned_flags(self) -> None:
         out = self.run_bash(
             "source scripts/do.sh; "
@@ -126,16 +91,18 @@ class DoShTests(unittest.TestCase):
         self.assertIn("--min-acceptance-rate\n0.02\n", out)
         self.assertIn("--max-per-source-class\n12000\n", out)
         self.assertIn("--max-per-source-split-class\n4000\n", out)
-        self.assertIn("--min-hf-sources-per-class\n16\n", out)
-        self.assertIn("--min-hf-sources-per-split-class\n10\n", out)
+        self.assertIn("--min-hf-sources-per-class\n20\n", out)
+        self.assertIn("--min-hf-sources-per-split-class\n12\n", out)
         self.assertIn("--hf-discovery-limit\n180\n", out)
-        self.assertIn("--hf-max-sources\n360\n", out)
+        self.assertIn("--hf-max-sources\n480\n", out)
         self.assertIn("--hf-min-quality-score\n1.95\n", out)
         self.assertIn("--hf-print-top\n24\n", out)
         self.assertIn("--repo-base-pause-ms\n150\n", out)
         self.assertIn("--repo-cooldown-ms\n15000\n", out)
         self.assertIn("--transient-error-cooldown-ms\n2500\n", out)
         self.assertIn("--hf-query-pause-ms\n900\n", out)
+        self.assertIn("--min-side\n160\n", out)
+        self.assertIn("--max-aspect-ratio\n4.0\n", out)
 
     def test_video_profile_uses_shared_hf_cache(self) -> None:
         out = self.run_bash("source scripts/do.sh; print_video_collection_args")
@@ -163,8 +130,13 @@ class DoShTests(unittest.TestCase):
         )
         self.assertIn("./data_best_fast", out)
         self.assertIn("query\\ one\\,query\\ two", out)
-        self.assertIn("--hf-only", out)
         self.assertIn("--require-full-targets", out)
+
+    def test_profiled_image_collection_helper_is_shared(self) -> None:
+        out = self.run_bash("source scripts/do.sh; declare -f collect_profiled_image_data; declare -f collect_image_data; declare -f collect_fast_data")
+        self.assertIn("collect_profiled_image_data ()", out)
+        self.assertIn('collect_profiled_image_data best "$out" "$query_csv"', out)
+        self.assertIn('collect_profiled_image_data fast "$out" "$query_csv"', out)
 
     def test_collect_diverse_image_data_builds_cached_args_without_mapfile(self) -> None:
         out = self.run_bash(
@@ -183,6 +155,32 @@ class DoShTests(unittest.TestCase):
         self.assertIn("builder:", out)
         self.assertIn("python:scripts/audit_diversity.py", out)
         self.assertIn("scan:./data_best", out)
+
+    def test_run_collection_command_requires_scanner_before_work(self) -> None:
+        out = self.run_bash(
+            "source scripts/do.sh; "
+            "ensure_malware_scan_ready(){ echo ready; }; "
+            "my_collect(){ echo collect; }; "
+            "run_collection_command my_collect"
+        )
+        self.assertEqual(out.strip().splitlines(), ["ready", "collect"])
+
+    def test_run_image_dataset_build_scans_before_and_after_build(self) -> None:
+        out = self.run_bash(
+            "tmpdir=.tmp_scan_fixture; "
+            "rm -rf \"$tmpdir\"; "
+            "mkdir -p \"$tmpdir/out\"; "
+            "source scripts/do.sh; "
+            "run_malware_scan(){ printf 'scan:%q\\n' \"$@\"; }; "
+            "run_image_dataset_builder(){ printf 'builder:%q\\n' \"$@\"; }; "
+            "run_image_dataset_build \"$tmpdir/out\" \"query one,query two\" --flag value; "
+            "rm -rf \"$tmpdir\""
+        )
+        lines = out.strip().splitlines()
+        self.assertGreaterEqual(len(lines), 3)
+        self.assertEqual(lines[0], "scan:.tmp_scan_fixture/out")
+        self.assertTrue(lines[1].startswith("builder:.tmp_scan_fixture/out"))
+        self.assertEqual(lines[-1], "scan:.tmp_scan_fixture/out")
 
     def test_prepare_training_image_data_works_without_copy_flag(self) -> None:
         out = self.run_bash(
@@ -216,13 +214,13 @@ class DoShTests(unittest.TestCase):
     def test_load_env_file_preserves_explicit_env_overrides(self) -> None:
         out = self.run_bash(
             "tmpenv=$(mktemp); "
-            "printf 'MALWARE_SCAN=1\\nFAST_HF_ONLY=1\\n' > \"$tmpenv\"; "
+            "printf 'MALWARE_SCAN=1\\nFAST_NO_DEFAULT_SOURCES=1\\n' > \"$tmpenv\"; "
             "ENV_FILE=\"$tmpenv\"; "
             "MALWARE_SCAN=0; "
-            "FAST_HF_ONLY=0; "
+            "FAST_NO_DEFAULT_SOURCES=0; "
             "source scripts/do.sh; "
             "load_env_file; "
-            "printf '%s %s\\n' \"$MALWARE_SCAN\" \"$FAST_HF_ONLY\""
+            "printf '%s %s\\n' \"$MALWARE_SCAN\" \"$FAST_NO_DEFAULT_SOURCES\""
         )
         self.assertEqual(out.strip().splitlines()[-1], "0 0")
 
@@ -264,10 +262,12 @@ class DoShTests(unittest.TestCase):
         self.assertEqual(out.strip().splitlines()[-1], "from_file from_hub")
 
     def test_train_existing_pipeline_passes_collected_and_prepared_roots_to_4090_wrapper(self) -> None:
-        out = self.run_bash("source scripts/do.sh; declare -f train_existing_pipeline")
+        out = self.run_bash("source scripts/do.sh; declare -f run_prepared_max_quality_pipeline; declare -f train_existing_pipeline")
+        self.assertIn('run_prepared_max_quality_pipeline ()', out)
         self.assertIn('PIPELINE_COLLECTED_DATA_DIR="$collected_root"', out)
         self.assertIn('PIPELINE_PREPARED_DATA_DIR="$PREPARED_IMAGE_DATA_DIR"', out)
         self.assertIn('TRAIN_READY_DATA_DIR="$PREPARED_IMAGE_DATA_DIR"', out)
+        self.assertIn('run_prepared_max_quality_pipeline "$collected_root"', out)
 
     def test_require_pipeline_collection_data_rejects_partial_dataset(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -311,19 +311,10 @@ class DoShTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
         self.assertIn("collection_min_counts=skipped reason=build_report_ok", proc.stdout + proc.stderr)
 
-    def test_run_pipeline_training_stage_enforces_count_gate_on_prepared_data(self) -> None:
-        out = self.run_bash("source scripts/do.sh; declare -f run_pipeline_training_stage; declare -f prepare_training_image_data")
-        self.assertIn('require_pipeline_collection_data "${DATA_DIR:-./data_best}"', out)
-        self.assertIn('TRAIN_REQUIRE_MIN_COUNTS=1 with_training_lock train_existing_pipeline', out)
-        self.assertIn('if [[ "${TRAIN_REQUIRE_MIN_COUNTS:-0}" == "1" ]]; then', out)
-        self.assertIn('PIPELINE_MIN_TRAIN_PER_CLASS="$train_min"', out)
-        self.assertIn('local train_min="${PIPELINE_MIN_TRAIN_PER_CLASS:-${TRAIN_PER_CLASS:-0}}"', out)
-        self.assertNotIn('DIVERSE_TRAIN_PER_CLASS', out)
-
     def test_run_full_pipeline_uses_canonical_quality_wrapper(self) -> None:
         out = self.run_bash("source scripts/do.sh; declare -f run_full_pipeline")
         self.assertIn('with_training_lock bash scripts/max_quality_4090.sh', out)
-        self.assertNotIn('run_pipeline_stage collect', out)
+        self.assertNotIn('run_pipeline_stage', out)
 
     def test_wait_for_training_to_finish_clears_stale_lock(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
