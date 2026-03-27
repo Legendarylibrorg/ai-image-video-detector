@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 
 
@@ -34,12 +35,42 @@ class InstallShTests(unittest.TestCase):
             text=True,
         )
 
-        self.assertIn("install_stage=repo status=using_current", proc.stdout)
-        self.assertIn("[DRY_RUN] cd", proc.stdout)
+        self.assertIn("install_stage=repo status=using_current repo=.", proc.stdout)
+        self.assertIn("[DRY_RUN] cd . && ./local.sh deps", proc.stdout)
+        self.assertIn("  cd .", proc.stdout)
         self.assertIn("install_stage=venv status=", proc.stdout)
         self.assertIn("source .venv/bin/activate", proc.stdout)
         self.assertIn("./local.sh deps", proc.stdout)
         self.assertIn("./local.sh doctor", proc.stdout)
+        self.assertIn("install_status=ready", proc.stdout)
+        self.assertNotIn(str(ROOT), proc.stdout)
+
+    def test_install_script_reuses_extracted_repo_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            extracted_dir = Path(tmpdir) / "ai-image-video-detector-main"
+            extracted_dir.mkdir()
+            (extracted_dir / "scripts").mkdir()
+            (extracted_dir / "install.sh").write_text((ROOT / "install.sh").read_text(encoding="utf-8"), encoding="utf-8")
+            (extracted_dir / "local.sh").write_text((ROOT / "local.sh").read_text(encoding="utf-8"), encoding="utf-8")
+            (extracted_dir / "scripts" / "install_deps.sh").write_text(
+                (ROOT / "scripts" / "install_deps.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            proc = subprocess.run(
+                ["bash", "./install.sh"],
+                cwd=extracted_dir,
+                env={
+                    **os.environ,
+                    "DRY_RUN": "1",
+                    "INSTALL_SYSTEM_DEPS": "0",
+                    "INSTALL_ASSUME_LINUX": "1",
+                },
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertIn("install_stage=repo status=using_current repo=.", proc.stdout)
         self.assertIn("install_status=ready", proc.stdout)
 
 

@@ -10,7 +10,7 @@ The repo uses a local virtualenv at `./.venv`; `./local.sh setup` creates or reu
 
 It is not a production serving repo in the current mode.
 
-## Current Pipeline
+## Quick Start
 
 The repo now runs one simple local pipeline:
 
@@ -25,10 +25,34 @@ The repo now runs one simple local pipeline:
 5. `./local.sh status`
    Shows the current pipeline state and key artifact paths.
 
-Important local directories:
+Most people only need these commands:
+
+```bash
+./local.sh setup
+printf "HF_TOKEN='your_token_here'\n" >> .env
+./local.sh smoke
+./local.sh run
+./local.sh status
+```
+
+## Repo Layout
+
+Important top-level paths:
 
 - `./.venv`
   Local virtualenv for all Python dependencies.
+- `./local.sh`
+  Small public command surface for setup, smoke, run, status, troubleshooting, and train-from-existing-data.
+- `./install.sh`
+  Optional one-line Linux installer for clone or ZIP-based use.
+- `./docs/`
+  Startup, commands, and reference docs.
+- `./scripts/`
+  Internal pipeline helpers and advanced 4090-oriented wrappers.
+- `./src/ai_image_detector/`
+  Python package code for training, checkpoints, datasets, ensemble logic, and inference helpers.
+- `./tests/`
+  Unit and shell-surface regression coverage.
 - `./data_best`
   Curated image dataset built from Hugging Face and local inputs.
 - `./data_new`
@@ -50,13 +74,11 @@ Important local directories:
 
 ## Startup
 
-### Basic Linux commands
-
-Use this exact Linux sequence:
+Use this exact Linux sequence if you want the manual Linux path:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
 cd ai-image-video-detector
@@ -70,7 +92,22 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh status
 ```
 
-If you already have the repo checked out, start here instead:
+If you downloaded the GitHub ZIP instead of cloning, the extracted folder is usually named `ai-image-video-detector-main`:
+
+```bash
+unzip ai-image-video-detector-main.zip
+cd ai-image-video-detector-main
+python3 -m venv .venv
+source .venv/bin/activate
+./local.sh deps
+./local.sh doctor
+printf "HF_TOKEN='your_token_here'\n" >> .env
+./local.sh smoke
+./local.sh run
+./local.sh status
+```
+
+If you are already inside that extracted repo root, `bash ./install.sh` also works. If you already have the repo checked out, start here instead:
 
 ```bash
 python3 -m venv .venv
@@ -83,7 +120,7 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh status
 ```
 
-Optional shortcuts:
+Shortcuts:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
@@ -93,19 +130,6 @@ curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-det
 ./local.sh setup
 ```
 
-What each broken-out command does:
-- `python3 -m venv .venv`
-  Creates the repo-local virtualenv.
-- `source .venv/bin/activate`
-  Activates the repo-local virtualenv in your shell.
-- `./local.sh deps`
-  Installs the pinned Python dependency set from `requirements.lock`, including `huggingface_hub`.
-  Also installs the repo CLI commands and the `hf` CLI into `./.venv`.
-- `./local.sh doctor`
-  Checks disk space, cache paths, venv health, core deps, and token state.
-- `./local.sh smoke`
-  Runs the smaller sanity path before the full pipeline.
-
 Important notes:
 - `./local.sh setup` already tries `apt-get` automatically on supported Linux hosts and uses `sudo` when available.
 - `./local.sh setup` does not stop to prompt for `HF_TOKEN` by default. Add the token to `.env` after setup, then run `./local.sh smoke` or `./local.sh run`.
@@ -114,13 +138,15 @@ Important notes:
 - `huggingface_hub`, the `hf` CLI, and the repo CLI commands are installed into that same repo-local venv during setup.
 - `./local.sh setup` retries dependency install and health checks automatically so it can finish cleanly after transient failures.
 - `./local.sh run` is resumable: completed stages are skipped, training locks are waited out, and transient failures are retried.
+- Hugging Face dataset and hub cache reuse the shared repo-local cache under `./.local/hf`, and discovery reuses cached source lists before doing live discovery calls.
+- `./local.sh run` prefers high-signal HF sources, cuts weak sources earlier, and keeps repo/query pauses tuned for faster collection without hammering rate limits.
 - `./local.sh collect-status` shows the current collection/build state, recent source activity, and resume hints.
 
 `./local.sh smoke-real` is the optional real Hugging Face + CUDA validation path. Everything else is internal support for the pipeline and is intentionally not part of the normal startup path.
 
 ## Docs
 
-Use these only if you need more detail:
+Use these if you need more detail:
 
 - [docs/STARTUP.md](docs/STARTUP.md)
   Setup flow and Linux startup details.

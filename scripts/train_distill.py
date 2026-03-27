@@ -15,6 +15,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
+from ai_image_detector.checkpoints import load_checkpoint
 from ai_image_detector.ensemble import EnsembleDetector, load_models
 from ai_image_detector.model import build_model
 
@@ -113,7 +114,7 @@ def main():
 
     resume_path = Path(args.resume) if args.resume else (out / "last.pt")
     if resume_path.exists():
-        ckpt = torch.load(resume_path, map_location=device)
+        ckpt = load_checkpoint(resume_path, map_location=device)
         student.load_state_dict(ckpt["state_dict"])
         if "optimizer" in ckpt:
             opt.load_state_dict(ckpt["optimizer"])

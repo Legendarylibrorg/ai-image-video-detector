@@ -35,6 +35,8 @@ class DoShTests(unittest.TestCase):
     def test_best_profile_defaults_to_hf_only(self) -> None:
         out = self.run_bash("source scripts/do.sh; print_image_collection_args best")
         self.assertIn("--hf-only\n", out)
+        self.assertIn("--cache-dir\n./.local/hf\n", out)
+        self.assertIn("--hf-cache-only-if-present\n", out)
         self.assertIn("--quiet-progress\n", out)
 
     def test_best_profile_emits_split_source_diversity_gate(self) -> None:
@@ -47,6 +49,7 @@ class DoShTests(unittest.TestCase):
     def test_fast_profile_defaults_to_hf_only_and_split_source_gate(self) -> None:
         out = self.run_bash("source scripts/do.sh; print_image_collection_args fast")
         self.assertIn("--hf-only\n", out)
+        self.assertIn("--cache-dir\n./.local/hf\n", out)
         self.assertIn("--min-hf-sources-per-split-class\n6\n", out)
         self.assertIn("--max-per-source-class\n3000\n", out)
         self.assertIn("--max-per-source-split-class\n1000\n", out)
@@ -102,10 +105,34 @@ class DoShTests(unittest.TestCase):
             "print_diverse_common_args; "
             "print_diverse_discovery_args"
         )
+        self.assertIn("--cache-dir\n./.local/hf\n", out)
+        self.assertIn("--hf-cache-only-if-present\n", out)
+        self.assertIn("--max-samples-per-source\n40000\n", out)
+        self.assertIn("--acceptance-warmup-samples\n192\n", out)
+        self.assertIn("--min-acceptance-rate\n0.02\n", out)
+        self.assertIn("--hf-discovery-limit\n120\n", out)
+        self.assertIn("--hf-max-sources\n280\n", out)
+        self.assertIn("--hf-min-quality-score\n1.95\n", out)
         self.assertIn("--repo-base-pause-ms\n150\n", out)
         self.assertIn("--repo-cooldown-ms\n15000\n", out)
         self.assertIn("--transient-error-cooldown-ms\n2500\n", out)
         self.assertIn("--hf-query-pause-ms\n900\n", out)
+
+    def test_video_profile_uses_shared_hf_cache(self) -> None:
+        out = self.run_bash("source scripts/do.sh; print_video_collection_args")
+        self.assertIn("--cache-dir\n./.local/hf\n", out)
+        self.assertIn("--repo-base-pause-ms\n150\n", out)
+        self.assertIn("--repo-cooldown-ms\n12000\n", out)
+
+    def test_collect_diverse_cycle_uses_two_snapshot_workers_by_default(self) -> None:
+        out = self.run_bash(
+            "source scripts/do.sh; "
+            "collect_diverse_image_data(){ :; }; "
+            "ingest_outputs(){ :; }; "
+            "collect_video_data(){ printf 'workers=%s\\n' \"$VIDEO_SNAPSHOT_MAX_WORKERS\"; }; "
+            "collect_diverse_cycle"
+        )
+        self.assertIn("workers=2", out)
 
     def test_collect_fast_data_builds_args_without_mapfile(self) -> None:
         out = self.run_bash(

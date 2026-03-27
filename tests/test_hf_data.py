@@ -18,6 +18,27 @@ import hf_data
 
 
 class HFDataTests(unittest.TestCase):
+    def test_download_dataset_file_passes_cache_dir(self) -> None:
+        calls: list[dict[str, object]] = []
+
+        def fake_download(**kwargs):
+            calls.append(kwargs)
+            return "/tmp/file"
+
+        import huggingface_hub
+
+        original = huggingface_hub.hf_hub_download
+        huggingface_hub.hf_hub_download = fake_download
+        try:
+            result = hf_data.download_dataset_file("org/repo", "file.mp4", token="tok", cache_dir="/tmp/hf-cache")
+        finally:
+            huggingface_hub.hf_hub_download = original
+
+        self.assertEqual(result, "/tmp/file")
+        self.assertEqual(calls[0]["repo_id"], "org/repo")
+        self.assertEqual(calls[0]["filename"], "file.mp4")
+        self.assertEqual(calls[0]["cache_dir"], "/tmp/hf-cache")
+
     def test_normalize_image_dataset_split_maps_and_filters_labels(self) -> None:
         ds = Dataset.from_dict(
             {

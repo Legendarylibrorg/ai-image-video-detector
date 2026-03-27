@@ -255,7 +255,7 @@ def cmd_collection_status(
             "resume_needed": resume_needed,
             "source_candidates": source_candidates_count,
             "remaining_candidates_estimate": max(0, source_candidates_count - len(skipped_sources)) if source_candidates_count > 0 else None,
-            "recommended_command": "./local.sh collect" if resume_needed else "./local.sh train",
+            "recommended_command": "./local.sh run" if resume_needed else "./local.sh train",
         },
         "run_summary": run_summary,
     }

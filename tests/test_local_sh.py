@@ -21,8 +21,10 @@ class LocalShTests(unittest.TestCase):
         )
 
         out = proc.stdout
+        self.assertIn("usage: ./local.sh [setup|venv|deps|doctor|run|status|smoke|smoke-real|collect-status|train]", out)
         self.assertIn("basic linux commands inside the repo", out.lower())
         self.assertIn("sudo apt-get update", out)
+        self.assertIn("git unzip python3", out)
         self.assertIn("./local.sh setup", out)
         self.assertIn("printf \"HF_TOKEN='your_token_here'\\n\" >> .env", out)
         self.assertIn("./local.sh smoke", out)
@@ -31,13 +33,16 @@ class LocalShTests(unittest.TestCase):
         self.assertIn("./local.sh deps", out)
         self.assertIn("./local.sh doctor", out)
         self.assertIn("./local.sh smoke-real", out)
-        self.assertIn("./local.sh smoke-real", out)
         self.assertIn("./local.sh run", out)
         self.assertIn("./local.sh status", out)
+        self.assertIn("./local.sh collect-status", out)
+        self.assertIn("./local.sh train", out)
         self.assertIn("does not pause to prompt for HF_TOKEN by default", out)
         self.assertIn("repo-local venv", out.lower())
         self.assertNotIn("advanced aliases still work", out.lower())
         self.assertNotIn("detect <image>", out)
+        self.assertNotIn("./local.sh retrain", out)
+        self.assertNotIn("./local.sh deps-update", out)
 
     def test_setup_uses_linux_setup_path_in_dry_run(self) -> None:
         proc = subprocess.run(
@@ -57,8 +62,8 @@ class LocalShTests(unittest.TestCase):
 
         out = proc.stdout
         self.assertIn("setup_stage=python_deps status=run", out)
-        self.assertIn("[DRY_RUN] bash scripts/install_deps.sh", out)
-        self.assertIn("[DRY_RUN] bash scripts/doctor.sh", out)
+        self.assertIn("[DRY_RUN] env UPGRADE_TOOLCHAIN=0 bash scripts/install_deps.sh", out)
+        self.assertIn("[DRY_RUN] env DOCTOR_REQUIRE_TOKEN=0 bash scripts/doctor.sh", out)
         self.assertIn("setup_status=ready", out)
 
     def test_hidden_venv_command_creates_custom_venv(self) -> None:

@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from typing import Dict, Sequence
 
+HF_CACHE_DIR_DEFAULT = "./.local/hf"
+
 
 def configure_hf_cache_env(cache_dir: str) -> Path | None:
     if not cache_dir:

@@ -11,7 +11,7 @@ Use this exact Linux sequence:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
 cd ai-image-video-detector
@@ -24,6 +24,23 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh run
 ./local.sh status
 ```
+
+If you downloaded the GitHub ZIP instead of cloning, the extracted folder is usually named `ai-image-video-detector-main`. Use:
+
+```bash
+unzip ai-image-video-detector-main.zip
+cd ai-image-video-detector-main
+python3 -m venv .venv
+source .venv/bin/activate
+./local.sh deps
+./local.sh doctor
+printf "HF_TOKEN='your_token_here'\n" >> .env
+./local.sh smoke
+./local.sh run
+./local.sh status
+```
+
+If you are already inside that extracted repo root, `bash ./install.sh` also works.
 
 If you already have the repo checked out, start at:
 
@@ -72,7 +89,7 @@ Use `sudo` for Linux package-manager commands such as `apt-get` and `freshclam`:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 ```
 
@@ -103,7 +120,7 @@ If `./local.sh setup` does not finish cleanly, run the Linux steps one by one:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 python3 -m venv .venv
 source .venv/bin/activate
@@ -134,27 +151,6 @@ Fallback step summary:
 - transient stage failures are retried automatically
 - collection defaults are tuned for authenticated Hugging Face limits and cache-first reuse
 
-## Manual Linux bootstrap
-
-Only use this if you do not want `./local.sh setup`:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
-python3 -m venv .venv
-source .venv/bin/activate
-./local.sh deps
-./local.sh doctor
-```
-
-`./local.sh deps`:
-- creates or reuses `.venv`
-- installs the pinned dependency set from `requirements.lock`
-- installs the local package in editable mode
-- installs `huggingface_hub`, the `hf` CLI, and the repo CLI commands in that venv
-- uses the CUDA PyTorch wheel index on Linux when `nvidia-smi` is available
-
 For lower-level environment variables and internal pipeline controls, use [docs/REFERENCE.md](docs/REFERENCE.md).
 
 ## Troubleshooting
@@ -167,20 +163,18 @@ Collection seems slow on first run:
 ./local.sh smoke
 ```
 
-You only want to retrain:
+You only want to train from existing collected data:
 
 ```bash
 ./local.sh train
-./local.sh retrain
 ```
 
 - `./local.sh train` prepares `./.local/training_data` from `./data_best` plus any incremental data under `./data_new`.
 - `./local.sh train` trains images immediately and includes video training only when a complete video dataset is already present.
-- `./local.sh retrain` runs that no-recollect train path and then benchmark-gates the result.
 
 You changed dependencies:
 
 ```bash
-./local.sh deps-update
+./local.sh deps
 bash scripts/install_deps.sh
 ```

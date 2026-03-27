@@ -183,10 +183,22 @@ def list_dataset_repo_files(repo_id: str, *, token: str | None = None) -> list[s
     return list_repo_files(repo_id, repo_type="dataset", token=normalize_hf_token(token))
 
 
-def download_dataset_file(repo_id: str, filename: str, *, token: str | None = None) -> str:
+def download_dataset_file(
+    repo_id: str,
+    filename: str,
+    *,
+    token: str | None = None,
+    cache_dir: str | None = None,
+) -> str:
     from huggingface_hub import hf_hub_download
 
-    return hf_hub_download(repo_id=repo_id, repo_type="dataset", filename=filename, token=normalize_hf_token(token))
+    return hf_hub_download(
+        repo_id=repo_id,
+        repo_type="dataset",
+        filename=filename,
+        token=normalize_hf_token(token),
+        cache_dir=cache_dir or None,
+    )
 
 
 def load_latest_source_manifest(path: Path) -> dict[str, dict]:

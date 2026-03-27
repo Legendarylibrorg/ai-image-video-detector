@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
@@ -34,6 +35,39 @@ DEFAULT_DISCOVERY_QUERIES = [
 
 LOW_QUALITY_NAME_RE = re.compile(r"(^|[^a-z0-9])(toy|dummy|sample|mini|tiny|test)([^a-z0-9]|$)")
 HF_DATASET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def cache_policy_path(cache_path: Path) -> Path:
+    return cache_path.with_name(cache_path.name + ".policy.json")
+
+
+def discovery_policy(args) -> dict[str, object]:
+    return {
+        "queries": list(args.hf_query or DEFAULT_DISCOVERY_QUERIES),
+        "hf_discovery_limit": int(args.hf_discovery_limit),
+        "hf_max_sources": int(args.hf_max_sources),
+        "hf_min_downloads": int(args.hf_min_downloads),
+        "hf_min_likes": int(args.hf_min_likes),
+        "hf_min_quality_score": float(args.hf_min_quality_score),
+        "hf_print_top": int(args.hf_print_top),
+        "hf_query_pause_ms": int(args.hf_query_pause_ms),
+    }
+
+
+def load_cache_policy(cache_path: Path) -> dict[str, object] | None:
+    policy_path = cache_policy_path(cache_path)
+    if not policy_path.exists():
+        return None
+    try:
+        return json.loads(policy_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def save_cache_policy(cache_path: Path, policy: dict[str, object]) -> None:
+    policy_path = cache_policy_path(cache_path)
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text(json.dumps(policy, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 
 
 def read_sources_file(path: Path) -> list[str]:
@@ -124,10 +158,15 @@ def build_source_list(args) -> list[str]:
         sources.extend(args.extra_source)
     if args.discover_hf:
         discovered: list[str] = []
+        current_policy = discovery_policy(args)
         cache_path = Path(args.hf_cache_file) if args.hf_cache_file else None
         if cache_path and cache_path.exists():
             discovered = read_sources_file(cache_path)
             print(f"loaded_hf_discovery_cache={cache_path} count={len(discovered)}")
+            cached_policy = load_cache_policy(cache_path)
+            if cached_policy != current_policy:
+                print("hf_discovery_cache_policy_mismatch=1 fallback=live_discovery")
+                discovered = []
             if discovered and args.hf_cache_only_if_present:
                 print("hf_discovery_mode=cache_only_if_present")
                 print(f"discovered_hf_sources={len(discovered)}")
@@ -149,6 +188,7 @@ def build_source_list(args) -> list[str]:
             )
             if cache_path:
                 write_noncomment_lines(cache_path, discovered)
+                save_cache_policy(cache_path, current_policy)
                 print(f"saved_hf_discovery_cache={cache_path} count={len(discovered)}")
         print(f"discovered_hf_sources={len(discovered)}")
         sources.extend(discovered)

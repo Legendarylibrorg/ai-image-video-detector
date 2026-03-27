@@ -12,6 +12,20 @@ import build_video_dataset
 
 
 class BuildVideoDatasetTests(unittest.TestCase):
+    def test_per_file_download_retry_uses_cache_dir(self) -> None:
+        with mock.patch.object(build_video_dataset, "hf_hub_download", return_value="/tmp/video.mp4") as download:
+            result = build_video_dataset._download_with_retry(
+                "org/repo",
+                "video.mp4",
+                "tok",
+                "/tmp/hf-cache",
+                retries=1,
+                sleep_ms=0,
+            )
+
+        self.assertEqual(result, "/tmp/video.mp4")
+        download.assert_called_once_with("org/repo", "video.mp4", token="tok", cache_dir="/tmp/hf-cache")
+
     def test_snapshot_mode_skips_existing_duplicate_video_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -59,6 +73,17 @@ class BuildVideoDatasetTests(unittest.TestCase):
 
             self.assertEqual(len(list((out / "train" / "ai").glob("*"))), 1)
             self.assertEqual(len(list((out / "train" / "real").glob("*"))), 1)
+
+    def test_count_existing_ignores_non_video_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            (out / "train" / "ai").mkdir(parents=True)
+            (out / "train" / "ai" / "note.txt").write_text("not a video", encoding="utf-8")
+            (out / "train" / "ai" / "clip.mp4").write_bytes(b"video")
+
+            counts = build_video_dataset.count_existing(out)
+
+        self.assertEqual(counts["train"]["ai"], 1)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+HF_CACHE_DIR_DEFAULT="${HF_CACHE_DIR_DEFAULT:-./.local/hf}"
+
 read_cmd_output_into_array() {
   local array_name="$1"
   shift
@@ -160,7 +162,7 @@ print_image_collection_args() {
     --hf-print-top "${prefix}_HF_PRINT_TOP" "$print_top_default" \
     --hf-cache-file "${prefix}_HF_CACHE_FILE" "$cache_file_default"
   print_cli_flag --hf-cache-only-if-present
-  print_cli_flag_value_from_env --cache-dir "${prefix}_CACHE_DIR" "./.local/hf"
+  print_cli_flag_value_from_env --cache-dir "${prefix}_CACHE_DIR" "$HF_CACHE_DIR_DEFAULT"
   print_cli_flag --streaming
   print_cli_flag_value_from_env_triplets \
     --stream-buffer-size "${prefix}_STREAM_BUFFER_SIZE" "$stream_buffer_default" \
@@ -231,15 +233,15 @@ print_diverse_common_args() {
     --test-per-class "DIVERSE_TEST_PER_CLASS" "25000" \
     --hf-cache-file "DIVERSE_HF_CACHE_FILE" "./.local/hf_diverse_sources.txt"
   print_cli_flag --hf-cache-only-if-present
-  print_cli_flag_value_from_env --cache-dir "DIVERSE_CACHE_DIR" "./.local/hf"
+  print_cli_flag_value_from_env --cache-dir "DIVERSE_CACHE_DIR" "$HF_CACHE_DIR_DEFAULT"
   print_cli_flag --streaming
   print_cli_flag_value_from_env_triplets \
     --stream-buffer-size "DIVERSE_STREAM_BUFFER_SIZE" "16000" \
-    --max-samples-per-source "DIVERSE_MAX_SAMPLES_PER_SOURCE" "80000" \
+    --max-samples-per-source "DIVERSE_MAX_SAMPLES_PER_SOURCE" "40000" \
     --max-per-source-class "DIVERSE_MAX_PER_SOURCE_CLASS" "16000" \
     --max-per-source-split-class "DIVERSE_MAX_PER_SOURCE_SPLIT_CLASS" "5500" \
-    --acceptance-warmup-samples "DIVERSE_ACCEPTANCE_WARMUP_SAMPLES" "256" \
-    --min-acceptance-rate "DIVERSE_MIN_ACCEPTANCE_RATE" "0.015" \
+    --acceptance-warmup-samples "DIVERSE_ACCEPTANCE_WARMUP_SAMPLES" "192" \
+    --min-acceptance-rate "DIVERSE_MIN_ACCEPTANCE_RATE" "0.02" \
     --min-hf-sources-with-accepted "DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED" "24" \
     --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "14" \
     --min-hf-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "8" \
@@ -263,11 +265,11 @@ print_diverse_common_args() {
 print_diverse_discovery_args() {
   print_cli_flag --discover-hf
   print_cli_flag_value_from_env_triplets \
-    --hf-discovery-limit "DIVERSE_HF_DISCOVERY_LIMIT" "140" \
-    --hf-max-sources "DIVERSE_HF_MAX_SOURCES" "320" \
+    --hf-discovery-limit "DIVERSE_HF_DISCOVERY_LIMIT" "120" \
+    --hf-max-sources "DIVERSE_HF_MAX_SOURCES" "280" \
     --hf-min-downloads "DIVERSE_HF_MIN_DOWNLOADS" "100" \
     --hf-min-likes "DIVERSE_HF_MIN_LIKES" "2" \
-    --hf-min-quality-score "DIVERSE_HF_MIN_QUALITY_SCORE" "1.85" \
+    --hf-min-quality-score "DIVERSE_HF_MIN_QUALITY_SCORE" "1.95" \
     --hf-print-top "DIVERSE_HF_PRINT_TOP" "20" \
     --hf-query-pause-ms "DIVERSE_HF_QUERY_PAUSE_MS" "900"
 }
@@ -339,7 +341,7 @@ print_video_collection_args() {
     --train-per-class "VIDEO_TRAIN_PER_CLASS" "1000" \
     --val-per-class "VIDEO_VAL_PER_CLASS" "250" \
     --mode "VIDEO_MODE" "snapshot" \
-    --cache-dir "VIDEO_CACHE_DIR" "./.local/hf" \
+    --cache-dir "VIDEO_CACHE_DIR" "$HF_CACHE_DIR_DEFAULT" \
     --snapshot-max-workers "VIDEO_SNAPSHOT_MAX_WORKERS" "4" \
     --repo-base-pause-ms "VIDEO_REPO_BASE_PAUSE_MS" "150" \
     --repo-jitter-ms "VIDEO_REPO_JITTER_MS" "150" \
@@ -369,7 +371,7 @@ collect_full_cycle() {
 collect_diverse_cycle() {
   collect_diverse_image_data
   ingest_outputs
-  VIDEO_CACHE_DIR="${VIDEO_CACHE_DIR:-./.local/hf}" VIDEO_SNAPSHOT_MAX_WORKERS="${VIDEO_SNAPSHOT_MAX_WORKERS:-1}" collect_video_data
+  VIDEO_CACHE_DIR="${VIDEO_CACHE_DIR:-$HF_CACHE_DIR_DEFAULT}" VIDEO_SNAPSHOT_MAX_WORKERS="${VIDEO_SNAPSHOT_MAX_WORKERS:-2}" collect_video_data
 }
 
 run_pipeline_collection_stage() {

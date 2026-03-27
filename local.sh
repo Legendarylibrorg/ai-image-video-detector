@@ -6,20 +6,22 @@ cd "$(dirname "$0")"
 cmd="${1:-help}"
 shift || true
 
+APT_PACKAGES="${APT_PACKAGES:-curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon}"
+
 run_do() {
   bash scripts/do.sh "$@"
 }
 
 print_usage() {
-  cat <<'EOF'
-usage: ./local.sh [setup|deps|doctor|run|status|smoke|smoke-real]
+  cat <<EOF
+usage: ./local.sh [setup|venv|deps|doctor|run|status|smoke|smoke-real|collect-status|train]
 
 one-line install:
   curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
 
 basic linux commands inside the repo:
   1. sudo apt-get update
-  2. sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+  2. sudo apt-get install -y $APT_PACKAGES
   3. sudo freshclam || true
   4. python3 -m venv .venv
   5. source .venv/bin/activate
@@ -49,6 +51,10 @@ main pipeline commands:
 optional validation:
   ./local.sh smoke      # quick collection sanity check
   ./local.sh smoke-real # tiny real HF + CUDA smoke on a tokenized GPU box
+
+troubleshooting:
+  ./local.sh collect-status # current dataset build and resume state
+  ./local.sh train          # train from existing collected data
 EOF
 }
 
@@ -70,7 +76,7 @@ create_repo_venv() {
 }
 
 case "$cmd" in
-  setup|init|bootstrap)
+  setup)
     SETUP_RUN_PIPELINE=0 bash scripts/setup_linux.sh
     ;;
   venv)
@@ -79,44 +85,23 @@ case "$cmd" in
   deps)
     bash scripts/install_deps.sh
     ;;
-  setup-full)
-    SETUP_RUN_PIPELINE=1 bash scripts/setup_linux.sh
-    ;;
-  run|pipeline)
+  run)
     run_do pipeline "$@"
     ;;
-  smoke|quick|collect-fast)
+  smoke)
     run_do smoke "$@"
     ;;
   smoke-real)
     run_do smoke-real "$@"
     ;;
-  collect)
-    run_do collect-diverse "$@"
-    ;;
-  collect-status|collection-status)
+  collect-status)
     run_do collection-status "$@"
     ;;
   train)
     run_do train-existing "$@"
     ;;
-  retrain|refresh)
-    run_do retrain "$@"
-    ;;
-  continuous|autocollect)
-    run_do continuous "$@"
-    ;;
-  check|doctor)
+  doctor)
     run_do doctor "$@"
-    ;;
-  start)
-    run_do start "$@"
-    ;;
-  scan)
-    run_do scan "$@"
-    ;;
-  deps-update)
-    run_do deps-update
     ;;
   status)
     run_do status
