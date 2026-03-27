@@ -120,6 +120,7 @@ PIPELINE_DATASET_PROVENANCE_OUT="${PIPELINE_DATASET_PROVENANCE_OUT:-$PIPELINE_RE
 PIPELINE_FINAL_SUMMARY_OUT="${PIPELINE_FINAL_SUMMARY_OUT:-$ENS_OUT/final_run_summary.json}"
 PIPELINE_RUN_MANIFEST_OUT="${PIPELINE_RUN_MANIFEST_OUT:-$ENS_OUT/run_manifest.json}"
 PIPELINE_THRESHOLDS_OUT="${PIPELINE_THRESHOLDS_OUT:-$ENS_OUT/final_thresholds.json}"
+PIPELINE_RELEASE_OUT="${PIPELINE_RELEASE_OUT:-$ENS_OUT/release}"
 PIPELINE_FAILURE_OUT="${PIPELINE_FAILURE_OUT:-$ENS_OUT/run_failure.json}"
 PIPELINE_STAGE="bootstrap"
 PIPELINE_IMAGE_TRAIN_DATA_DIR="${PIPELINE_IMAGE_TRAIN_DATA_DIR:-$DATA_DIR}"
@@ -180,7 +181,15 @@ write_final_reports() {
     --prod-manifest "$ENS_OUT/prod_manifest.json" \
     --summary-out "$PIPELINE_FINAL_SUMMARY_OUT" \
     --manifest-out "$PIPELINE_RUN_MANIFEST_OUT" \
-    --thresholds-out "$PIPELINE_THRESHOLDS_OUT"
+    --thresholds-out "$PIPELINE_THRESHOLDS_OUT" \
+    --release-bundle "$PIPELINE_RELEASE_OUT"
+}
+
+write_release_bundle() {
+  run_cmd python scripts/export_best_release.py \
+    --ens-out "$ENS_OUT" \
+    --video-artifacts "$VIDEO_ARTIFACTS_OUT" \
+    --out "$PIPELINE_RELEASE_OUT"
 }
 
 write_failure_report() {
@@ -258,11 +267,6 @@ collect_ensemble_model_paths() {
   for model_dir in "$ENS_OUT"/m*; do
     [[ -d "$model_dir" ]] || continue
     candidate="$model_dir/best.safetensors"
-    if [[ -f "$candidate" ]]; then
-      ENSEMBLE_MODELS+=("$candidate")
-      continue
-    fi
-    candidate="$model_dir/best.pt"
     if [[ -f "$candidate" ]]; then
       ENSEMBLE_MODELS+=("$candidate")
     fi
@@ -598,7 +602,10 @@ run_distill_bundle "$PIPELINE_IMAGE_TRAIN_DATA_DIR"
 
 PIPELINE_STAGE="finalize"
 write_final_reports
+PIPELINE_STAGE="release_bundle"
+write_release_bundle
 trap - EXIT
 
 echo "Pipeline complete."
 echo "Prod manifest: $ENS_OUT/prod_manifest.json"
+echo "Release bundle: $PIPELINE_RELEASE_OUT"

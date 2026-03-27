@@ -64,7 +64,7 @@ class VideoTemporalTests(unittest.TestCase):
     def test_infer_main_uses_non_pretrained_backbone(self) -> None:
         fake_model = _FakeTemporalModel(pretrained_backbone=False)
 
-        with mock.patch("sys.argv", ["prog", "--model", "fake.pt", "--video", "fake.mp4"]), \
+        with mock.patch("sys.argv", ["prog", "--model", "fake.safetensors", "--video", "fake.mp4"]), \
             mock.patch.object(video_temporal, "load_checkpoint", return_value={"state_dict": {}, "img_size": 16, "frames": 2, "threshold": 0.5}), \
             mock.patch.object(video_temporal, "_sample_frames", return_value=np.zeros((2, 3, 16, 16), dtype=np.float32)), \
             mock.patch.object(video_temporal, "TemporalVideoDetector", side_effect=lambda pretrained_backbone=False: _FakeTemporalModel(pretrained_backbone=pretrained_backbone)) as ctor, \

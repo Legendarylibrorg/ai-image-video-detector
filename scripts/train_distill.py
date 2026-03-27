@@ -15,7 +15,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-from ai_image_detector.checkpoints import load_checkpoint, resolve_checkpoint_path, save_safetensors_checkpoint
+from ai_image_detector.checkpoints import load_checkpoint, save_safetensors_checkpoint
 from ai_image_detector.data import MetadataImageFolder
 from ai_image_detector.ensemble import EnsembleDetector, load_models
 from ai_image_detector.model import build_model
@@ -49,8 +49,6 @@ def main():
     ap.add_argument("--deterministic", action="store_true")
     ap.add_argument("--export-release", action="store_true", default=True)
     ap.add_argument("--no-export-release", dest="export_release", action="store_false")
-    ap.add_argument("--save-safetensors", action="store_true", default=True)
-    ap.add_argument("--no-save-safetensors", dest="save_safetensors", action="store_false")
     args = ap.parse_args()
 
     random.seed(args.seed)
@@ -118,7 +116,7 @@ def main():
 
     resume_path = Path(args.resume) if args.resume else (out / "last.pt")
     if resume_path.exists():
-        ckpt = load_checkpoint(resume_path, map_location=device)
+        ckpt = torch.load(resume_path, map_location=device)
         student.load_state_dict(ckpt["state_dict"])
         if "optimizer" in ckpt:
             opt.load_state_dict(ckpt["optimizer"])
@@ -198,10 +196,8 @@ def main():
                     "backbone": args.student_backbone,
                     "metrics": {"val_acc": float(acc)},
                 }
-                torch.save(ckpt, out / "best.pt")
-                if args.save_safetensors:
-                    save_safetensors_checkpoint(out / "best.safetensors", ckpt)
-                preferred_best = resolve_checkpoint_path(out / "best.pt")
+                save_safetensors_checkpoint(out / "best.safetensors", ckpt)
+                preferred_best = out / "best.safetensors"
                 (out / "best_checkpoint.txt").write_text(str(preferred_best), encoding="utf-8")
                 (out / "best_model_summary.json").write_text(
                     json.dumps(
@@ -229,7 +225,7 @@ def main():
         print(f"training_interrupted saved={out / 'interrupted.pt'}")
         return
 
-    best_path = resolve_checkpoint_path(out / "best.pt")
+    best_path = out / "best.safetensors"
     if args.export_release and best_path.exists():
         rel = out / "releases" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         rel.mkdir(parents=True, exist_ok=True)

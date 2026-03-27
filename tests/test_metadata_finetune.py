@@ -24,6 +24,7 @@ class MetadataFinetuneSurfaceTests(unittest.TestCase):
         train_text = (ROOT / "src" / "ai_image_detector" / "train.py").read_text(encoding="utf-8")
         infer_text = (ROOT / "src" / "ai_image_detector" / "infer.py").read_text(encoding="utf-8")
         ensemble_text = (ROOT / "src" / "ai_image_detector" / "ensemble.py").read_text(encoding="utf-8")
+        wrapper_text = (ROOT / "scripts" / "metadata_finetune_4090.sh").read_text(encoding="utf-8")
         self.assertIn("--use-metadata-features", train_text)
         self.assertIn("--init-from", train_text)
         self.assertIn("metadata_feature_dim=metadata_dim", train_text)
@@ -31,6 +32,8 @@ class MetadataFinetuneSurfaceTests(unittest.TestCase):
         self.assertIn("extract_metadata_features", infer_text)
         self.assertIn("metadata_features=metadata_features", infer_text)
         self.assertIn('metadata_dim = int(ckpt.get("metadata_feature_dim", 0))', ensemble_text)
+        self.assertIn('declare -a metadata_candidates=("$BASE_CKPT_SEARCH_ROOT"/m*/best.safetensors)', wrapper_text)
+        self.assertIn('searched=$BASE_CKPT_SEARCH_ROOT/m*/best.safetensors', wrapper_text)
 
 
 if __name__ == "__main__":

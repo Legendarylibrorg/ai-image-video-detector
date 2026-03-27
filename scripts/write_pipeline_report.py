@@ -172,13 +172,12 @@ def _read_member_summaries(ens_out: Path) -> list[dict[str, Any]]:
         name = root.name
         if not root.exists():
             continue
-        best_pt = root / "best.pt"
         best_safe = root / "best.safetensors"
         members.append(
             {
                 "name": name,
                 "artifact_dir": str(root.resolve()),
-                "preferred_checkpoint": str(_resolve_checkpoint(best_pt).resolve()) if best_pt.exists() or best_safe.exists() else None,
+                "preferred_checkpoint": str(best_safe.resolve()) if best_safe.exists() else None,
                 "best_metrics": _read_json(root / "best_metrics.json"),
                 "group_metrics": _read_json(root / "best_group_metrics.json"),
                 "calibration": _read_json(root / "calibration.json"),
@@ -205,7 +204,8 @@ def write_final_report(args: argparse.Namespace) -> int:
     dataset_qa = _read_json(Path(args.dataset_qa))
     distill_dir = ens_out / "distill"
     distill_summary = _read_json(distill_dir / "best_model_summary.json")
-    distill_checkpoint = _resolve_checkpoint(distill_dir / "best.pt")
+    distill_checkpoint = _resolve_checkpoint(distill_dir / "best.safetensors")
+    release_bundle = Path(args.release_bundle) if getattr(args, "release_bundle", "") else None
 
     thresholds = {
         "image_models": {
@@ -220,7 +220,7 @@ def write_final_report(args: argparse.Namespace) -> int:
         "video": video_metrics.get("threshold"),
     }
 
-    video_model = _resolve_checkpoint(video_artifacts / "best_video.pt")
+    video_model = _resolve_checkpoint(video_artifacts / "best_video.safetensors")
     preferred_models = [item["preferred_checkpoint"] for item in image_members if item.get("preferred_checkpoint")]
     if video_model.exists():
         preferred_video_model = str(video_model.resolve())
@@ -253,6 +253,7 @@ def write_final_report(args: argparse.Namespace) -> int:
             "video_model": preferred_video_model,
             "distilled_model": preferred_distill_model,
         },
+        "release_bundle": str(release_bundle.resolve()) if release_bundle else None,
     }
 
     run_manifest = {
@@ -274,6 +275,7 @@ def write_final_report(args: argparse.Namespace) -> int:
             "final_run_summary": str(Path(args.summary_out).resolve()),
             "threshold_summary": str(Path(args.thresholds_out).resolve()),
             "robust_eval": str(Path(args.robust_eval).resolve()),
+            "release_bundle": str(release_bundle.resolve()) if release_bundle else None,
         },
         "preferred_checkpoints": final_summary["preferred_checkpoints"],
     }
@@ -289,6 +291,7 @@ def write_final_report(args: argparse.Namespace) -> int:
         "final_run_summary": str(Path(args.summary_out).resolve()),
         "run_manifest": str(Path(args.manifest_out).resolve()),
         "threshold_summary": str(Path(args.thresholds_out).resolve()),
+        "release_bundle": str(release_bundle.resolve()) if release_bundle else None,
     }
 
     _write_json(Path(args.summary_out), final_summary)
@@ -344,6 +347,7 @@ def main() -> int:
     final.add_argument("--summary-out", required=True)
     final.add_argument("--manifest-out", required=True)
     final.add_argument("--thresholds-out", required=True)
+    final.add_argument("--release-bundle", default="")
 
     failure = sub.add_parser("failure")
     failure.add_argument("--stage", required=True)

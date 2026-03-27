@@ -78,7 +78,7 @@ video_data/
 ```
 
 Image training writes artifacts such as:
-- `best.safetensors` or `best.pt`
+- `best.safetensors`
 - `best_checkpoint.txt`
 - `last.pt`
 - `epoch_XXX.pt`
@@ -90,7 +90,7 @@ Image training writes artifacts such as:
 - `training_log.jsonl`
 
 Video training writes artifacts such as:
-- `best_video.pt` or `best_video.safetensors`
+- `best_video.safetensors`
 - `last_video.pt`
 - `epoch_video_XXX.pt`
 
@@ -101,6 +101,11 @@ Pipeline-level reports also include:
 - `final_thresholds.json`
 - `run_manifest.json`
 - `prod_manifest.json`
+- `release/release_manifest.json`
+
+Canonical release bundle:
+- `./artifacts_ens/release/`
+  Exported bundle for sharing, with the best checkpoints and the main eval/calibration sidecars in one directory.
 
 ## Pipeline tools
 

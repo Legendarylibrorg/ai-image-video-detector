@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -90,8 +89,4 @@ def load_checkpoint(path: str | Path, map_location: torch.device | str | None = 
     in_path = Path(path)
     if in_path.suffix.lower() == ".safetensors":
         return load_safetensors_checkpoint(in_path, map_location=map_location)
-    if os.environ.get("ALLOW_UNSAFE_PICKLE_CHECKPOINTS", "0") != "1":
-        raise RuntimeError(
-            "pickle_checkpoint_blocked path={} use .safetensors or set ALLOW_UNSAFE_PICKLE_CHECKPOINTS=1".format(in_path)
-        )
-    return torch.load(in_path, map_location=map_location)
+    raise RuntimeError("unsupported_checkpoint_format path={} use .safetensors".format(in_path))

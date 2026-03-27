@@ -45,6 +45,7 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertIn("--use-metadata-features", text)
         self.assertIn("--init-from", text)
         self.assertIn("artifacts_finetune_metadata", text)
+        self.assertNotIn("best.pt", text)
 
     def test_train_module_skips_degenerate_best_checkpoint_promotion(self) -> None:
         text = (ROOT / "src" / "ai_image_detector" / "train.py").read_text(encoding="utf-8")
@@ -57,6 +58,10 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertIn('report["threshold_search_status"] = str(threshold_metrics.get("search_status", "unknown"))', text)
         self.assertIn("skip_best_checkpoint epoch={}", text)
         self.assertIn('raise RuntimeError("no_promotable_checkpoint")', text)
+        self.assertNotIn('torch.save(ckpt, out / "best.pt")', text)
+        self.assertIn('save_safetensors_checkpoint(out / "best.safetensors", ckpt)', text)
+        self.assertNotIn('--save-safetensors', text)
+        self.assertNotIn('--no-save-safetensors', text)
 
     def test_reference_doc_stays_pipeline_focused(self) -> None:
         text = (ROOT / "docs" / "REFERENCE.md").read_text(encoding="utf-8")
@@ -85,6 +90,15 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertIn('--hf-query-pause-ms "$BEST_DS_HF_QUERY_PAUSE_MS"', text)
         self.assertIn('--transient-error-cooldown-ms "$BEST_DS_TRANSIENT_ERROR_COOLDOWN_MS"', text)
         self.assertIn('--min-video-bytes "$VIDEO_MIN_BYTES"', text)
+        self.assertIn('PIPELINE_RELEASE_OUT="${PIPELINE_RELEASE_OUT:-$ENS_OUT/release}"', text)
+        self.assertIn("write_release_bundle()", text)
+        self.assertIn("scripts/export_best_release.py", text)
+
+    def test_distill_script_stays_safetensors_only_for_best_artifacts(self) -> None:
+        text = (ROOT / "scripts" / "train_distill.py").read_text(encoding="utf-8")
+        self.assertIn('save_safetensors_checkpoint(out / "best.safetensors", ckpt)', text)
+        self.assertNotIn('--save-safetensors', text)
+        self.assertNotIn('--no-save-safetensors', text)
 
     def test_continuous_training_runs_collection_before_retrain(self) -> None:
         text = (ROOT / "scripts" / "continuous_training.sh").read_text(encoding="utf-8")

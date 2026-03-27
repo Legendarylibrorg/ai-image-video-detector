@@ -51,8 +51,6 @@ collect_ensemble_model_paths() {
     [[ -d "$model_dir" ]] || continue
     if [[ -f "$model_dir/best.safetensors" ]]; then
       ENSEMBLE_MODELS+=("$model_dir/best.safetensors")
-    elif [[ -f "$model_dir/best.pt" ]]; then
-      ENSEMBLE_MODELS+=("$model_dir/best.pt")
     fi
   done
 }
@@ -120,7 +118,13 @@ python scripts/write_pipeline_report.py final \
   --prod-manifest "$ENS_OUT/prod_manifest.json" \
   --summary-out "$ENS_OUT/final_run_summary.json" \
   --manifest-out "$ENS_OUT/run_manifest.json" \
-  --thresholds-out "$ENS_OUT/final_thresholds.json"
+  --thresholds-out "$ENS_OUT/final_thresholds.json" \
+  --release-bundle "$ENS_OUT/release"
+
+python scripts/export_best_release.py \
+  --ens-out "$ENS_OUT" \
+  --video-artifacts "$VIDEO_ARTIFACTS" \
+  --out "$ENS_OUT/release"
 
 python scripts/benchmark_gate.py \
   --ens-out "$ENS_OUT" \
@@ -152,6 +156,7 @@ for f in \
   "$ENS_OUT/final_thresholds.json" \
   "$ENS_OUT/run_manifest.json" \
   "$ENS_OUT/prod_manifest.json" \
+  "$ENS_OUT/release/release_manifest.json" \
   "$REPORTS/dataset_qa_summary.json" \
   "$REPORTS/dataset_provenance.json"; do
   test -f "$f"
