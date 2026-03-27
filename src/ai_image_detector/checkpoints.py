@@ -4,14 +4,21 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-import torch
+def _torch():
+    import torch
+
+    return torch
 
 
 def _json_default(value: Any) -> Any:
     if isinstance(value, Path):
         return str(value)
-    if isinstance(value, torch.device):
-        return str(value)
+    try:
+        torch = _torch()
+        if isinstance(value, torch.device):
+            return str(value)
+    except Exception:
+        pass
     if hasattr(value, "item"):
         try:
             return value.item()
@@ -32,6 +39,7 @@ def resolve_checkpoint_path(preferred_pt_path: str | Path) -> Path:
 
 def save_safetensors_checkpoint(path: str | Path, checkpoint: Mapping[str, Any]) -> None:
     from safetensors.torch import save_file
+    torch = _torch()
 
     out = Path(path)
     if "state_dict" not in checkpoint:
@@ -56,7 +64,7 @@ def save_safetensors_checkpoint(path: str | Path, checkpoint: Mapping[str, Any])
     save_file(tensors, str(out), metadata=meta)
 
 
-def load_safetensors_checkpoint(path: str | Path, map_location: torch.device | str | None = None) -> dict[str, Any]:
+def load_safetensors_checkpoint(path: str | Path, map_location: Any = None) -> dict[str, Any]:
     from safetensors import safe_open
     from safetensors.torch import load_file
 
@@ -85,7 +93,7 @@ def load_safetensors_checkpoint(path: str | Path, map_location: torch.device | s
     return out
 
 
-def load_checkpoint(path: str | Path, map_location: torch.device | str | None = None) -> dict[str, Any]:
+def load_checkpoint(path: str | Path, map_location: Any = None) -> dict[str, Any]:
     in_path = Path(path)
     if in_path.suffix.lower() == ".safetensors":
         return load_safetensors_checkpoint(in_path, map_location=map_location)

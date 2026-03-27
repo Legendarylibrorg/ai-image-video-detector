@@ -73,6 +73,24 @@ curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-det
 ./local.sh setup
 ```
 
+## Dependency profiles
+
+The package now supports a lightweight base install:
+
+- `pip install -e .`
+  Base package only, without the heavy training and collection stack.
+- `pip install -e '.[pipeline]'`
+  Full repo workflow dependencies.
+- `pip install -e '.[training]'`
+  Image-training stack.
+- `pip install -e '.[collection]'`
+  Hugging Face collection stack.
+- `pip install -e '.[video]'`
+  Video stack.
+
+For normal use inside this repo, prefer `./local.sh deps` or `./local.sh setup`; they install the full `pipeline` profile into `./.venv`.
+The packaged `aid-*` commands are thin wrappers and will print a clear “install this extra” hint if you run them without the required dependency profile.
+
 ## What the pipeline does
 
 The repo is organized around one local pipeline:
@@ -153,6 +171,7 @@ Fallback step summary:
 - `./local.sh deps`
   Installs the pinned Python dependency set into `./.venv`.
   It also installs the repo CLI commands and the `hf` CLI into that venv.
+  Under the hood this is the full `pipeline` profile, not the lightweight base package.
 - `./local.sh doctor`
   Verifies disk space, cache dirs, venv health, core Python deps, and token state.
 - `./local.sh smoke`

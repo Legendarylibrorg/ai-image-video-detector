@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import subprocess
+import sys
 import unittest
 
 
@@ -18,26 +21,63 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertNotIn("aid-video-detect", text)
         self.assertNotIn("aid-video-detect-temporal", text)
         self.assertNotIn("aid-train-advanced", text)
-        self.assertIn('aid-train = "ai_image_detector.train:main"', text)
-        self.assertIn('aid-video-train = "ai_image_detector.video_temporal:train_main"', text)
-        self.assertIn('aid-dataset = "ai_image_detector.dataset_tools:main"', text)
+        self.assertIn('aid-train = "ai_image_detector.cli:train_main"', text)
+        self.assertIn('aid-video-train = "ai_image_detector.cli:video_train_main"', text)
+        self.assertIn('aid-dataset = "ai_image_detector.cli:dataset_main"', text)
         self.assertNotIn("fastapi", text.lower())
         self.assertNotIn("uvicorn", text.lower())
 
     def test_api_module_is_removed(self) -> None:
         self.assertFalse((ROOT / "src" / "ai_image_detector" / "api.py").exists())
+        self.assertFalse((ROOT / "src" / "ai_image_detector" / "multimodal.py").exists())
+
+    def test_cli_wrapper_import_stays_lightweight(self) -> None:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import sys; "
+                    "import ai_image_detector.cli as c; "
+                    "print(int('torch' in sys.modules)); "
+                    "print(int('cv2' in sys.modules)); "
+                    "print(hasattr(c, 'train_main')); "
+                    "print(hasattr(c, 'video_train_main')); "
+                    "print(hasattr(c, 'dataset_main'))"
+                ),
+            ],
+            cwd=ROOT,
+            env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        lines = proc.stdout.strip().splitlines()
+        self.assertEqual(lines[0], "0")
+        self.assertEqual(lines[1], "0")
+        self.assertEqual(lines[2], "True")
+        self.assertEqual(lines[3], "True")
+        self.assertEqual(lines[4], "True")
 
     def test_local_retrain_defaults_to_train_existing(self) -> None:
         text = (ROOT / "scripts" / "local_retrain_4090.sh").read_text(encoding="utf-8")
-        self.assertIn('PIPELINE_MODE="${PIPELINE_MODE:-}"', text)
-        self.assertIn('pipeline_args=(bash scripts/do.sh train-existing)', text)
+        self.assertIn('source "$ROOT_DIR/scripts/lib/core.sh"', text)
+        self.assertIn('source "$ROOT_DIR/scripts/lib/training.sh"', text)
+        self.assertIn("bash scripts/do.sh train-existing", text)
         self.assertNotIn("start-v2", text)
         self.assertIn("--skip-video", text)
         self.assertIn('--min-image-auc "${GATE_MIN_IMAGE_AUC:-0.96}"', text)
         self.assertIn('--min-image-f1 "${GATE_MIN_IMAGE_F1:-0.92}"', text)
         self.assertIn('--min-robust-worst-auc "${GATE_MIN_ROBUST_WORST_AUC:-0.90}"', text)
         self.assertIn('--max-robust-auc-drop "${GATE_MAX_ROBUST_AUC_DROP:-0.08}"', text)
+        self.assertIn("run_repo_python scripts/benchmark_gate.py", text)
+        self.assertNotIn('PIPELINE_CMD="${PIPELINE_CMD:-}"', text)
+        self.assertNotIn("unsupported_pipeline_cmd=", text)
+        self.assertNotIn('PIPELINE_MODE="${PIPELINE_MODE:-}"', text)
+        self.assertNotIn("unsupported_pipeline_mode=", text)
         self.assertNotIn('eval "$PIPELINE_CMD"', text)
+        self.assertNotIn("video_bucket_has_files()", text)
+        self.assertNotIn("have_complete_video_training_data()", text)
 
     def test_metadata_finetune_wrapper_uses_metadata_features_and_existing_checkpoint(self) -> None:
         text = (ROOT / "scripts" / "metadata_finetune_4090.sh").read_text(encoding="utf-8")
@@ -60,6 +100,9 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertIn('raise RuntimeError("no_promotable_checkpoint")', text)
         self.assertNotIn('torch.save(ckpt, out / "best.pt")', text)
         self.assertIn('save_safetensors_checkpoint(out / "best.safetensors", ckpt)', text)
+        self.assertIn('(out / "inference_spec.json").write_text', text)
+        self.assertIn('runtime_spec": model_runtime_spec(', text)
+        self.assertIn('(out / "best_checkpoint.txt").write_text(preferred_best.name', text)
         self.assertNotIn('--save-safetensors', text)
         self.assertNotIn('--no-save-safetensors', text)
 

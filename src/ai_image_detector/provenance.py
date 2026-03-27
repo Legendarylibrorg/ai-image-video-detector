@@ -3,8 +3,6 @@ from __future__ import annotations
 import io
 from typing import Any
 
-from PIL import Image
-
 
 def _safe_text(v: Any) -> str:
     if isinstance(v, bytes):
@@ -13,6 +11,8 @@ def _safe_text(v: Any) -> str:
 
 
 def analyze_provenance(image_bytes: bytes) -> dict[str, Any]:
+    from PIL import Image
+
     flags: list[str] = []
     score = 0.0
 

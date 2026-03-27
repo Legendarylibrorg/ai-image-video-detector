@@ -6,6 +6,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from .utils import read_json_dict
+
 
 def _walk_images(root: Path):
     for p in root.rglob("*"):
@@ -130,13 +132,7 @@ def cmd_balance_report(data_root: str):
 
 
 def _read_json(path: Path) -> dict:
-    if not path.exists():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return data if isinstance(data, dict) else {}
+    return read_json_dict(path)
 
 
 def _count_image_files(root: Path) -> dict[str, dict[str, int]]:

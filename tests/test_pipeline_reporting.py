@@ -88,8 +88,93 @@ class PipelineReportingTests(unittest.TestCase):
                 model_dir = ens / name
                 model_dir.mkdir(parents=True, exist_ok=True)
                 (model_dir / "best.safetensors").write_bytes(b"x")
-                (model_dir / "best_metrics.json").write_text(json.dumps({"auc": 0.9, "f1": 0.8}), encoding="utf-8")
-                (model_dir / "calibration.json").write_text(json.dumps({"threshold": 0.42}), encoding="utf-8")
+                (model_dir / "best_metrics.json").write_text(
+                    json.dumps(
+                        {
+                            "auc": 0.9,
+                            "f1": 0.8,
+                            "balanced_accuracy": 0.89,
+                            "precision_ai": 0.88,
+                            "recall_ai": 0.89,
+                            "precision_real": 0.90,
+                            "recall_real": 0.88,
+                            "predicts_single_class": False,
+                            "promotion_eligible": True,
+                            "promotion_reason": "ok",
+                            "threshold_operable": True,
+                            "composite_metrics": {"ece": 0.04, "brier": 0.05},
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                (model_dir / "calibration.json").write_text(
+                    json.dumps({"threshold": 0.42, "temperature": 0.7, "objective": "balanced"}),
+                    encoding="utf-8",
+                )
+                (model_dir / "config.json").write_text(
+                    json.dumps({"args": {"backbone": "effb0", "img_size": 256, "use_metadata_features": False}}),
+                    encoding="utf-8",
+                )
+                (model_dir / "test_metrics.json").write_text(
+                    json.dumps(
+                        {
+                            "auc": 0.96,
+                            "f1": 0.92,
+                            "precision_ai": 0.91,
+                            "recall_ai": 0.92,
+                            "precision_real": 0.93,
+                            "recall_real": 0.91,
+                            "ece": 0.04,
+                            "brier": 0.05,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            metadata_dir = ens / "m5_metadata"
+            metadata_dir.mkdir(parents=True, exist_ok=True)
+            (metadata_dir / "best.safetensors").write_bytes(b"x")
+            (metadata_dir / "best_metrics.json").write_text(
+                json.dumps(
+                    {
+                        "auc": 0.99,
+                        "f1": 0.82,
+                        "balanced_accuracy": 0.91,
+                        "precision_ai": 0.90,
+                        "recall_ai": 0.91,
+                        "precision_real": 0.92,
+                        "recall_real": 0.90,
+                        "predicts_single_class": False,
+                        "promotion_eligible": True,
+                        "promotion_reason": "ok",
+                        "threshold_operable": True,
+                        "composite_metrics": {"ece": 0.03, "brier": 0.04},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (metadata_dir / "calibration.json").write_text(
+                json.dumps({"threshold": 0.35, "temperature": 0.8, "objective": "balanced"}),
+                encoding="utf-8",
+            )
+            (metadata_dir / "config.json").write_text(
+                json.dumps({"args": {"backbone": "tiny", "img_size": 256, "use_metadata_features": True}}),
+                encoding="utf-8",
+            )
+            (metadata_dir / "test_metrics.json").write_text(
+                json.dumps(
+                    {
+                        "auc": 0.98,
+                        "f1": 0.94,
+                        "precision_ai": 0.95,
+                        "recall_ai": 0.94,
+                        "precision_real": 0.96,
+                        "recall_real": 0.93,
+                        "ece": 0.03,
+                        "brier": 0.04,
+                    }
+                ),
+                encoding="utf-8",
+            )
             (ens / "test_metrics.json").write_text(json.dumps({"auc": 0.97, "f1": 0.91}), encoding="utf-8")
             (ens / "ensemble_config.json").write_text(json.dumps({"threshold": 0.55, "fit": {"objective": "balanced"}}), encoding="utf-8")
             (ens / "domain_config.json").write_text(json.dumps({"base_threshold": 0.55, "thresholds": {"screenshot": 0.6}}), encoding="utf-8")
@@ -161,10 +246,15 @@ class PipelineReportingTests(unittest.TestCase):
         self.assertTrue(summary["release_bundle"].endswith("release"))
         self.assertEqual(thresholds["ensemble"], 0.55)
         self.assertEqual(thresholds["domain_thresholds"]["screenshot"], 0.6)
-        self.assertEqual(len(prod["models"]), 4)
+        self.assertEqual(len(prod["models"]), 5)
         self.assertTrue(prod["distilled_model"].endswith("best.safetensors"))
         self.assertTrue(prod["robust_eval"].endswith("robust_eval.json"))
         self.assertTrue(prod["release_bundle"].endswith("release"))
+        self.assertEqual(prod["public_model"]["member"], "m5_metadata")
+        self.assertTrue(prod["public_model"]["use_metadata_features"])
+        self.assertEqual(prod["public_model"]["selection_reason"], "best_promotable_metadata_aware_model")
+        self.assertTrue(prod["public_model"]["public_checkpoint"].endswith("release/public_model/best.safetensors"))
+        self.assertEqual(summary["public_model"]["member"], "m5_metadata")
         self.assertIn("preferred_checkpoints", manifest)
         self.assertTrue(manifest["artifacts"]["release_bundle"].endswith("release"))
 

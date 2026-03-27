@@ -135,8 +135,8 @@ class SetupLinuxTests(unittest.TestCase):
             }
         )
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assertIn("setup_stage=pipeline_train_all_types status=run", proc.stdout)
-        self.assertIn("[DRY_RUN] bash scripts/do.sh train-all-types", proc.stdout)
+        self.assertIn("setup_stage=pipeline_run status=run", proc.stdout)
+        self.assertIn("[DRY_RUN] bash scripts/do.sh pipeline", proc.stdout)
         self.assertIn("setup_status=complete", proc.stdout)
 
     def test_setup_linux_dry_run_uses_noninteractive_apt_install(self) -> None:

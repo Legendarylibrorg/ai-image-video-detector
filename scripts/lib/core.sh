@@ -1,7 +1,7 @@
 source "$ROOT_DIR/scripts/lib/env.sh"
 
 TRAIN_LOCK_STALE_SEC="${TRAIN_LOCK_STALE_SEC:-7200}"
-GPU_REQUIRED_CMDS="${GPU_REQUIRED_CMDS:-run,pipeline,start,start-v2,smoke-real}"
+GPU_REQUIRED_CMDS="${GPU_REQUIRED_CMDS:-pipeline,smoke-real}"
 
 ensure_env() {
   if [[ "$ENV_READY" == "1" ]]; then
@@ -168,7 +168,7 @@ run_collection_command() {
 }
 
 print_usage() {
-  echo "usage: bash scripts/do.sh [pipeline|run|smoke|smoke-real|check|start|start-v2|collect|collect-diverse|collect-fast|collect-image|collect-video|collection-status|ingest|scan [paths...]|train|train-existing|train-image|train-video|train-all|retrain|continuous|train-all-types|deps-update|doctor|status]"
+  echo "usage: bash scripts/do.sh [pipeline|smoke|smoke-real|collect|collect-diverse|collect-fast|collect-image|collect-video|collection-status|ingest|scan [paths...]|train-existing|train-image|train-video|train-all|retrain|continuous|deps-update|doctor|status]"
 }
 
 run_doctor_check() {
@@ -222,22 +222,8 @@ print_cli_flag() {
   printf "%s\n" "$1"
 }
 
-print_cli_flags() {
-  local flag=""
-  for flag in "$@"; do
-    print_cli_flag "$flag"
-  done
-}
-
 print_cli_flag_value() {
   printf "%s\n%s\n" "$1" "$2"
-}
-
-print_cli_flag_value_pairs() {
-  while [[ "$#" -gt 0 ]]; do
-    print_cli_flag_value "$1" "$2"
-    shift 2
-  done
 }
 
 print_cli_flag_value_from_env() {

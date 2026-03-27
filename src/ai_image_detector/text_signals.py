@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-import numpy as np
-from PIL import Image
-
-try:
-    import cv2  # type: ignore
-except Exception:
-    cv2 = None
+if TYPE_CHECKING:
+    from PIL import Image
 
 
-def analyze_text_signals(image: Image.Image) -> dict[str, Any]:
+def analyze_text_signals(image: "Image.Image") -> dict[str, Any]:
+    import numpy as np
+
+    try:
+        import cv2  # type: ignore
+    except Exception:
+        cv2 = None
+
     arr = np.asarray(image.convert("L"), dtype=np.uint8)
     h, w = arr.shape[:2]
     if h == 0 or w == 0:

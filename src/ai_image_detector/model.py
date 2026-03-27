@@ -5,14 +5,94 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
 
+from .metadata import METADATA_FEATURE_NAMES
+
+
+RESIDUAL_KERNEL = (
+    (0.0, -1.0, 0.0),
+    (-1.0, 4.0, -1.0),
+    (0.0, -1.0, 0.0),
+)
+
 
 def _residual_kernel(device: torch.device) -> torch.Tensor:
-    k = torch.tensor([
-        [0.0, -1.0, 0.0],
-        [-1.0, 4.0, -1.0],
-        [0.0, -1.0, 0.0],
-    ], device=device)
+    k = torch.tensor(RESIDUAL_KERNEL, device=device)
     return k.view(1, 1, 3, 3)
+
+
+def model_runtime_spec(
+    *,
+    backbone: str,
+    img_size: int,
+    metadata_feature_dim: int = 0,
+) -> dict[str, object]:
+    feature_dim = 256 if backbone == "tiny" else (1408 if backbone == "effb2" else 1280)
+    metadata_hidden = 64 if metadata_feature_dim > 0 else 0
+    fusion_hidden_1 = 768 if feature_dim >= 1280 else 512
+    fusion_hidden_2 = 192 if feature_dim >= 1280 else 128
+    return {
+        "schema": "ai-image-detector-runtime-v1",
+        "architecture": {
+            "name": "AdvancedAIDetector",
+            "backbone": backbone,
+            "img_size": int(img_size),
+            "branches": [
+                {"name": "rgb_branch", "input_channels": 3, "preprocess": "rgb_identity"},
+                {"name": "fft_branch", "input_channels": 3, "preprocess": "grayscale_fft_magnitude"},
+                {"name": "noise_branch", "input_channels": 3, "preprocess": "laplacian_residual"},
+            ],
+            "metadata_feature_dim": int(metadata_feature_dim),
+            "auxiliary_features": {
+                "enabled": bool(metadata_feature_dim > 0),
+                "branch_name": "metadata_branch",
+                "sources": ["metadata", "provenance", "text_signals"] if metadata_feature_dim > 0 else [],
+                "feature_names": list(METADATA_FEATURE_NAMES[:metadata_feature_dim]) if metadata_feature_dim > 0 else [],
+            },
+            "metadata_hidden_dim": int(metadata_hidden),
+            "fusion": {
+                "type": "mlp",
+                "input_dim": int((feature_dim * 3) + metadata_hidden),
+                "hidden_dims": [int(fusion_hidden_1), int(fusion_hidden_2)],
+                "output_dim": 1,
+            },
+        },
+        "preprocessing": {
+            "resize": {"mode": "bilinear", "size": [int(img_size), int(img_size)]},
+            "tensor_conversion": "torchvision.transforms.ToTensor",
+            "normalization": None,
+            "rgb_branch": {
+                "source": "rgb",
+                "channel_order": "RGB",
+            },
+            "fft_branch": {
+                "source": "rgb_mean_grayscale",
+                "fft": {
+                    "function": "torch.fft.fft2",
+                    "norm": "ortho",
+                    "shift": "fftshift",
+                    "magnitude": "abs",
+                    "compression": "log1p",
+                    "scale": "divide_by_per_image_max",
+                    "repeat_channels": 3,
+                },
+            },
+            "noise_branch": {
+                "source": "rgb",
+                "residual": {
+                    "kernel": RESIDUAL_KERNEL,
+                    "per_channel": True,
+                    "padding": 1,
+                    "post_activation": "tanh",
+                },
+            },
+        },
+        "output": {
+            "probability_target": "ai",
+            "classes": ["ai", "real"],
+            "logit_to_probability": "sigmoid(logit / temperature)",
+            "threshold_source": "checkpoint_or_calibration",
+        },
+    }
 
 
 class ConvBlock(nn.Module):

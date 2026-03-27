@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import sys
 
+from release_selection import select_public_model
+
 
 def _read_json(path: Path) -> dict:
     if not path.exists():
@@ -140,6 +142,48 @@ def main() -> int:
         and not args.allow_missing_video
     ):
         failures.append(f"missing {video / 'best_video.safetensors'}")
+
+    public_model = select_public_model(ens)
+    if public_model is None:
+        failures.append("missing promotable public model candidate")
+    else:
+        public_dir = Path(str(public_model["artifact_dir"]))
+        checks["public_model_member"] = public_model["name"]
+        checks["public_model_threshold"] = public_model["calibration"].get("threshold")
+        checks["public_model_temperature"] = public_model["calibration"].get("temperature")
+        checks["public_model_metadata_aware"] = bool(public_model["use_metadata_features"])
+        for required_name in ("calibration.json", "config.json", "inference_spec.json", "best_model_summary.json", "test_metrics.json"):
+            path = public_dir / required_name
+            if not path.exists():
+                failures.append(f"missing {path}")
+        public_test_metrics = public_model.get("test_metrics", {})
+        if not public_test_metrics:
+            failures.append(f"missing {public_dir / 'test_metrics.json'}")
+        else:
+            public_auc = _metric(public_test_metrics, "auc", default=0.0)
+            public_f1 = _metric(public_test_metrics, "f1", default=0.0)
+            public_precision = _metric(public_test_metrics, "precision", "precision_ai", default=0.0)
+            public_recall = _metric(public_test_metrics, "recall", "recall_ai", default=0.0)
+            public_ece = _metric(public_test_metrics, "ece", default=1.0)
+            public_brier = _metric(public_test_metrics, "brier", default=1.0)
+            checks["public_model_auc"] = public_auc
+            checks["public_model_f1"] = public_f1
+            checks["public_model_precision"] = public_precision
+            checks["public_model_recall"] = public_recall
+            checks["public_model_ece"] = public_ece
+            checks["public_model_brier"] = public_brier
+            if public_auc < args.min_image_auc:
+                failures.append(f"public_model_auc {public_auc:.4f} < {args.min_image_auc:.4f}")
+            if public_f1 < args.min_image_f1:
+                failures.append(f"public_model_f1 {public_f1:.4f} < {args.min_image_f1:.4f}")
+            if public_precision < args.min_image_precision:
+                failures.append(f"public_model_precision {public_precision:.4f} < {args.min_image_precision:.4f}")
+            if public_recall < args.min_image_recall:
+                failures.append(f"public_model_recall {public_recall:.4f} < {args.min_image_recall:.4f}")
+            if public_ece > args.max_image_ece:
+                failures.append(f"public_model_ece {public_ece:.4f} > {args.max_image_ece:.4f}")
+            if public_brier > args.max_image_brier:
+                failures.append(f"public_model_brier {public_brier:.4f} > {args.max_image_brier:.4f}")
 
     out = {"ok": len(failures) == 0, "checks": checks, "failures": failures}
     print(json.dumps(out, indent=2))

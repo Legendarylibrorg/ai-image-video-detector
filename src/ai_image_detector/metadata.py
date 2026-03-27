@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import argparse
+from functools import lru_cache
 import math
 from pathlib import Path
-from typing import Any
-from typing import Optional
+from typing import Any, Optional
 
-import piexif
-from PIL import Image
+from .provenance import analyze_provenance
+from .text_signals import analyze_text_signals
 
 
 METADATA_FEATURE_NAMES = (
@@ -23,12 +23,23 @@ METADATA_FEATURE_NAMES = (
     "log_file_size_norm",
     "aspect_ratio_norm",
     "megapixels_norm",
+    "provenance_score",
+    "has_content_credentials",
+    "has_embedded_ai_tool_marker",
+    "has_metadata_ai_tool_marker",
+    "text_score",
+    "text_regions_norm",
+    "text_coverage_norm",
+    "has_text_overlay_signal",
 )
 
 WEB_EXPORT_FORMATS = {"WEBP", "PNG", "GIF"}
 
 
 def _load_exif_dict(image_path: str) -> dict:
+    import piexif
+    from PIL import Image
+
     with Image.open(image_path) as img:
         exif_bytes = img.info.get("exif", b"")
     if exif_bytes:
@@ -44,6 +55,8 @@ def _decode_exif_value(value: Any) -> str:
 
 
 def _extract_fields(exif_dict: dict) -> dict[str, str]:
+    import piexif
+
     out: dict[str, str] = {}
     ifd0 = exif_dict.get("0th", {})
     ifd_exif = exif_dict.get("Exif", {})
@@ -70,11 +83,7 @@ def _extract_fields(exif_dict: dict) -> dict[str, str]:
     return out
 
 
-def analyze_metadata(image_path: str) -> dict[str, Any]:
-    with Image.open(image_path) as image:
-        image_format = (image.format or "").upper()
-    exif_dict = _load_exif_dict(image_path)
-    fields = _extract_fields(exif_dict)
+def _analyze_metadata_values(image_format: str, exif_dict: dict, fields: dict[str, str]) -> dict[str, Any]:
     if image_format:
         fields.setdefault("file_format", image_format.lower())
 
@@ -134,13 +143,32 @@ def analyze_metadata(image_path: str) -> dict[str, Any]:
     return {"metadata_score": score, "metadata_flags": flags, "metadata_fields": fields}
 
 
-def extract_metadata_features(image_path: str) -> list[float]:
+def analyze_metadata(image_path: str) -> dict[str, Any]:
+    from PIL import Image
+
     with Image.open(image_path) as image:
-        width, height = image.size
         image_format = (image.format or "").upper()
     exif_dict = _load_exif_dict(image_path)
     fields = _extract_fields(exif_dict)
-    analysis = analyze_metadata(image_path)
+    return _analyze_metadata_values(image_format, exif_dict, fields)
+
+
+@lru_cache(maxsize=65536)
+def _extract_metadata_features_cached(image_path: str) -> tuple[float, ...]:
+    from PIL import Image
+
+    image_file = Path(image_path)
+    with Image.open(image_path) as image:
+        width, height = image.size
+        image_format = (image.format or "").upper()
+        rgb_image = image.convert("RGB")
+
+    image_bytes = image_file.read_bytes() if image_file.exists() else b""
+    exif_dict = _load_exif_dict(image_path)
+    fields = _extract_fields(exif_dict)
+    analysis = _analyze_metadata_values(image_format, exif_dict, fields)
+    provenance = analyze_provenance(image_bytes)
+    text = analyze_text_signals(rgb_image)
 
     software = fields.get("software", "").lower()
     user_comment = fields.get("user_comment", "").lower()
@@ -165,12 +193,16 @@ def extract_metadata_features(image_path: str) -> list[float]:
         "model hash",
         "prompt:",
     )
-    file_size = Path(image_path).stat().st_size if Path(image_path).exists() else 0
+    file_size = image_file.stat().st_size if image_file.exists() else 0
     aspect_ratio = width / max(float(height), 1.0)
     aspect_ratio_norm = min(abs(math.log(max(aspect_ratio, 1e-6))), math.log(4.0)) / math.log(4.0)
     megapixels = (width * height) / 1_000_000.0
+    provenance_flags = set(provenance["provenance_flags"])
+    text_flags = set(text.get("text_flags", []))
+    text_regions = float(text.get("text_regions", 0))
+    text_coverage = float(text.get("text_coverage", 0.0))
 
-    return [
+    return (
         float(analysis["metadata_score"]),
         1.0 if has_any_exif else 0.0,
         1.0 if software else 0.0,
@@ -183,7 +215,26 @@ def extract_metadata_features(image_path: str) -> list[float]:
         min(math.log1p(float(file_size)) / 20.0, 1.0),
         float(aspect_ratio_norm),
         min(megapixels / 12.0, 1.0),
-    ]
+        float(provenance["provenance_score"]),
+        1.0 if "has_content_credentials" in provenance_flags else 0.0,
+        1.0 if "embedded_ai_tool_marker" in provenance_flags else 0.0,
+        1.0 if "metadata_ai_tool_marker" in provenance_flags else 0.0,
+        float(text["text_score"]),
+        min(text_regions / 12.0, 1.0),
+        min(text_coverage / 0.12, 1.0),
+        1.0
+        if (
+            text_regions >= 2
+            or "heavy_text_overlay" in text_flags
+            or "moderate_text_overlay" in text_flags
+            or "possible_text_overlay" in text_flags
+        )
+        else 0.0,
+    )
+
+
+def extract_metadata_features(image_path: str) -> list[float]:
+    return list(_extract_metadata_features_cached(image_path))
 
 
 def metadata_feature_dim() -> int:
@@ -191,6 +242,8 @@ def metadata_feature_dim() -> int:
 
 
 def inspect_metadata(image_path: str) -> None:
+    import piexif
+
     exif_dict = _load_exif_dict(image_path)
 
     print(f"image={image_path}")
@@ -204,6 +257,8 @@ def inspect_metadata(image_path: str) -> None:
 
 
 def strip_metadata(input_path: str, output_path: str) -> None:
+    from PIL import Image
+
     img = Image.open(input_path).convert("RGB")
     img.save(output_path, quality=95)
 
@@ -215,6 +270,9 @@ def modify_metadata(
     artist: Optional[str],
     user_comment: Optional[str],
 ) -> None:
+    import piexif
+    from PIL import Image
+
     img = Image.open(input_path).convert("RGB")
     exif_dict = _load_exif_dict(input_path)
 

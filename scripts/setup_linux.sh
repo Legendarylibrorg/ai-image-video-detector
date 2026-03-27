@@ -124,8 +124,8 @@ main() {
     return 0
   fi
 
-  if stage_done "pipeline_train_all_types"; then
-    echo "setup_stage=pipeline_train_all_types status=skip_done"
+  if stage_done "pipeline_run"; then
+    echo "setup_stage=pipeline_run status=skip_done"
     print_next_step
     echo "setup_status=complete"
     return 0
@@ -133,10 +133,10 @@ main() {
 
   local attempt=1
   while true; do
-    echo "setup_stage=pipeline_train_all_types status=run setup_attempt=$attempt/$SETUP_MAX_ATTEMPTS"
-    if run_cmd bash scripts/do.sh train-all-types; then
-      mark_stage_done "pipeline_train_all_types"
-      echo "setup_stage=pipeline_train_all_types status=done"
+    echo "setup_stage=pipeline_run status=run setup_attempt=$attempt/$SETUP_MAX_ATTEMPTS"
+    if run_cmd bash scripts/do.sh pipeline; then
+      mark_stage_done "pipeline_run"
+      echo "setup_stage=pipeline_run status=done"
       print_next_step
       echo "setup_status=complete"
       return 0

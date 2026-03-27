@@ -7,7 +7,15 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 from typing import Any
+
+try:
+    from ai_image_detector.utils import read_json_dict, read_nonempty_lines, write_json_dict
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from ai_image_detector.utils import read_json_dict, read_nonempty_lines, write_json_dict
+from release_selection import build_public_model_manifest, select_public_model
 
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
@@ -21,19 +29,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _read_json(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_json_dict(path, payload, indent=2)
 
 
 def _count_files(root: Path, splits: tuple[str, ...], exts: set[str]) -> dict[str, dict[str, int]]:
@@ -54,9 +51,7 @@ def _complete_split_class_counts(counts: dict[str, dict[str, int]], splits: tupl
 
 
 def _read_sources(cache_file: Path) -> list[str]:
-    if not cache_file.exists():
-        return []
-    return [line.strip() for line in cache_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return read_nonempty_lines(cache_file)
 
 
 def _disk_free_gb(root: Path) -> float:
@@ -111,9 +106,9 @@ def write_dataset_report(args: argparse.Namespace) -> int:
     dataset_build_report_path = data_root / "dataset_build_report.json"
     dataset_run_summary_path = data_root / "dataset_run_summary.json"
     training_data_report_path = prepared_root / "training_data_report.json"
-    dataset_build_report = _read_json(dataset_build_report_path)
-    dataset_run_summary = _read_json(dataset_run_summary_path)
-    training_data_report = _read_json(training_data_report_path)
+    dataset_build_report = read_json_dict(dataset_build_report_path)
+    dataset_run_summary = read_json_dict(dataset_run_summary_path)
+    training_data_report = read_json_dict(training_data_report_path)
     hf_sources = _read_sources(cache_file)
 
     data_counts = _count_files(data_root, SPLITS, IMAGE_EXTS)
@@ -178,9 +173,9 @@ def _read_member_summaries(ens_out: Path) -> list[dict[str, Any]]:
                 "name": name,
                 "artifact_dir": str(root.resolve()),
                 "preferred_checkpoint": str(best_safe.resolve()) if best_safe.exists() else None,
-                "best_metrics": _read_json(root / "best_metrics.json"),
-                "group_metrics": _read_json(root / "best_group_metrics.json"),
-                "calibration": _read_json(root / "calibration.json"),
+                "best_metrics": read_json_dict(root / "best_metrics.json"),
+                "group_metrics": read_json_dict(root / "best_group_metrics.json"),
+                "calibration": read_json_dict(root / "calibration.json"),
             }
         )
     return members
@@ -196,16 +191,21 @@ def write_final_report(args: argparse.Namespace) -> int:
     video_artifacts = Path(args.video_artifacts)
 
     image_members = _read_member_summaries(ens_out)
-    ensemble_config = _read_json(ensemble_config_path)
-    domain_config = _read_json(domain_config_path)
-    robust_eval = _read_json(Path(args.robust_eval))
-    image_test_metrics = _read_json(ens_out / "test_metrics.json")
-    video_metrics = _read_json(video_artifacts / "best_video_metrics.json")
-    dataset_qa = _read_json(Path(args.dataset_qa))
+    ensemble_config = read_json_dict(ensemble_config_path)
+    domain_config = read_json_dict(domain_config_path)
+    robust_eval = read_json_dict(Path(args.robust_eval))
+    image_test_metrics = read_json_dict(ens_out / "test_metrics.json")
+    video_metrics = read_json_dict(video_artifacts / "best_video_metrics.json")
+    dataset_qa = read_json_dict(Path(args.dataset_qa))
     distill_dir = ens_out / "distill"
-    distill_summary = _read_json(distill_dir / "best_model_summary.json")
+    distill_summary = read_json_dict(distill_dir / "best_model_summary.json")
     distill_checkpoint = _resolve_checkpoint(distill_dir / "best.safetensors")
     release_bundle = Path(args.release_bundle) if getattr(args, "release_bundle", "") else None
+    public_model = select_public_model(ens_out)
+    public_model_release_path = None
+    if release_bundle is not None and public_model is not None:
+        public_model_release_path = str((release_bundle / "public_model" / "best.safetensors").resolve())
+    public_model_summary = build_public_model_manifest(public_model, public_checkpoint=public_model_release_path)
 
     thresholds = {
         "image_models": {
@@ -247,6 +247,7 @@ def write_final_report(args: argparse.Namespace) -> int:
         "robust_eval": robust_eval,
         "video_metrics": video_metrics,
         "distilled_model": distill_summary,
+        "public_model": public_model_summary,
         "thresholds": thresholds,
         "preferred_checkpoints": {
             "image_models": preferred_models,
@@ -288,6 +289,7 @@ def write_final_report(args: argparse.Namespace) -> int:
         "robust_eval": str(Path(args.robust_eval).resolve()) if Path(args.robust_eval).exists() else None,
         "video_model": preferred_video_model,
         "distilled_model": preferred_distill_model,
+        "public_model": public_model_summary,
         "final_run_summary": str(Path(args.summary_out).resolve()),
         "run_manifest": str(Path(args.manifest_out).resolve()),
         "threshold_summary": str(Path(args.thresholds_out).resolve()),

@@ -118,6 +118,19 @@ aid-dataset
 ```
 
 Those commands exist to support the local pipeline scripts, not to turn this repo into a broad general-purpose app surface.
+They are lightweight wrappers now: a base `pip install -e .` can expose them without pulling in the full training stack, and they will print a clear missing-extra hint if you run them without the required dependency profile.
+
+## Dependency profiles
+
+The package is split into capability extras:
+
+- base install: `pip install -e .`
+- full repo workflow: `pip install -e '.[pipeline]'`
+- image training only: `pip install -e '.[training]'`
+- Hugging Face collection only: `pip install -e '.[collection]'`
+- video only: `pip install -e '.[video]'`
+
+Normal repo usage should still go through `./local.sh deps` or `./local.sh setup`, which install the full `pipeline` profile into `./.venv`.
 
 ## Pipeline entrypoints
 
@@ -145,7 +158,6 @@ For command-level control, use:
 bash scripts/do.sh pipeline
 bash scripts/do.sh collect-diverse
 bash scripts/do.sh train-existing
-bash scripts/do.sh train-all-types
 ```
 
 For deeper command coverage, see [COMMANDS.md](COMMANDS.md).
@@ -162,12 +174,6 @@ Full 4090-oriented pipeline:
 
 ```bash
 bash scripts/full_pipeline_4090.sh
-```
-
-One-command optimized bootstrap:
-
-```bash
-bash scripts/one_command_4090.sh
 ```
 
 Example override:

@@ -9,6 +9,7 @@ VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 UPGRADE_TOOLCHAIN="${UPGRADE_TOOLCHAIN:-0}"
 TORCH_CUDA_INDEX_URL="${TORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
 DEPS_STAMP_FILE="${DEPS_STAMP_FILE:-$VENV_DIR/.deps_stamp}"
+DEPS_EXTRA="${DEPS_EXTRA:-pipeline}"
 
 hash_cmd() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -19,7 +20,13 @@ hash_cmd() {
 }
 
 pip_cmd() {
-  PIP_DISABLE_PIP_VERSION_CHECK=1 python -m pip --progress-bar off "$@"
+  local subcommand="$1"
+  shift
+  if [[ "$subcommand" == "install" ]]; then
+    PIP_DISABLE_PIP_VERSION_CHECK=1 python -m pip install --progress-bar off "$@"
+    return
+  fi
+  PIP_DISABLE_PIP_VERSION_CHECK=1 python -m pip "$subcommand" "$@"
 }
 
 deps_fingerprint() {
@@ -43,11 +50,16 @@ deps_fp="$(deps_fingerprint)"
 if [[ "$UPGRADE_TOOLCHAIN" != "1" && -f "$DEPS_STAMP_FILE" && "$(cat "$DEPS_STAMP_FILE")" == "$deps_fp" ]]; then
   if python - <<'PY' >/dev/null 2>&1
 import ai_image_detector  # noqa: F401
+import cv2  # noqa: F401
 import datasets  # noqa: F401
 import huggingface_hub  # noqa: F401
+import numpy  # noqa: F401
 import PIL  # noqa: F401
+import piexif  # noqa: F401
+import safetensors  # noqa: F401
+import sklearn  # noqa: F401
 import torch  # noqa: F401
-import cv2  # noqa: F401
+import torchvision  # noqa: F401
 PY
   then
     if command -v hf >/dev/null 2>&1 && command -v aid-train >/dev/null 2>&1 && command -v aid-video-train >/dev/null 2>&1 && command -v aid-dataset >/dev/null 2>&1; then
@@ -83,16 +95,21 @@ if [[ -s "$LOCK_FILE" ]]; then
   pip_cmd install -e . --no-deps --no-build-isolation
 else
   echo "deps_lock=missing file=$LOCK_FILE fallback=pyproject_resolve"
-  pip_cmd install --upgrade --upgrade-strategy eager -e .
+  pip_cmd install --upgrade --upgrade-strategy eager -e ".[${DEPS_EXTRA}]"
 fi
 
 if ! python - <<'PY' >/dev/null 2>&1
 import ai_image_detector  # noqa: F401
+import cv2  # noqa: F401
 import datasets  # noqa: F401
 import huggingface_hub  # noqa: F401
+import numpy  # noqa: F401
 import PIL  # noqa: F401
+import piexif  # noqa: F401
+import safetensors  # noqa: F401
+import sklearn  # noqa: F401
 import torch  # noqa: F401
-import cv2  # noqa: F401
+import torchvision  # noqa: F401
 PY
 then
   echo "deps_fail=core_python_deps_missing run=bash scripts/install_deps.sh" >&2

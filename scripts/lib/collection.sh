@@ -261,7 +261,8 @@ print_diverse_common_args() {
   else
     print_cli_flag --quiet-progress
   fi
-  print_cli_flags --hf-only --require-full-targets
+  print_cli_flag --hf-only
+  print_cli_flag --require-full-targets
 }
 
 print_diverse_discovery_args() {

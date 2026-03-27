@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-import numpy as np
-from PIL import Image
+if TYPE_CHECKING:
+    from PIL import Image
 
 
-def image_ood_score(image: Image.Image) -> dict[str, Any]:
+def image_ood_score(image: "Image.Image") -> dict[str, Any]:
+    import numpy as np
+
     w, h = image.size
     flags: list[str] = []
     score = 0.0

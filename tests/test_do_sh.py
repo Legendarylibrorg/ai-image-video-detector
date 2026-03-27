@@ -68,15 +68,19 @@ class DoShTests(unittest.TestCase):
     def test_usage_lists_simple_aliases(self) -> None:
         out = self.run_bash("source scripts/do.sh; print_usage")
         self.assertIn("pipeline", out)
-        self.assertIn("run", out)
         self.assertIn("smoke", out)
         self.assertIn("smoke-real", out)
         self.assertIn("collection-status", out)
-        self.assertIn("check", out)
         self.assertIn("train-existing", out)
         self.assertIn("retrain", out)
         self.assertIn("continuous", out)
         self.assertNotIn("detect", out)
+
+    def test_no_arg_do_script_shows_usage_without_removed_start_alias(self) -> None:
+        proc = self.run_bash_proc("bash scripts/do.sh")
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("usage: bash scripts/do.sh", proc.stdout)
+        self.assertNotIn("start", proc.stdout)
 
     def test_pipeline_stage_is_resumable(self) -> None:
         out = self.run_bash(
@@ -347,9 +351,9 @@ class DoShTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn("doctor_fail: nvidia_smi_missing gpu_required=1", proc.stdout)
 
-    def test_run_command_fails_fast_when_gpu_missing(self) -> None:
+    def test_pipeline_command_fails_fast_when_gpu_missing(self) -> None:
         proc = subprocess.run(
-            ["bash", "scripts/do.sh", "run"],
+            ["bash", "scripts/do.sh", "pipeline"],
             cwd=ROOT,
             capture_output=True,
             text=True,
