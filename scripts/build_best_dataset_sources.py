@@ -31,10 +31,27 @@ DEFAULT_DISCOVERY_QUERIES = [
     "ai generated image real",
     "synthetic image detection",
     "real vs fake image",
+    "camera photo dataset",
+    "smartphone photo dataset",
+    "screenshot dataset image",
+    "document scan image dataset",
+    "anime illustration real fake",
+    "3d render real fake",
+    "social media image dataset",
+    "portrait selfie real fake",
 ]
 
 LOW_QUALITY_NAME_RE = re.compile(r"(^|[^a-z0-9])(toy|dummy|sample|mini|tiny|test)([^a-z0-9]|$)")
 HF_DATASET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
+USEFUL_KEYWORD_GROUPS: dict[str, tuple[str, ...]] = {
+    "detector_labels": ("real", "fake", "deepfake", "generated", "synthetic", "cifake"),
+    "photo": ("photo", "camera", "smartphone", "dslr", "webcam", "cctv", "selfie", "portrait"),
+    "screen": ("screenshot", "screen", "browser", "chat ui", "dashboard", "interface", "ui"),
+    "document": ("document", "receipt", "invoice", "id card", "scan", "scanned", "form"),
+    "illustration": ("anime", "illustration", "digital art", "artwork", "manga"),
+    "render": ("3d", "render", "cgi", "game"),
+    "web": ("social media", "meme", "watermarked", "recompressed", "edited"),
+}
 
 
 def cache_policy_path(cache_path: Path) -> Path:
@@ -118,6 +135,15 @@ def discover_hf_sources(
                 if downloads < min_downloads or likes < min_likes:
                     continue
                 score = min(3.0, math.log10(max(1, downloads) + 1.0)) + min(2.0, math.log10(max(1, likes) + 1.0))
+                useful_text = " ".join([ds_id.lower(), *tags])
+                useful_groups = sum(
+                    1
+                    for keywords in USEFUL_KEYWORD_GROUPS.values()
+                    if any(keyword in useful_text for keyword in keywords)
+                )
+                score += min(1.5, 0.22 * float(useful_groups))
+                if any(tag in useful_text for tag in ("image-classification", "computer-vision", "image")):
+                    score += 0.15
                 if LOW_QUALITY_NAME_RE.search(ds_id.lower()):
                     score -= 0.8
                 if score < min_quality_score:

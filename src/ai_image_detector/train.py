@@ -22,7 +22,7 @@ from sklearn.metrics import average_precision_score, balanced_accuracy_score, co
 from torchvision import datasets, transforms
 
 from .checkpoints import load_checkpoint, resolve_checkpoint_path, save_safetensors_checkpoint
-from .data import make_loaders
+from .data import MetadataImageFolder, make_loaders
 from .metrics import find_best_threshold, fit_temperature, full_metric_report, sigmoid
 from .model import build_model
 
@@ -164,6 +164,26 @@ def _eval_metrics_from_probs(probs: np.ndarray, labels: np.ndarray, threshold: f
     }
 
 
+def _promotion_status(report: dict[str, Any]) -> tuple[bool, str]:
+    if not bool(report.get("threshold_operable", True)):
+        return False, "no_operable_threshold"
+    if bool(report.get("predicts_single_class", False)):
+        return False, "single_class_predictions"
+    if float(report.get("recall_ai", 0.0)) <= 0.0:
+        return False, "missing_ai_recall"
+    if float(report.get("recall_real", 0.0)) <= 0.0:
+        return False, "missing_real_recall"
+    objective = str(report.get("threshold_objective", ""))
+    objective_score = report.get("threshold_objective_score")
+    if objective_score is not None:
+        score = float(objective_score)
+        if objective == "balanced" and score <= 0.500001:
+            return False, "uninformative_balanced_threshold"
+        if objective == "youden" and score <= 0.000001:
+            return False, "uninformative_youden_threshold"
+    return True, "ok"
+
+
 def evaluate(
     model: nn.Module,
     loader,
@@ -183,13 +203,20 @@ def evaluate(
 
     offset = 0
     with torch.no_grad():
-        for x, y in loader:
+        for batch in loader:
+            metadata_features = None
+            if len(batch) == 3:
+                x, metadata_features, y = batch
+            else:
+                x, y = batch
             x = x.to(device, non_blocking=True)
+            if metadata_features is not None:
+                metadata_features = metadata_features.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
             y_bin = _binary_targets(y, ai_idx)
             if device.type == "cuda":
                 x = x.to(memory_format=torch.channels_last)
-            logits = model(x)
+            logits = model(x, metadata_features=metadata_features)
             loss = loss_fn(logits, y_bin)
             probs = torch.sigmoid(logits)
 
@@ -271,6 +298,8 @@ def main():
     ap.add_argument("--no-export-release", dest="export_release", action="store_false")
     ap.add_argument("--save-safetensors", action="store_true", default=True)
     ap.add_argument("--no-save-safetensors", dest="save_safetensors", action="store_false")
+    ap.add_argument("--use-metadata-features", action="store_true", help="Add metadata/file cues as a small auxiliary branch")
+    ap.add_argument("--init-from", default="", help="Optional checkpoint to partially initialize from before training")
     args = ap.parse_args()
 
     out = Path(args.out)
@@ -301,11 +330,12 @@ def main():
     if args.num_workers < 0:
         cpu = os.cpu_count() or 8
         args.num_workers = min(12, max(4, cpu // 2))
-    train_loader, val_loader, classes, class_to_idx, val_samples, train_distribution, val_distribution, class_weight_map = make_loaders(
+    train_loader, val_loader, classes, class_to_idx, val_samples, train_distribution, val_distribution, class_weight_map, metadata_dim = make_loaders(
         args.data,
         args.img_size,
         args.batch_size,
         num_workers=args.num_workers,
+        use_metadata_features=bool(args.use_metadata_features),
     )
     print(f"class_distribution train={train_distribution} val={val_distribution}")
     print(f"class_weights_inverse_freq={class_weight_map}")
@@ -327,6 +357,7 @@ def main():
     model = build_model(
         backbone=args.backbone,
         pretrained_backbone=(not args.no_pretrained_backbone),
+        metadata_feature_dim=metadata_dim,
     ).to(device)
     if device.type == "cuda":
         model = model.to(memory_format=torch.channels_last)
@@ -354,6 +385,24 @@ def main():
     degenerate_epochs = 0
     model_id = f"advanced-ai-detector-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
     start_epoch = 1
+    best_checkpoint_saved = False
+
+    def _load_matching_state_dict(init_ckpt: dict[str, Any]) -> None:
+        current = model.state_dict()
+        loaded = init_ckpt.get("state_dict", {})
+        matched: dict[str, Any] = {}
+        for key, value in loaded.items():
+            if key in current and current[key].shape == value.shape:
+                matched[key] = value
+        missing, unexpected = model.load_state_dict(matched, strict=False)
+        print(f"initialized_from_checkpoint matched={len(matched)} missing={len(missing)} unexpected={len(unexpected)}")
+
+    if args.init_from:
+        init_path = Path(args.init_from)
+        if not init_path.exists():
+            raise FileNotFoundError(init_path)
+        init_ckpt = load_checkpoint(init_path, map_location=device)
+        _load_matching_state_dict(init_ckpt)
 
     def _save_train_ckpt(path: Path, epoch: int) -> None:
         torch.save(
@@ -373,6 +422,8 @@ def main():
                 "class_to_idx": class_to_idx,
                 "backbone": args.backbone,
                 "img_size": args.img_size,
+                "metadata_feature_dim": metadata_dim,
+                "use_metadata_features": bool(args.use_metadata_features),
             },
             path,
         )
@@ -394,6 +445,7 @@ def main():
         degenerate_epochs = int(ckpt.get("degenerate_epochs", degenerate_epochs))
         model_id = str(ckpt.get("model_id", model_id))
         start_epoch = int(ckpt.get("epoch", 0)) + 1
+        best_checkpoint_saved = bool(Path(out / "best.pt").exists() or Path(out / "best.safetensors").exists())
         print(f"resumed_from={resume_path} start_epoch={start_epoch} best_auc={best_auc:.4f}")
 
     try:
@@ -402,14 +454,21 @@ def main():
             opt.zero_grad(set_to_none=True)
             step_idx = 0
             skipped_batches = 0
-            for x, y in train_loader:
+            for batch in train_loader:
+                metadata_features = None
+                if len(batch) == 3:
+                    x, metadata_features, y = batch
+                else:
+                    x, y = batch
                 x = x.to(device, non_blocking=True)
+                if metadata_features is not None:
+                    metadata_features = metadata_features.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
                 y_bin = _binary_targets(y, ai_idx)
                 if device.type == "cuda":
                     x = x.to(memory_format=torch.channels_last)
                 with torch.amp.autocast("cuda", enabled=use_amp):
-                    logits = model(x)
+                    logits = model(x, metadata_features=metadata_features)
                     loss = loss_fn(logits, y_bin) / grad_accum
                 if not torch.isfinite(loss):
                     skipped_batches += 1
@@ -451,8 +510,9 @@ def main():
             val_probs = sigmoid(val_logits / max(temperature, 1e-6))
             threshold_source = "fixed"
             threshold_score = None
+            threshold_metrics: dict[str, Any] = {"operable": True, "search_status": "fixed"}
             if args.decision_threshold is None:
-                threshold, threshold_score, _ = find_best_threshold(
+                threshold, threshold_score, threshold_metrics = find_best_threshold(
                     val_probs,
                     val_labels,
                     objective=args.threshold_objective,
@@ -469,8 +529,13 @@ def main():
             report["threshold_objective"] = args.threshold_objective
             if threshold_score is not None:
                 report["threshold_objective_score"] = float(threshold_score)
+            report["threshold_operable"] = bool(threshold_metrics.get("operable", True))
+            report["threshold_search_status"] = str(threshold_metrics.get("search_status", "unknown"))
             report["lr"] = float(opt.param_groups[0]["lr"])
             report["skipped_batches"] = skipped_batches
+            promotion_eligible, promotion_reason = _promotion_status(report)
+            report["promotion_eligible"] = bool(promotion_eligible)
+            report["promotion_reason"] = promotion_reason
 
             grouped = _group_report(val_probs, val_labels, val_paths, threshold)
             if report["predicts_single_class"]:
@@ -517,6 +582,19 @@ def main():
                 _save_train_ckpt(out / f"epoch_{epoch:03d}.pt", epoch)
 
             if report["auc"] > (best_auc + args.min_delta):
+                if not promotion_eligible:
+                    print(
+                        "skip_best_checkpoint epoch={} reason={} auc={:.4f}".format(
+                            epoch,
+                            promotion_reason,
+                            report["auc"],
+                        )
+                    )
+                    no_improve += 1
+                    if args.patience > 0 and no_improve >= args.patience:
+                        print(f"early_stopping epoch={epoch} no_improve={no_improve} patience={args.patience}")
+                        break
+                    continue
                 best_auc = float(report["auc"])
                 no_improve = 0
                 ckpt = {
@@ -528,11 +606,14 @@ def main():
                     "metrics": report,
                     "classes": classes,
                     "backbone": args.backbone,
+                    "metadata_feature_dim": metadata_dim,
+                    "use_metadata_features": bool(args.use_metadata_features),
                 }
                 torch.save(ckpt, out / "best.pt")
                 if args.save_safetensors:
                     save_safetensors_checkpoint(out / "best.safetensors", ckpt)
                 preferred_best = (out / "best.safetensors") if (out / "best.safetensors").exists() else (out / "best.pt")
+                best_checkpoint_saved = True
                 (out / "best_checkpoint.txt").write_text(str(preferred_best), encoding="utf-8")
                 (out / "best_metrics.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
                 (out / "best_group_metrics.json").write_text(json.dumps(grouped, indent=2), encoding="utf-8")
@@ -577,6 +658,9 @@ def main():
         print(f"training_interrupted saved={out / 'interrupted.pt'}")
         return
 
+    if not best_checkpoint_saved:
+        raise RuntimeError("no_promotable_checkpoint")
+
     test_dir = data_root / "test"
     best_path = resolve_checkpoint_path(out / "best.pt")
     if test_dir.exists() and best_path.exists():
@@ -584,6 +668,7 @@ def main():
         eval_model = build_model(
             backbone=best.get("backbone", args.backbone),
             pretrained_backbone=False,
+            metadata_feature_dim=int(best.get("metadata_feature_dim", 0)),
         ).to(device)
         eval_model.load_state_dict(best["state_dict"])
         if device.type == "cuda":
@@ -594,7 +679,8 @@ def main():
             transforms.Resize((args.img_size, args.img_size)),
             transforms.ToTensor(),
         ])
-        test_ds = datasets.ImageFolder(test_dir, transform=test_tf)
+        test_dataset_cls = MetadataImageFolder if bool(best.get("use_metadata_features", False)) else datasets.ImageFolder
+        test_ds = test_dataset_cls(test_dir, transform=test_tf)
         test_loader = DataLoader(
             test_ds,
             batch_size=args.batch_size,
@@ -614,13 +700,20 @@ def main():
         test_probs: list[float] = []
         test_labels: list[float] = []
         with torch.no_grad():
-            for x, y in test_loader:
+            for batch in test_loader:
+                metadata_features = None
+                if len(batch) == 3:
+                    x, metadata_features, y = batch
+                else:
+                    x, y = batch
                 x = x.to(device, non_blocking=True)
+                if metadata_features is not None:
+                    metadata_features = metadata_features.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
                 y_bin = _binary_targets(y, test_ai_idx)
                 if device.type == "cuda":
                     x = x.to(memory_format=torch.channels_last)
-                logits = eval_model(x)
+                logits = eval_model(x, metadata_features=metadata_features)
                 loss = test_loss_fn(logits, y_bin)
                 probs = torch.sigmoid(logits / max(float(best.get("temperature", 1.0)), 1e-6))
                 test_probs.extend(probs.detach().cpu().tolist())

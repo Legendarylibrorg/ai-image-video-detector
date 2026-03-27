@@ -37,7 +37,7 @@ PIPELINE_FORCE_STAGES="${PIPELINE_FORCE_STAGES:-0}"
 PIPELINE_MAX_ATTEMPTS="${PIPELINE_MAX_ATTEMPTS:-4}"
 PIPELINE_RETRY_SLEEP_SEC="${PIPELINE_RETRY_SLEEP_SEC:-45}"
 PIPELINE_WAIT_FOR_TRAINING_SEC="${PIPELINE_WAIT_FOR_TRAINING_SEC:-600}"
-BEST_HF_QUERY_CSV_DEFAULT="real camera photo dataset,smartphone photo dataset,dslr photo dataset,webcam image dataset,cctv frame image dataset,meme image real vs ai,captioned image real ai,screenshot dataset image,chat ui screenshot,browser screenshot image,dashboard screenshot dataset,image poster infographic,logo brand image dataset,advertisement creative image,receipt scanned document image,id card document image,invoice form document scan,anime illustration real fake,digital art illustration dataset,3d render real fake,cgi synthetic image real,game render frame dataset,watermarked social media image,recompressed image dataset,heavily edited real photo,low resolution blurry image,extreme aspect ratio image,portrait selfie real fake,group photo real fake,deepfake face swap image,diffusion generated image latest"
+BEST_HF_QUERY_CSV_DEFAULT="real camera photo dataset,smartphone photo dataset,dslr photo dataset,webcam image dataset,cctv frame image dataset,meme image real vs ai,captioned image real ai,screenshot dataset image,chat ui screenshot,browser screenshot image,dashboard screenshot dataset,mobile app screenshot image,website screenshot dataset,image poster infographic,logo brand image dataset,advertisement creative image,receipt scanned document image,id card document image,invoice form document scan,passport scan image,document camera capture dataset,anime illustration real fake,digital art illustration dataset,manga artwork dataset,3d render real fake,cgi synthetic image real,game render frame dataset,watermarked social media image,recompressed image dataset,heavily edited real photo,low resolution blurry image,extreme aspect ratio image,portrait selfie real fake,group photo real fake,deepfake face swap image,diffusion generated image latest,stock photo real ai,image manipulation detection,synthetic portrait dataset,screen capture ui dataset"
 DIVERSE_HF_QUERY_CSV_DEFAULT="$BEST_HF_QUERY_CSV_DEFAULT"
 
 source "$ROOT_DIR/scripts/lib/core.sh"
@@ -152,6 +152,11 @@ case "$cmd" in
   retrain)
     wait_for_training_to_finish "retrain"
     bash scripts/local_retrain_4090.sh "$@"
+    ;;
+
+  finetune)
+    wait_for_training_to_finish "finetune"
+    bash scripts/metadata_finetune_4090.sh "$@"
     ;;
 
   continuous)

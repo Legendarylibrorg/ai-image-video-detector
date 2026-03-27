@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 from ai_image_detector.checkpoints import load_checkpoint, resolve_checkpoint_path, save_safetensors_checkpoint
+from ai_image_detector.data import MetadataImageFolder
 from ai_image_detector.ensemble import EnsembleDetector, load_models
 from ai_image_detector.model import build_model
 
@@ -79,8 +80,9 @@ def main():
         transforms.Resize((args.img_size, args.img_size)),
         transforms.ToTensor(),
     ])
-    train_ds = datasets.ImageFolder(Path(args.data) / "train", transform=tf)
-    val_ds = datasets.ImageFolder(Path(args.data) / "val", transform=tf)
+    dataset_cls = MetadataImageFolder if loaded.uses_metadata_features else datasets.ImageFolder
+    train_ds = dataset_cls(Path(args.data) / "train", transform=tf)
+    val_ds = dataset_cls(Path(args.data) / "val", transform=tf)
     ai_idx = int(train_ds.class_to_idx["ai"])
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
@@ -129,12 +131,19 @@ def main():
         for epoch in range(start_epoch, args.epochs + 1):
             student.train()
             skipped_batches = 0
-            for x, y in train_loader:
+            for batch in train_loader:
+                metadata_features = None
+                if len(batch) == 3:
+                    x, metadata_features, y = batch
+                else:
+                    x, y = batch
                 x = x.to(device)
+                if metadata_features is not None:
+                    metadata_features = metadata_features.to(device=device, dtype=x.dtype)
                 y = y.to(device)
                 target = (y == ai_idx).float()
                 with torch.no_grad():
-                    t_logit = teacher(x)
+                    t_logit = teacher(x, metadata_features=metadata_features)
 
                 s_logit = student(x)
                 hard_loss = F.binary_cross_entropy_with_logits(s_logit, target)
@@ -154,8 +163,15 @@ def main():
             corr = 0
             tot = 0
             with torch.no_grad():
-                for x, y in val_loader:
+                for batch in val_loader:
+                    metadata_features = None
+                    if len(batch) == 3:
+                        x, metadata_features, y = batch
+                    else:
+                        x, y = batch
                     x = x.to(device)
+                    if metadata_features is not None:
+                        metadata_features = metadata_features.to(device=device, dtype=x.dtype)
                     y = y.to(device)
                     target = (y == ai_idx).long()
                     pred = (torch.sigmoid(student(x)) >= 0.5).long()

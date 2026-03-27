@@ -101,9 +101,9 @@ class BuildBestDatasetTests(unittest.TestCase):
             max_per_source_split_class=1,
         )
 
-        self.assertIn(split, {"val", "test"})
+        self.assertIsNone(split)
 
-    def test_next_split_for_source_class_prefers_underrepresented_split_for_source(self) -> None:
+    def test_next_split_for_source_class_keeps_existing_source_in_one_split(self) -> None:
         have = {
             "train": {"ai": 10, "real": 0},
             "val": {"ai": 10, "real": 0},
@@ -116,6 +116,34 @@ class BuildBestDatasetTests(unittest.TestCase):
         }
         source_split_counts = {
             "train": {"ai": 3, "real": 0},
+            "val": {"ai": 0, "real": 0},
+            "test": {"ai": 0, "real": 0},
+        }
+
+        split = build_best_dataset.next_split_for_source_class(
+            have,
+            need,
+            source_split_counts,
+            "ai",
+            rng=__import__("random").Random(1),
+            max_per_source_split_class=10,
+        )
+
+        self.assertEqual(split, "train")
+
+    def test_next_split_for_source_class_chooses_underfilled_split_when_unassigned(self) -> None:
+        have = {
+            "train": {"ai": 18, "real": 0},
+            "val": {"ai": 4, "real": 0},
+            "test": {"ai": 4, "real": 0},
+        }
+        need = {
+            "train": {"ai": 20, "real": 0},
+            "val": {"ai": 20, "real": 0},
+            "test": {"ai": 20, "real": 0},
+        }
+        source_split_counts = {
+            "train": {"ai": 0, "real": 0},
             "val": {"ai": 0, "real": 0},
             "test": {"ai": 0, "real": 0},
         }

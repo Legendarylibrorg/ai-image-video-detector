@@ -94,6 +94,38 @@ class InstallShTests(unittest.TestCase):
         self.assertIn("install_stage=repo status=using_current repo=.", proc.stdout)
         self.assertIn("install_status=ready", proc.stdout)
 
+    def test_install_script_reuses_extracted_repo_directory_from_parent_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            extracted_dir = tmp / "ai-image-video-detector-main"
+            extracted_dir.mkdir()
+            (extracted_dir / "scripts").mkdir()
+            (extracted_dir / "install.sh").write_text((ROOT / "install.sh").read_text(encoding="utf-8"), encoding="utf-8")
+            (extracted_dir / "local.sh").write_text((ROOT / "local.sh").read_text(encoding="utf-8"), encoding="utf-8")
+            (extracted_dir / "scripts" / "install_deps.sh").write_text(
+                (ROOT / "scripts" / "install_deps.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+
+            proc = subprocess.run(
+                ["bash", str(extracted_dir / "install.sh")],
+                cwd=tmp,
+                env={
+                    **os.environ,
+                    "DRY_RUN": "1",
+                    "INSTALL_SYSTEM_DEPS": "0",
+                    "INSTALL_ASSUME_LINUX": "1",
+                    "INSTALL_DIR": str(extracted_dir),
+                },
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertIn("install_stage=repo status=using_extracted repo=ai-image-video-detector-main", proc.stdout)
+        self.assertIn("[DRY_RUN] cd ai-image-video-detector-main && ./local.sh deps", proc.stdout)
+        self.assertIn("  cd ai-image-video-detector-main", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

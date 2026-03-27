@@ -24,16 +24,16 @@ BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS="${BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS:-0}"
 BEST_DS_JPEG_QUALITY="${BEST_DS_JPEG_QUALITY:-92}"
 BEST_DS_HARDNEG_FRACTION="${BEST_DS_HARDNEG_FRACTION:-0.6}"
 BEST_DS_DISCOVER_HF="${BEST_DS_DISCOVER_HF:-1}"
-BEST_DS_HF_DISCOVERY_LIMIT="${BEST_DS_HF_DISCOVERY_LIMIT:-120}"
-BEST_DS_HF_MAX_SOURCES="${BEST_DS_HF_MAX_SOURCES:-260}"
+BEST_DS_HF_DISCOVERY_LIMIT="${BEST_DS_HF_DISCOVERY_LIMIT:-180}"
+BEST_DS_HF_MAX_SOURCES="${BEST_DS_HF_MAX_SOURCES:-360}"
 BEST_DS_HF_MIN_DOWNLOADS="${BEST_DS_HF_MIN_DOWNLOADS:-80}"
 BEST_DS_HF_MIN_LIKES="${BEST_DS_HF_MIN_LIKES:-2}"
 BEST_DS_HF_MIN_QUALITY_SCORE="${BEST_DS_HF_MIN_QUALITY_SCORE:-1.7}"
-BEST_DS_HF_PRINT_TOP="${BEST_DS_HF_PRINT_TOP:-15}"
+BEST_DS_HF_PRINT_TOP="${BEST_DS_HF_PRINT_TOP:-24}"
 BEST_DS_HF_QUERY_PAUSE_MS="${BEST_DS_HF_QUERY_PAUSE_MS:-0}"
 BEST_DS_HF_CACHE_FILE="${BEST_DS_HF_CACHE_FILE:-./.local/hf_discovered_sources.txt}"
 BEST_DS_CACHE_DIR="${BEST_DS_CACHE_DIR:-./.local/hf}"
-BEST_DS_HF_QUERIES="${BEST_DS_HF_QUERIES:-real camera photo dataset,smartphone photo dataset,dslr photo dataset,webcam image dataset,cctv frame image dataset,meme image real vs ai,captioned image real ai,screenshot dataset image,chat ui screenshot,browser screenshot image,dashboard screenshot dataset,image poster infographic,logo brand image dataset,advertisement creative image,receipt scanned document image,id card document image,invoice form document scan,anime illustration real fake,digital art illustration dataset,3d render real fake,cgi synthetic image real,game render frame dataset,watermarked social media image,recompressed image dataset,heavily edited real photo,low resolution blurry image,extreme aspect ratio image,portrait selfie real fake,group photo real fake,deepfake face swap image,diffusion generated image latest}"
+BEST_DS_HF_QUERIES="${BEST_DS_HF_QUERIES:-real camera photo dataset,smartphone photo dataset,dslr photo dataset,webcam image dataset,cctv frame image dataset,meme image real vs ai,captioned image real ai,screenshot dataset image,chat ui screenshot,browser screenshot image,dashboard screenshot dataset,mobile app screenshot image,website screenshot dataset,image poster infographic,logo brand image dataset,advertisement creative image,receipt scanned document image,id card document image,invoice form document scan,passport scan image,document camera capture dataset,anime illustration real fake,digital art illustration dataset,manga artwork dataset,3d render real fake,cgi synthetic image real,game render frame dataset,watermarked social media image,recompressed image dataset,heavily edited real photo,low resolution blurry image,extreme aspect ratio image,portrait selfie real fake,group photo real fake,deepfake face swap image,diffusion generated image latest,stock photo real ai,image manipulation detection,synthetic portrait dataset,screen capture ui dataset}"
 BEST_DS_SOURCES_FILE="${BEST_DS_SOURCES_FILE:-}"
 BEST_DS_EXTRA_SOURCES="${BEST_DS_EXTRA_SOURCES:-}"
 BEST_DS_LOCAL_SOURCES="${BEST_DS_LOCAL_SOURCES:-}"
@@ -71,6 +71,9 @@ ENS_FIT_STEPS="${ENS_FIT_STEPS:-1200}"
 ENS_FIT_LR="${ENS_FIT_LR:-0.05}"
 ENS_FIT_L2="${ENS_FIT_L2:-0.001}"
 ENS_FIT_MAX_VAL_IMAGES="${ENS_FIT_MAX_VAL_IMAGES:-0}"
+RUN_METADATA_MEMBER="${RUN_METADATA_MEMBER:-1}"
+METADATA_MEMBER_OUT="${METADATA_MEMBER_OUT:-$ENS_OUT/m5_metadata}"
+METADATA_MEMBER_EPOCHS="${METADATA_MEMBER_EPOCHS:-$EPOCHS}"
 RUN_DOMAIN_THRESHOLDS="${RUN_DOMAIN_THRESHOLDS:-1}"
 DOMAIN_CONFIG_PATH="${DOMAIN_CONFIG_PATH:-$ENS_OUT/domain_config.json}"
 DOMAIN_THRESHOLD_OBJECTIVE="${DOMAIN_THRESHOLD_OBJECTIVE:-balanced}"
@@ -222,11 +225,17 @@ activate_repo_venv() {
 
 reset_ensemble_outputs() {
   local path=""
+  shopt -s nullglob
+  local -a ensemble_dirs=("$ENS_OUT"/m*)
+  shopt -u nullglob
+  if (( ${#ensemble_dirs[@]} > 0 )); then
+    for path in "${ensemble_dirs[@]}"; do
+      if [[ -e "$path" ]]; then
+        run_cmd rm -rf "$path"
+      fi
+    done
+  fi
   for path in \
-    "$ENS_OUT/m1" \
-    "$ENS_OUT/m2" \
-    "$ENS_OUT/m3" \
-    "$ENS_OUT/m4" \
     "$ENS_OUT/distill" \
     "$ENS_OUT/test_metrics.json" \
     "$ENS_OUT/ensemble_config.json" \
@@ -238,6 +247,45 @@ reset_ensemble_outputs() {
   done
 }
 
+ENSEMBLE_MODELS=()
+
+collect_ensemble_model_paths() {
+  local min_count="${1:-4}"
+  ENSEMBLE_MODELS=()
+  shopt -s nullglob
+  local model_dir=""
+  local candidate=""
+  for model_dir in "$ENS_OUT"/m*; do
+    [[ -d "$model_dir" ]] || continue
+    candidate="$model_dir/best.safetensors"
+    if [[ -f "$candidate" ]]; then
+      ENSEMBLE_MODELS+=("$candidate")
+      continue
+    fi
+    candidate="$model_dir/best.pt"
+    if [[ -f "$candidate" ]]; then
+      ENSEMBLE_MODELS+=("$candidate")
+    fi
+  done
+  shopt -u nullglob
+  if [[ "$DRY_RUN" == "1" && ${#ENSEMBLE_MODELS[@]} -lt min_count ]]; then
+    local idx=1
+    while (( ${#ENSEMBLE_MODELS[@]} < min_count )); do
+      if (( idx <= 4 )); then
+        ENSEMBLE_MODELS+=("$ENS_OUT/m${idx}/best.safetensors")
+      else
+        ENSEMBLE_MODELS+=("$ENS_OUT/m5_metadata/best.safetensors")
+      fi
+      idx=$((idx + 1))
+    done
+    return 0
+  fi
+  if (( ${#ENSEMBLE_MODELS[@]} < min_count )); then
+    echo "ensemble_model_count=invalid have=${#ENSEMBLE_MODELS[@]} need=$min_count ens_out=$ENS_OUT" >&2
+    return 1
+  fi
+}
+
 run_ensemble_training_bundle() {
   local train_root="$1"
   local epochs="$2"
@@ -245,13 +293,23 @@ run_ensemble_training_bundle() {
   PIPELINE_STAGE="train_ensemble"
   require_disk_free_gb "$PIPELINE_STAGE"
   reset_ensemble_outputs
-  run_cmd bash scripts/train_ensemble.sh "$train_root" "$ENS_OUT" "$epochs"
+  run_cmd env \
+    RUN_METADATA_MEMBER="$RUN_METADATA_MEMBER" \
+    METADATA_MEMBER_OUT="$METADATA_MEMBER_OUT" \
+    METADATA_MEMBER_EPOCHS="$METADATA_MEMBER_EPOCHS" \
+    bash scripts/train_ensemble.sh "$train_root" "$ENS_OUT" "$epochs"
+
+  local required_model_count=4
+  if [[ "$RUN_METADATA_MEMBER" == "1" ]]; then
+    required_model_count=5
+  fi
+  collect_ensemble_model_paths "$required_model_count"
 
   if [[ "$RUN_ENSEMBLE_FIT" == "1" ]]; then
     PIPELINE_STAGE="fit_ensemble"
     run_cmd python scripts/fit_ensemble.py \
       --data "$train_root" \
-      --model "$ENS_OUT/m1/best.safetensors" "$ENS_OUT/m2/best.safetensors" "$ENS_OUT/m3/best.safetensors" "$ENS_OUT/m4/best.safetensors" \
+      --model "${ENSEMBLE_MODELS[@]}" \
       --out "$ENS_CONFIG_PATH" \
       --steps "$ENS_FIT_STEPS" \
       --lr "$ENS_FIT_LR" \
@@ -265,7 +323,7 @@ run_ensemble_training_bundle() {
     declare -a domain_cmd=(
       python scripts/fit_domain_thresholds.py
       --data "$train_root"
-      --model "$ENS_OUT/m1/best.safetensors" "$ENS_OUT/m2/best.safetensors" "$ENS_OUT/m3/best.safetensors" "$ENS_OUT/m4/best.safetensors"
+      --model "${ENSEMBLE_MODELS[@]}"
       --out "$DOMAIN_CONFIG_PATH"
       --objective "$DOMAIN_THRESHOLD_OBJECTIVE"
       --min-samples-per-domain "$DOMAIN_THRESHOLD_MIN_SAMPLES"
@@ -280,7 +338,7 @@ run_ensemble_training_bundle() {
   declare -a eval_cmd=(
     python scripts/eval_test_ensemble.py
     --data "$train_root"
-    --model "$ENS_OUT/m1/best.safetensors" "$ENS_OUT/m2/best.safetensors" "$ENS_OUT/m3/best.safetensors" "$ENS_OUT/m4/best.safetensors"
+    --model "${ENSEMBLE_MODELS[@]}"
     --tta "$EVAL_TTA_VIEWS"
     --out "$ENS_OUT/test_metrics.json"
   )
@@ -294,7 +352,7 @@ run_ensemble_training_bundle() {
     declare -a robust_cmd=(
       python -m ai_image_detector.robust_eval
       --data "$train_root"
-      --model "$ENS_OUT/m1/best.safetensors" "$ENS_OUT/m2/best.safetensors" "$ENS_OUT/m3/best.safetensors" "$ENS_OUT/m4/best.safetensors"
+      --model "${ENSEMBLE_MODELS[@]}"
       --max-images "$ROBUST_EVAL_MAX_IMAGES"
       --out "$ROBUST_EVAL_OUT"
     )
@@ -317,7 +375,7 @@ run_hard_mining_bundle() {
   declare -a hard_cmd=(
     python scripts/mine_hard_negatives.py
     --data "$train_root"
-    --model "$ENS_OUT/m1/best.safetensors" "$ENS_OUT/m2/best.safetensors" "$ENS_OUT/m3/best.safetensors" "$ENS_OUT/m4/best.safetensors"
+    --model "${ENSEMBLE_MODELS[@]}"
   )
   if [[ -f "$ENS_CONFIG_PATH" ]]; then
     hard_cmd+=(--ensemble-config "$ENS_CONFIG_PATH")
@@ -359,7 +417,7 @@ run_distill_bundle() {
   declare -a distill_cmd=(
     python scripts/train_distill.py
     --data "$train_root"
-    --teacher "$ENS_OUT/m1/best.safetensors" "$ENS_OUT/m2/best.safetensors" "$ENS_OUT/m3/best.safetensors" "$ENS_OUT/m4/best.safetensors"
+    --teacher "${ENSEMBLE_MODELS[@]}"
     --out "$ENS_OUT/distill"
     --student-backbone effb0
     --img-size 320

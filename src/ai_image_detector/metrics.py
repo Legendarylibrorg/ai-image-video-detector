@@ -92,26 +92,48 @@ def roc_auc(probs, labels) -> float:
     return float(auc)
 
 
+def _threshold_objective_score(metrics: dict[str, float], objective: str) -> float:
+    if objective == "balanced":
+        return float(0.5 * (metrics["tpr"] + (1.0 - metrics["fpr"])))
+    if objective == "youden":
+        return float(metrics["tpr"] - metrics["fpr"])
+    return float(metrics["f1"])
+
+
+def _threshold_is_operable(metrics: dict[str, float]) -> bool:
+    return float(metrics.get("tp", 0.0)) > 0.0 and float(metrics.get("tn", 0.0)) > 0.0
+
+
 def find_best_threshold(probs, labels, objective: str = "f1") -> tuple[float, float, dict[str, float]]:
     p = _to_np(probs)
     y = _to_np(labels)
-    best_th = 0.5
+    fallback_threshold = 0.5
+    fallback_metrics = binary_metrics(p, y, threshold=float(fallback_threshold))
+    fallback_metrics["operable"] = _threshold_is_operable(fallback_metrics)
+    fallback_metrics["search_status"] = "fallback_no_operable_threshold"
+    best_th = float(fallback_threshold)
     best_score = -1.0
     best_metrics: dict[str, float] = {}
+    best_distance = float("inf")
 
     for th in np.linspace(0.05, 0.95, 91):
         m = binary_metrics(p, y, threshold=float(th))
-        if objective == "balanced":
-            score = 0.5 * (m["tpr"] + (1.0 - m["fpr"]))
-        elif objective == "youden":
-            score = m["tpr"] - m["fpr"]
-        else:
-            score = m["f1"]
-        if score > best_score:
+        if not _threshold_is_operable(m):
+            continue
+        score = _threshold_objective_score(m, objective)
+        distance = abs(float(th) - 0.5)
+        if score > best_score or (abs(score - best_score) <= 1e-12 and distance < best_distance):
             best_score = float(score)
             best_th = float(th)
             best_metrics = m
+            best_distance = float(distance)
 
+    if not best_metrics:
+        fallback_score = _threshold_objective_score(fallback_metrics, objective)
+        return float(fallback_threshold), float(fallback_score), fallback_metrics
+
+    best_metrics["operable"] = True
+    best_metrics["search_status"] = "operable"
     return best_th, best_score, best_metrics
 
 

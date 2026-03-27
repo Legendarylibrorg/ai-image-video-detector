@@ -61,7 +61,10 @@ class TrainEnsembleShTests(unittest.TestCase):
             )
 
             lines = log_path.read_text(encoding="utf-8").strip().splitlines()
-            self.assertEqual(len(lines), 4)
+            self.assertEqual(len(lines), 5)
+            metadata_lines = [line for line in lines if "--use-metadata-features" in line]
+            self.assertEqual(len(metadata_lines), 1)
+            self.assertIn("--init-from", metadata_lines[0])
             for line in lines:
                 self.assertIn("--no-pretrained-backbone", line)
                 self.assertIn("--no-compile", line)

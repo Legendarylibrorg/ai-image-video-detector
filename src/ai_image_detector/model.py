@@ -74,9 +74,10 @@ class EfficientBackbone(nn.Module):
 
 
 class AdvancedAIDetector(nn.Module):
-    def __init__(self, backbone: str = "tiny", pretrained_backbone: bool = True):
+    def __init__(self, backbone: str = "tiny", pretrained_backbone: bool = True, metadata_feature_dim: int = 0):
         super().__init__()
         self.backbone_name = backbone
+        self.metadata_feature_dim = int(max(metadata_feature_dim, 0))
 
         if backbone == "tiny":
             self.rgb_branch = TinyBackbone(in_ch=3)
@@ -94,8 +95,17 @@ class AdvancedAIDetector(nn.Module):
             raise ValueError(f"Unsupported backbone: {backbone}")
 
         feat = self.rgb_branch.out_dim
+        metadata_hidden = 64 if self.metadata_feature_dim > 0 else 0
+        if self.metadata_feature_dim > 0:
+            self.metadata_branch = nn.Sequential(
+                nn.Linear(self.metadata_feature_dim, metadata_hidden),
+                nn.GELU(),
+                nn.Dropout(0.1),
+            )
+        else:
+            self.metadata_branch = None
         self.fusion = nn.Sequential(
-            nn.Linear(feat * 3, 768 if feat >= 1280 else 512),
+            nn.Linear((feat * 3) + metadata_hidden, 768 if feat >= 1280 else 512),
             nn.GELU(),
             nn.Dropout(0.25),
             nn.Linear(768 if feat >= 1280 else 512, 192 if feat >= 1280 else 128),
@@ -119,12 +129,32 @@ class AdvancedAIDetector(nn.Module):
             chans.append(rc)
         return torch.tanh(torch.cat(chans, dim=1))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, metadata_features: torch.Tensor | None = None) -> torch.Tensor:
         f_rgb = self.rgb_branch(x)
         f_fft = self.fft_branch(self._fft_features(x))
         f_noise = self.noise_branch(self._noise_residual(x))
-        return self.fusion(torch.cat([f_rgb, f_fft, f_noise], dim=1)).squeeze(1)
+        features = [f_rgb, f_fft, f_noise]
+        if self.metadata_feature_dim > 0:
+            if metadata_features is None:
+                metadata_features = torch.zeros(
+                    x.shape[0],
+                    self.metadata_feature_dim,
+                    dtype=x.dtype,
+                    device=x.device,
+                )
+            else:
+                metadata_features = metadata_features.to(device=x.device, dtype=x.dtype)
+            features.append(self.metadata_branch(metadata_features))
+        return self.fusion(torch.cat(features, dim=1)).squeeze(1)
 
 
-def build_model(backbone: str = "tiny", pretrained_backbone: bool = True) -> AdvancedAIDetector:
-    return AdvancedAIDetector(backbone=backbone, pretrained_backbone=pretrained_backbone)
+def build_model(
+    backbone: str = "tiny",
+    pretrained_backbone: bool = True,
+    metadata_feature_dim: int = 0,
+) -> AdvancedAIDetector:
+    return AdvancedAIDetector(
+        backbone=backbone,
+        pretrained_backbone=pretrained_backbone,
+        metadata_feature_dim=metadata_feature_dim,
+    )

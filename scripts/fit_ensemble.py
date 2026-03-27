@@ -12,6 +12,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
 
+from ai_image_detector.data import MetadataImageFolder
 from ai_image_detector.ensemble import load_models, stack_model_logits
 from ai_image_detector.metrics import find_best_threshold, full_metric_report, roc_auc
 
@@ -47,7 +48,8 @@ def main() -> None:
         m.eval()
 
     val_dir = Path(args.data) / "val"
-    ds = datasets.ImageFolder(
+    dataset_cls = MetadataImageFolder if loaded.uses_metadata_features else datasets.ImageFolder
+    ds = dataset_cls(
         val_dir,
         transform=transforms.Compose(
             [
@@ -76,10 +78,22 @@ def main() -> None:
     logits_all: list[torch.Tensor] = []
     labels_all: list[torch.Tensor] = []
     with torch.no_grad():
-        for x, y in dl:
+        for batch in dl:
+            metadata_features = None
+            if len(batch) == 3:
+                x, metadata_features, y = batch
+            else:
+                x, y = batch
             x = x.to(device, non_blocking=True)
+            if metadata_features is not None:
+                metadata_features = metadata_features.to(device, non_blocking=True, dtype=x.dtype)
             y_ai = (y == ai_idx).float().to(device, non_blocking=True)
-            model_logits = stack_model_logits(loaded.models, loaded.img_sizes, x).transpose(0, 1)
+            model_logits = stack_model_logits(
+                loaded.models,
+                loaded.img_sizes,
+                x,
+                metadata_features=metadata_features,
+            ).transpose(0, 1)
             logits_all.append(model_logits.detach().cpu())
             labels_all.append(y_ai.detach().cpu())
 

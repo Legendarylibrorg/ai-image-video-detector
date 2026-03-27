@@ -6,9 +6,9 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from PIL import Image
 from torchvision import datasets, transforms
 
+from ai_image_detector.data import MetadataImageFolder
 from ai_image_detector.ensemble import EnsembleDetector, load_models
 from ai_image_detector.metrics import full_metric_report
 
@@ -23,7 +23,8 @@ def main():
     args = ap.parse_args()
 
     test_dir = Path(args.data) / "test"
-    ds = datasets.ImageFolder(test_dir)
+    dataset_cls = MetadataImageFolder if loaded.uses_metadata_features else datasets.ImageFolder
+    ds = dataset_cls(test_dir)
     if "ai" not in ds.class_to_idx:
         raise ValueError(f"Expected class 'ai' in {ds.class_to_idx}")
     ai_idx = int(ds.class_to_idx["ai"])
@@ -40,15 +41,22 @@ def main():
 
     probs, labels = [], []
     with torch.no_grad():
-        for p, y in ds.samples:
-            img = Image.open(p).convert("RGB")
+        for index in range(len(ds)):
+            batch = ds[index]
+            metadata_features = None
+            if len(batch) == 3:
+                img, metadata_features, y = batch
+            else:
+                img, y = batch
             x = tf(img).unsqueeze(0).to(device)
+            if metadata_features is not None:
+                metadata_features = metadata_features.unsqueeze(0).to(device=device, dtype=x.dtype)
             views = [x]
             if args.tta >= 2:
                 views.append(torch.flip(x, dims=[3]))  # hflip
             if args.tta >= 3:
                 views.append(torch.flip(x, dims=[2]))  # vflip
-            logits = torch.stack([model(v) for v in views], dim=0).mean(dim=0)
+            logits = torch.stack([model(v, metadata_features=metadata_features) for v in views], dim=0).mean(dim=0)
             prob = torch.sigmoid(logits / max(loaded.temperature, 1e-6)).item()
             probs.append(prob)
             labels.append(1 if int(y) == ai_idx else 0)

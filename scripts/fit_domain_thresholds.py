@@ -10,7 +10,7 @@ from PIL import Image
 from torchvision import datasets, transforms
 
 from ai_image_detector.domain import DOMAIN_NAMES, classify_domain
-from ai_image_detector.ensemble import EnsembleDetector, load_models
+from ai_image_detector.ensemble import EnsembleDetector, load_models, metadata_features_from_paths
 from ai_image_detector.metrics import find_best_threshold, full_metric_report
 from ai_image_detector.text_signals import analyze_text_signals
 
@@ -43,7 +43,10 @@ def main() -> None:
         for path, y in ds.samples:
             img = Image.open(path).convert("RGB")
             x = tf(img).unsqueeze(0).to(device)
-            p = torch.sigmoid(model(x) / max(loaded.temperature, 1e-6)).item()
+            metadata_features = None
+            if loaded.uses_metadata_features:
+                metadata_features = metadata_features_from_paths([path], device=device, dtype=x.dtype)
+            p = torch.sigmoid(model(x, metadata_features=metadata_features) / max(loaded.temperature, 1e-6)).item()
             label = 1 if int(y) == ai_idx else 0
             text_score = float(analyze_text_signals(img)["text_score"])
             domain = classify_domain(img, text_score=text_score)

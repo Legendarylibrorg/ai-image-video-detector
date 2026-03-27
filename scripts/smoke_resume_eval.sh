@@ -40,6 +40,22 @@ export TRAIN_NO_COMPILE=1
 export TRAIN_NUM_WORKERS=0
 export PIPELINE_MIN_FREE_GB=0
 export MALWARE_SCAN=0
+export RUN_METADATA_MEMBER=1
+
+ENSEMBLE_MODELS=()
+
+collect_ensemble_model_paths() {
+  ENSEMBLE_MODELS=()
+  local model_dir=""
+  for model_dir in "$ENS_OUT"/m*; do
+    [[ -d "$model_dir" ]] || continue
+    if [[ -f "$model_dir/best.safetensors" ]]; then
+      ENSEMBLE_MODELS+=("$model_dir/best.safetensors")
+    elif [[ -f "$model_dir/best.pt" ]]; then
+      ENSEMBLE_MODELS+=("$model_dir/best.pt")
+    fi
+  done
+}
 
 python scripts/prepare_training_data.py \
   --base "$BASE_DATA" \
@@ -48,14 +64,11 @@ python scripts/prepare_training_data.py \
   --copy
 
 bash scripts/train_ensemble.sh "$READY_DATA" "$ENS_OUT" 1
+collect_ensemble_model_paths
 
 python scripts/fit_ensemble.py \
   --data "$READY_DATA" \
-  --model \
-  "$ENS_OUT/m1/best.safetensors" \
-  "$ENS_OUT/m2/best.safetensors" \
-  "$ENS_OUT/m3/best.safetensors" \
-  "$ENS_OUT/m4/best.safetensors" \
+  --model "${ENSEMBLE_MODELS[@]}" \
   --out "$ENS_OUT/ensemble_config.json" \
   --steps 10 \
   --lr 0.05 \
@@ -65,22 +78,14 @@ python scripts/fit_ensemble.py \
 
 python scripts/eval_test_ensemble.py \
   --data "$READY_DATA" \
-  --model \
-  "$ENS_OUT/m1/best.safetensors" \
-  "$ENS_OUT/m2/best.safetensors" \
-  "$ENS_OUT/m3/best.safetensors" \
-  "$ENS_OUT/m4/best.safetensors" \
+  --model "${ENSEMBLE_MODELS[@]}" \
   --ensemble-config "$ENS_OUT/ensemble_config.json" \
   --tta 1 \
   --out "$ENS_OUT/test_metrics.json"
 
 python scripts/fit_domain_thresholds.py \
   --data "$READY_DATA" \
-  --model \
-  "$ENS_OUT/m1/best.safetensors" \
-  "$ENS_OUT/m2/best.safetensors" \
-  "$ENS_OUT/m3/best.safetensors" \
-  "$ENS_OUT/m4/best.safetensors" \
+  --model "${ENSEMBLE_MODELS[@]}" \
   --ensemble-config "$ENS_OUT/ensemble_config.json" \
   --out "$ENS_OUT/domain_config.json" \
   --objective balanced \
@@ -88,11 +93,7 @@ python scripts/fit_domain_thresholds.py \
 
 python -m ai_image_detector.robust_eval \
   --data "$READY_DATA" \
-  --model \
-  "$ENS_OUT/m1/best.safetensors" \
-  "$ENS_OUT/m2/best.safetensors" \
-  "$ENS_OUT/m3/best.safetensors" \
-  "$ENS_OUT/m4/best.safetensors" \
+  --model "${ENSEMBLE_MODELS[@]}" \
   --ensemble-config "$ENS_OUT/ensemble_config.json" \
   --max-images 4 \
   --out "$ENS_OUT/robust_eval.json"
@@ -141,6 +142,7 @@ for f in \
   "$ENS_OUT/m2/best.safetensors" \
   "$ENS_OUT/m3/best.safetensors" \
   "$ENS_OUT/m4/best.safetensors" \
+  "$ENS_OUT/m5_metadata/best.safetensors" \
   "$ENS_OUT/m1/calibration.json" \
   "$ENS_OUT/ensemble_config.json" \
   "$ENS_OUT/domain_config.json" \

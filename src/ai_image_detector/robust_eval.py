@@ -10,7 +10,7 @@ import torch
 from PIL import Image, ImageFilter
 from torchvision import datasets, transforms
 
-from .ensemble import EnsembleDetector, load_models
+from .ensemble import EnsembleDetector, load_models, metadata_features_from_paths
 from .metrics import full_metric_report
 
 
@@ -70,10 +70,15 @@ def main() -> None:
         p, y = ds.samples[i]
         y_ai = 1 if int(y) == ai_idx else 0
         img = Image.open(p).convert("RGB")
+        metadata_features = None
+        if loaded.uses_metadata_features:
+            metadata_features = metadata_features_from_paths([p], device=device)
         for name, vimg in _variants(img).items():
             x = tf(vimg).unsqueeze(0).to(device)
             with torch.no_grad():
-                prob = torch.sigmoid(model(x) / max(loaded.temperature, 1e-6)).item()
+                if metadata_features is not None:
+                    metadata_features = metadata_features.to(device=device, dtype=x.dtype)
+                prob = torch.sigmoid(model(x, metadata_features=metadata_features) / max(loaded.temperature, 1e-6)).item()
             buckets.setdefault(name, []).append((prob, int(y_ai)))
 
     report = {}

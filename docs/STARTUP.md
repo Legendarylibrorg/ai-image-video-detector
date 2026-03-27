@@ -28,6 +28,9 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ZIP path:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
 unzip ai-image-video-detector-main.zip
 cd ai-image-video-detector-main
 python3 -m venv .venv
@@ -43,6 +46,9 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 Already inside the repo root:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
 python3 -m venv .venv
 source .venv/bin/activate
 ./local.sh deps
@@ -54,6 +60,7 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ```
 
 Run `bash ./install.sh` only from inside the repo root after cloning or unzipping.
+If you unzip the repo first, `bash ./install.sh` reuses that extracted folder and does not create a nested repo inside it.
 If you want the installer to fetch the repo for you, use the curl installer instead.
 
 Optional shortcuts:
@@ -85,7 +92,8 @@ The main operator commands after setup are:
 Use `./local.sh run` for the normal full path. It collects first, then trains.
 Use `./local.sh collect` when you want to do the Hugging Face collection step first and train later.
 Use `./local.sh train` only when you already have collected data and want to skip a new collection pass.
-Use `./local.sh retrain` or `./local.sh finetune` when you want another training pass on top of the existing collected dataset.
+Use `./local.sh retrain` when you want another gated training pass on top of the existing collected dataset.
+Use `./local.sh finetune` when you want the separate metadata-aware finetune path.
 `./local.sh smoke` is the tiny local end-to-end check before the full run.
 
 ## Where `sudo` is needed
@@ -187,7 +195,8 @@ You already have collected data and only want training:
 - `./local.sh train` prepares `./.local/training_data` from `./data_best` plus any incremental data under `./data_new`.
 - `./local.sh train` skips fresh Hugging Face collection and trains images immediately.
 - `./local.sh train` includes video training only when a complete video dataset is already present.
-- `./local.sh retrain` and `./local.sh finetune` run the retrain wrapper on top of existing data and apply the benchmark gate afterward.
+- `./local.sh retrain` runs the retrain wrapper on top of existing data and applies the benchmark gate afterward.
+- `./local.sh finetune` runs the metadata-aware finetune wrapper on top of an existing checkpoint and writes to `./artifacts_finetune_metadata`.
 
 Continuous loop:
 
