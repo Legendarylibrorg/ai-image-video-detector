@@ -3,7 +3,8 @@
 This guide expands the startup path from the main README.
 
 This guide is Linux-VM-first.
-The repo also supports a native Linux path that uses a pinned local virtualenv at `./.venv` for its Python dependencies and runtime.
+The main venv for that path is the isolated container virtualenv at `/opt/aid-venv`.
+The repo also supports a native Linux fallback that uses a pinned local virtualenv at `./.venv` for its Python dependencies and runtime.
 Unless a section says otherwise, the shell snippets in this document use Linux `bash` command syntax.
 
 If you are on macOS or Windows, do not copy the Linux-native `apt-get` commands below into your shell; use the Docker or platform sections in this document instead.
@@ -158,7 +159,7 @@ Best security with GPU:
 - Docker Compose plugin
 - NVIDIA Container Toolkit
 
-## Native Linux startup
+## Native Linux fallback
 
 Linux is the supported native host path.
 
@@ -170,10 +171,7 @@ sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv pyth
 sudo freshclam || true
 git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
 cd ai-image-video-detector
-python3 -m venv .venv
-source .venv/bin/activate
-./local.sh deps
-./local.sh doctor
+./local.sh setup
 printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh smoke
 ./local.sh run
@@ -188,10 +186,7 @@ sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv pyth
 sudo freshclam || true
 unzip ai-image-video-detector-main.zip
 cd ai-image-video-detector-main
-python3 -m venv .venv
-source .venv/bin/activate
-./local.sh deps
-./local.sh doctor
+./local.sh setup
 printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh smoke
 ./local.sh run
@@ -204,10 +199,7 @@ Already inside the repo root:
 sudo apt-get update
 sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
-python3 -m venv .venv
-source .venv/bin/activate
-./local.sh deps
-./local.sh doctor
+./local.sh setup
 printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh smoke
 ./local.sh run
@@ -224,9 +216,7 @@ Optional shortcuts:
 curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
 ```
 
-```bash
-./local.sh setup
-```
+`./local.sh setup` is the short native fallback bootstrap once you are already in the repo root.
 
 ## macOS startup
 

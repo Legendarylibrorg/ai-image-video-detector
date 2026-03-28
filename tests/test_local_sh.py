@@ -23,7 +23,7 @@ class LocalShTests(unittest.TestCase):
         out = proc.stdout
         self.assertIn("usage: ./local.sh [setup|deps|doctor|docker-doctor|collect|run|status|smoke|smoke-real|collect-status|train|retrain|finetune|continuous]", out)
         self.assertIn("linux bash commands", out.lower())
-        self.assertIn("native linux", out.lower())
+        self.assertIn("native linux fallback", out.lower())
         self.assertIn("sudo apt-get update", out)
         self.assertIn("git unzip python3", out)
         self.assertIn("./local.sh setup", out)
@@ -42,6 +42,7 @@ class LocalShTests(unittest.TestCase):
         self.assertIn("./local.sh finetune", out)
         self.assertIn("./local.sh continuous", out)
         self.assertIn("/opt/aid-venv", out)
+        self.assertIn("container venv lives at /opt/aid-venv", out)
         self.assertIn("Hugging Face caches live under ./.local/hf and are reused by Compose", out)
         self.assertIn("setup creates or reuses ./.venv", out)
         self.assertNotIn("advanced aliases still work", out.lower())

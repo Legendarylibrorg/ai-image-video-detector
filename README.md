@@ -6,8 +6,9 @@ This repository is for one job:
 - rerun safely if a long setup stops partway through
 
 The recommended path is a dedicated Linux VM first, then Docker Compose inside that VM.
+The main venv story for that path is the isolated container virtualenv at `/opt/aid-venv`.
 The repo also supports a native local Linux machine with CUDA/PyTorch, such as an RTX 4090 box.
-The native path uses a local virtualenv at `./.venv`; `./local.sh setup` creates or reuses it and the pipeline runs from there.
+The native fallback uses a local virtualenv at `./.venv`; `./local.sh setup` creates or reuses it and the pipeline runs from there.
 Unless a section says otherwise, the shell snippets in this README use Linux `bash` command syntax.
 If you are on macOS or Windows, treat the Linux-native commands below as Linux-only and use the platform notes in [docs/STARTUP.md](docs/STARTUP.md) instead.
 
@@ -138,8 +139,6 @@ The packaged `aid-*` commands are lightweight wrappers and will tell you which e
 
 Important top-level paths:
 
-- `./.venv`
-  Local virtualenv for all Python dependencies.
 - `./local.sh`
   Small public command surface for setup, smoke, run, status, troubleshooting, and train-from-existing-data.
 - `./install.sh`
@@ -202,7 +201,7 @@ The public commands line up to the project structure like this:
 
 For the detailed clone path, ZIP path, and native Linux startup flow, use [docs/STARTUP.md](docs/STARTUP.md).
 
-Shortest native Linux path after you are already in the repo root:
+Shortest native Linux fallback after you are already in the repo root:
 
 ```bash
 ./local.sh setup

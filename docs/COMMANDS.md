@@ -2,8 +2,9 @@
 
 This guide collects the repo command surfaces in one place.
 The recommended runtime path is a dedicated Linux VM first, then Docker Compose inside that VM.
-The repo-local Python environment is `./.venv`, created or reused by `./local.sh setup`.
-That setup also installs `huggingface_hub`, the `hf` CLI, and the repo CLI commands into the same venv.
+The main venv for that path is the isolated container virtualenv at `/opt/aid-venv`.
+The native fallback uses `./.venv`, created or reused by `./local.sh setup`.
+That native setup also installs `huggingface_hub`, the `hf` CLI, and the repo CLI commands into the same venv.
 Unless a section says otherwise, the command snippets in this file use Linux `bash` syntax.
 The Linux-native command blocks in this file are for native Linux hosts. If you are on macOS or Windows, use the platform notes in [STARTUP.md](STARTUP.md) instead of copying the `apt-get` steps directly.
 
@@ -74,7 +75,7 @@ The package keeps the base install lightweight:
 - `pip install -e '.[video]'`
   Video dependencies.
 
-For the normal repo workflow, use `./local.sh deps` or `./local.sh setup`; both install the full `pipeline` profile into `./.venv`.
+For the native fallback workflow, use `./local.sh deps` or `./local.sh setup`; both install the full `pipeline` profile into `./.venv`.
 The packaged `aid-*` commands remain available, but they are lightweight wrappers and will print a missing-extra hint if you try to run them from a base no-deps install.
 
 ## Pipeline at a glance

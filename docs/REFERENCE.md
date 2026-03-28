@@ -41,13 +41,14 @@ Everything under `scripts/` and `src/ai_image_detector/` exists to support those
 
 The current pipeline is:
 
-1. setup a local pinned environment in `./.venv`
-2. collect and curate image data into `./data_best`
-3. collect video data into `./video_data`
-4. ingest or preserve incremental image data under `./data_new`
-5. prepare additive image training data in `./.local/training_data`
-6. train image models, and optionally video models when complete video data exists
-7. persist resumable state, collection manifests, and stage markers under `./.local`
+1. preferred path: run inside a dedicated Linux VM with Docker Compose and the isolated container venv at `/opt/aid-venv`
+2. native fallback: `./local.sh setup` creates or reuses `./.venv`
+3. collect and curate image data into `./data_best`
+4. collect video data into `./video_data`
+5. ingest or preserve incremental image data under `./data_new`
+6. prepare additive image training data in `./.local/training_data`
+7. train image models, and optionally video models when complete video data exists
+8. persist resumable state, collection manifests, and stage markers under `./.local`
 
 This means the repo is no longer just “run one train script on one folder.” It is a local dataset-building and retraining workflow with resumability and incremental refresh support.
 
@@ -132,11 +133,11 @@ The package is split into capability extras:
 - Hugging Face collection only: `pip install -e '.[collection]'`
 - video only: `pip install -e '.[video]'`
 
-Normal repo usage should still go through `./local.sh deps` or `./local.sh setup`, which install the full `pipeline` profile into `./.venv`.
+Normal native fallback usage should still go through `./local.sh deps` or `./local.sh setup`, which install the full `pipeline` profile into `./.venv`.
 
 ## Containerized path
 
-For a more isolated runtime, the repo also includes:
+For the preferred more isolated runtime, the repo includes:
 
 ```bash
 docker compose run --rm pipeline ./local.sh doctor
@@ -152,22 +153,23 @@ The Compose services:
 - keep the repo checkout writable and use `tmpfs` scratch space
 - apply a PID limit to reduce blast radius if a process misbehaves
 
-GPU mode requires Docker Engine, the Docker Compose plugin, and the NVIDIA Container Toolkit on the host.
-This repo does not add a VM layer because that would change the normal host-GPU and local bind-mount workflow rather than simply harden the existing pipeline.
+GPU mode requires Docker Engine, the Docker Compose plugin, and the NVIDIA Container Toolkit inside the dedicated Linux VM.
+The intended secure model is: host -> dedicated Linux VM -> Docker Engine -> Compose containers.
 
 ## Pipeline entrypoints
 
-Normal users should start with:
+Normal users should start with the Linux VM + Docker Compose path:
+
+```bash
+docker compose run --rm pipeline ./local.sh deps
+docker compose run --rm pipeline-gpu ./local.sh smoke
+docker compose run --rm pipeline-gpu ./local.sh run
+```
+
+For native fallback Linux usage:
 
 ```bash
 ./local.sh setup
-./local.sh smoke
-./local.sh run
-```
-
-For stage-by-stage Linux usage:
-
-```bash
 ./local.sh collect
 ./local.sh collect-status
 ./local.sh train

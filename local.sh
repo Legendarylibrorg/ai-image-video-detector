@@ -27,13 +27,13 @@ Docker-first:
   docker compose run --rm pipeline-gpu ./local.sh smoke
   docker compose run --rm pipeline-gpu ./local.sh run
   docker compose run --rm pipeline-gpu ./local.sh status
-  container deps live in /opt/aid-venv
+  container venv lives at /opt/aid-venv
   Hugging Face caches live under ./.local/hf and are reused by Compose
 
 one-line install:
   curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
 
-Native Linux:
+Native Linux fallback:
   sudo apt-get update
   sudo apt-get install -y $APT_PACKAGES
   sudo freshclam || true
