@@ -111,7 +111,7 @@ run_collection_command() {
 }
 
 print_usage() {
-  echo "usage: bash scripts/do.sh [pipeline|smoke|smoke-real|collect|collect-diverse|collect-fast|collect-image|collect-video|collection-status|ingest|scan [paths...]|train-existing|train-image|train-video|train-all|retrain|continuous|deps-update|doctor|status]"
+  echo "usage: bash scripts/do.sh [pipeline|smoke|smoke-real|collect|collection-status|ingest|scan [paths...]|train-existing|retrain|continuous|doctor|status]"
 }
 
 run_doctor_check() {

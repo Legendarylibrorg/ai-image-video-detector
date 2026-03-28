@@ -28,7 +28,7 @@ Docker-first:
   docker compose run --rm pipeline-gpu ./local.sh run
   docker compose run --rm pipeline-gpu ./local.sh status
   container deps live in /opt/aid-venv
-  source checkout is mounted read-only; only data/artifact paths are writable
+  Hugging Face caches live under ./.local/hf and are reused by Compose
 
 one-line install:
   curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash

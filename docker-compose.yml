@@ -1,19 +1,21 @@
 x-pipeline-service: &pipeline-service
   working_dir: /workspace
-  env_file:
-    - .env
   environment:
     VENV_DIR: /opt/aid-venv
     HF_HOME: /workspace/.local/hf
-    HUGGINGFACE_HUB_CACHE: /workspace/.local/hf
+    HF_HUB_CACHE: /workspace/.local/hf/hub
+    HF_DATASETS_CACHE: /workspace/.local/hf/datasets
+    HUGGINGFACE_HUB_CACHE: /workspace/.local/hf/hub
+    HF_HUB_ENABLE_HF_TRANSFER: "1"
     PIP_CACHE_DIR: /workspace/.local/pip
     PIP_DISABLE_PIP_VERSION_CHECK: "1"
     HOME: /tmp/aid-home
+    HF_TOKEN: ${HF_TOKEN:-}
+    HUGGINGFACE_HUB_TOKEN: ${HUGGINGFACE_HUB_TOKEN:-}
   volumes:
     - type: bind
       source: .
       target: /workspace
-      read_only: true
     - type: bind
       source: ./.local
       target: /workspace/.local
@@ -22,11 +24,6 @@ x-pipeline-service: &pipeline-service
     - type: bind
       source: ./data_best
       target: /workspace/data_best
-      bind:
-        create_host_path: true
-    - type: bind
-      source: ./data_best_fast
-      target: /workspace/data_best_fast
       bind:
         create_host_path: true
     - type: bind
@@ -75,7 +72,6 @@ x-pipeline-service: &pipeline-service
   user: "${AID_UID:-1000}:${AID_GID:-1000}"
   stdin_open: true
   tty: true
-  read_only: true
   shm_size: "8gb"
   pids_limit: 1024
   tmpfs:

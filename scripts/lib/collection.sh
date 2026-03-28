@@ -52,7 +52,11 @@ print_image_collection_args() {
   local prefix=""
   local discovery_limit_default=""
   local max_sources_default=""
+  local min_downloads_default=""
+  local min_likes_default=""
+  local min_quality_score_default=""
   local print_top_default=""
+  local discovery_workers_default=""
   local cache_file_default=""
   local stream_buffer_default=""
   local max_samples_default=""
@@ -81,57 +85,31 @@ print_image_collection_args() {
       test_env="TEST_PER_CLASS"
       test_default="20000"
       prefix="BEST_DS"
-      discovery_limit_default="280"
-      max_sources_default="480"
-      print_top_default="24"
+      discovery_limit_default="420"
+      max_sources_default="900"
+      min_downloads_default="25"
+      min_likes_default="1"
+      min_quality_score_default="1.35"
+      print_top_default="36"
+      discovery_workers_default="8"
       cache_file_default="./.local/hf_discovered_sources.txt"
-      stream_buffer_default="12000"
-      max_samples_default="30000"
-      max_per_source_class_default="10000"
-      max_per_source_split_class_default="3000"
-      warmup_default="400"
-      min_sources_with_accepted_default="36"
-      min_sources_per_class_default="20"
-      base_pause_default="1100"
-      jitter_default="900"
-      cooldown_default="45000"
+      stream_buffer_default="18000"
+      max_samples_default="18000"
+      max_per_source_class_default="6000"
+      max_per_source_split_class_default="1800"
+      warmup_default="224"
+      min_sources_with_accepted_default="48"
+      min_sources_per_class_default="28"
+      base_pause_default="75"
+      jitter_default="75"
+      cooldown_default="8000"
       min_side_default="160"
       hardneg_fraction_default="0.35"
-      min_sources_per_split_class_default="12"
+      min_sources_per_split_class_default="16"
       no_default_sources_env="BEST_DS_NO_DEFAULT_SOURCES"
       sources_file_env="BEST_DS_SOURCES_FILE"
       extra_sources_env="BEST_DS_EXTRA_SOURCES"
       verbose_progress_env="BEST_DS_VERBOSE_PROGRESS"
-      ;;
-    fast)
-      train_env="FAST_TRAIN_PER_CLASS"
-      train_default="4000"
-      val_env="FAST_VAL_PER_CLASS"
-      val_default="1000"
-      test_env="FAST_TEST_PER_CLASS"
-      test_default="1000"
-      prefix="FAST"
-      discovery_limit_default="120"
-      max_sources_default="220"
-      print_top_default="10"
-      cache_file_default="./.local/hf_fast_sources.txt"
-      stream_buffer_default="6000"
-      max_samples_default="8000"
-      max_per_source_class_default="3000"
-      max_per_source_split_class_default="1000"
-      warmup_default="250"
-      min_sources_with_accepted_default="16"
-      min_sources_per_class_default="10"
-      base_pause_default="900"
-      jitter_default="700"
-      cooldown_default="30000"
-      min_side_default="160"
-      hardneg_fraction_default="0.25"
-      min_sources_per_split_class_default="6"
-      no_default_sources_env="FAST_NO_DEFAULT_SOURCES"
-      sources_file_env="FAST_SOURCES_FILE"
-      extra_sources_env="FAST_EXTRA_SOURCES"
-      verbose_progress_env="FAST_VERBOSE_PROGRESS"
       ;;
     *)
       echo "unknown_image_collection_profile=$profile" >&2
@@ -147,10 +125,11 @@ print_image_collection_args() {
   print_cli_flag_value_from_env_triplets \
     --hf-discovery-limit "${prefix}_HF_DISCOVERY_LIMIT" "$discovery_limit_default" \
     --hf-max-sources "${prefix}_HF_MAX_SOURCES" "$max_sources_default" \
-    --hf-min-downloads "${prefix}_HF_MIN_DOWNLOADS" "80" \
-    --hf-min-likes "${prefix}_HF_MIN_LIKES" "2" \
-    --hf-min-quality-score "${prefix}_HF_MIN_QUALITY_SCORE" "1.7" \
+    --hf-min-downloads "${prefix}_HF_MIN_DOWNLOADS" "$min_downloads_default" \
+    --hf-min-likes "${prefix}_HF_MIN_LIKES" "$min_likes_default" \
+    --hf-min-quality-score "${prefix}_HF_MIN_QUALITY_SCORE" "$min_quality_score_default" \
     --hf-print-top "${prefix}_HF_PRINT_TOP" "$print_top_default" \
+    --hf-discovery-workers "${prefix}_HF_DISCOVERY_WORKERS" "$discovery_workers_default" \
     --hf-cache-file "${prefix}_HF_CACHE_FILE" "$cache_file_default"
   print_cli_flag --hf-cache-only-if-present
   print_cli_flag_value_from_env --cache-dir "${prefix}_CACHE_DIR" "$HF_CACHE_DIR_DEFAULT"
@@ -161,7 +140,7 @@ print_image_collection_args() {
     --max-per-source-class "${prefix}_MAX_PER_SOURCE_CLASS" "$max_per_source_class_default" \
     --max-per-source-split-class "${prefix}_MAX_PER_SOURCE_SPLIT_CLASS" "$max_per_source_split_class_default" \
     --acceptance-warmup-samples "${prefix}_ACCEPTANCE_WARMUP_SAMPLES" "$warmup_default" \
-    --min-acceptance-rate "${prefix}_MIN_ACCEPTANCE_RATE" "0.01" \
+    --min-acceptance-rate "${prefix}_MIN_ACCEPTANCE_RATE" "0.008" \
     --min-hf-sources-with-accepted "${prefix}_MIN_HF_SOURCES_WITH_ACCEPTED" "$min_sources_with_accepted_default" \
     --min-hf-sources-per-class "${prefix}_MIN_HF_SOURCES_PER_CLASS" "$min_sources_per_class_default" \
     --min-hf-sources-per-split-class "${prefix}_MIN_HF_SOURCES_PER_SPLIT_CLASS" "$min_sources_per_split_class_default" \
@@ -192,12 +171,6 @@ collect_image_data() {
   local out="${DATA_DIR:-./data_best}"
   local query_csv="${BEST_DS_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}"
   collect_profiled_image_data best "$out" "$query_csv"
-}
-
-collect_fast_data() {
-  local out="${DATA_DIR:-./data_best_fast}"
-  local query_csv="${FAST_HF_QUERIES:-${BEST_DS_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}}"
-  collect_profiled_image_data fast "$out" "$query_csv"
 }
 
 collect_profiled_image_data() {
@@ -231,20 +204,20 @@ print_diverse_common_args() {
   print_cli_flag_value_from_env --cache-dir "DIVERSE_CACHE_DIR" "$HF_CACHE_DIR_DEFAULT"
   print_cli_flag --streaming
   print_cli_flag_value_from_env_triplets \
-    --stream-buffer-size "DIVERSE_STREAM_BUFFER_SIZE" "16000" \
-    --max-samples-per-source "DIVERSE_MAX_SAMPLES_PER_SOURCE" "40000" \
-    --max-per-source-class "DIVERSE_MAX_PER_SOURCE_CLASS" "12000" \
-    --max-per-source-split-class "DIVERSE_MAX_PER_SOURCE_SPLIT_CLASS" "4000" \
-    --acceptance-warmup-samples "DIVERSE_ACCEPTANCE_WARMUP_SAMPLES" "192" \
-    --min-acceptance-rate "DIVERSE_MIN_ACCEPTANCE_RATE" "0.02" \
-    --min-hf-sources-with-accepted "DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED" "32" \
-    --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "20" \
-    --min-hf-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "12" \
-    --repo-base-pause-ms "DIVERSE_REPO_BASE_PAUSE_MS" "150" \
-    --repo-jitter-ms "DIVERSE_REPO_JITTER_MS" "150" \
-    --repo-cooldown-ms "DIVERSE_REPO_COOLDOWN_MS" "15000" \
-    --transient-error-cooldown-ms "DIVERSE_TRANSIENT_ERROR_COOLDOWN_MS" "2500" \
-    --max-consecutive-failures "DIVERSE_MAX_CONSECUTIVE_FAILURES" "5" \
+    --stream-buffer-size "DIVERSE_STREAM_BUFFER_SIZE" "24000" \
+    --max-samples-per-source "DIVERSE_MAX_SAMPLES_PER_SOURCE" "22000" \
+    --max-per-source-class "DIVERSE_MAX_PER_SOURCE_CLASS" "7000" \
+    --max-per-source-split-class "DIVERSE_MAX_PER_SOURCE_SPLIT_CLASS" "2200" \
+    --acceptance-warmup-samples "DIVERSE_ACCEPTANCE_WARMUP_SAMPLES" "160" \
+    --min-acceptance-rate "DIVERSE_MIN_ACCEPTANCE_RATE" "0.008" \
+    --min-hf-sources-with-accepted "DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED" "56" \
+    --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "28" \
+    --min-hf-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "16" \
+    --repo-base-pause-ms "DIVERSE_REPO_BASE_PAUSE_MS" "25" \
+    --repo-jitter-ms "DIVERSE_REPO_JITTER_MS" "25" \
+    --repo-cooldown-ms "DIVERSE_REPO_COOLDOWN_MS" "5000" \
+    --transient-error-cooldown-ms "DIVERSE_TRANSIENT_ERROR_COOLDOWN_MS" "1200" \
+    --max-consecutive-failures "DIVERSE_MAX_CONSECUTIVE_FAILURES" "8" \
     --min-side "DIVERSE_MIN_SIDE" "160" \
     --max-aspect-ratio "DIVERSE_MAX_ASPECT_RATIO" "4.0" \
     --min-entropy "DIVERSE_MIN_ENTROPY" "3.1" \
@@ -260,13 +233,14 @@ print_diverse_common_args() {
 print_diverse_discovery_args() {
   print_cli_flag --discover-hf
   print_cli_flag_value_from_env_triplets \
-    --hf-discovery-limit "DIVERSE_HF_DISCOVERY_LIMIT" "180" \
-    --hf-max-sources "DIVERSE_HF_MAX_SOURCES" "480" \
-    --hf-min-downloads "DIVERSE_HF_MIN_DOWNLOADS" "100" \
-    --hf-min-likes "DIVERSE_HF_MIN_LIKES" "2" \
-    --hf-min-quality-score "DIVERSE_HF_MIN_QUALITY_SCORE" "1.95" \
-    --hf-print-top "DIVERSE_HF_PRINT_TOP" "24" \
-    --hf-query-pause-ms "DIVERSE_HF_QUERY_PAUSE_MS" "900"
+    --hf-discovery-limit "DIVERSE_HF_DISCOVERY_LIMIT" "360" \
+    --hf-max-sources "DIVERSE_HF_MAX_SOURCES" "900" \
+    --hf-min-downloads "DIVERSE_HF_MIN_DOWNLOADS" "20" \
+    --hf-min-likes "DIVERSE_HF_MIN_LIKES" "1" \
+    --hf-min-quality-score "DIVERSE_HF_MIN_QUALITY_SCORE" "1.25" \
+    --hf-print-top "DIVERSE_HF_PRINT_TOP" "36" \
+    --hf-discovery-workers "DIVERSE_HF_DISCOVERY_WORKERS" "10" \
+    --hf-query-pause-ms "DIVERSE_HF_QUERY_PAUSE_MS" "0"
 }
 
 print_diverse_audit_args() {
@@ -365,12 +339,6 @@ collect_full_cycle() {
   collect_diverse_image_data
   ingest_outputs
   collect_video_data
-}
-
-collect_diverse_cycle() {
-  collect_diverse_image_data
-  ingest_outputs
-  VIDEO_CACHE_DIR="${VIDEO_CACHE_DIR:-$HF_CACHE_DIR_DEFAULT}" VIDEO_SNAPSHOT_MAX_WORKERS="${VIDEO_SNAPSHOT_MAX_WORKERS:-2}" collect_video_data
 }
 
 run_simple_collection_smoke() {

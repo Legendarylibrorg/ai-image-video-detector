@@ -73,6 +73,9 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertIn("run_repo_python scripts/benchmark_gate.py", text)
         self.assertIn('run_prepared_max_quality_pipeline "$collected_root" 1', text)
         self.assertIn('run_prepared_max_quality_pipeline "$collected_root"', text)
+        self.assertNotIn("train_image_pipeline()", text)
+        self.assertNotIn("train_all_pipeline()", text)
+        self.assertNotIn("train_video_only()", text)
         self.assertFalse((ROOT / "scripts" / "local_retrain_4090.sh").exists())
 
     def test_metadata_finetune_wrapper_uses_metadata_features_and_existing_checkpoint(self) -> None:
@@ -117,6 +120,7 @@ class TrainingSurfaceTests(unittest.TestCase):
         text = (ROOT / "docs" / "REFERENCE.md").read_text(encoding="utf-8")
         self.assertIn("Pipeline tools", text)
         self.assertIn("RTX 4090", text)
+        self.assertNotIn("collect-diverse", text)
         self.assertNotIn("aid-detect --model", text)
         self.assertNotIn("aid-explain --model", text)
         self.assertNotIn("aid-video-detect-temporal", text)
@@ -126,10 +130,11 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertIn('export RUN_HARD_RETRAIN="${RUN_HARD_RETRAIN:-1}"', text)
         self.assertIn('export RUN_DOMAIN_THRESHOLDS="${RUN_DOMAIN_THRESHOLDS:-1}"', text)
         self.assertIn('export RUN_ROBUST_EVAL="${RUN_ROBUST_EVAL:-1}"', text)
-        self.assertIn('export BEST_DS_HF_MIN_QUALITY_SCORE="${BEST_DS_HF_MIN_QUALITY_SCORE:-1.95}"', text)
-        self.assertIn('export BEST_DS_MAX_PER_SOURCE_CLASS="${BEST_DS_MAX_PER_SOURCE_CLASS:-10000}"', text)
-        self.assertIn('export BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS="${BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS:-3000}"', text)
-        self.assertIn('export BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS="${BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS:-12}"', text)
+        self.assertIn('export BEST_DS_HF_MIN_QUALITY_SCORE="${BEST_DS_HF_MIN_QUALITY_SCORE:-1.45}"', text)
+        self.assertIn('export BEST_DS_HF_DISCOVERY_WORKERS="${BEST_DS_HF_DISCOVERY_WORKERS:-12}"', text)
+        self.assertIn('export BEST_DS_MAX_PER_SOURCE_CLASS="${BEST_DS_MAX_PER_SOURCE_CLASS:-7000}"', text)
+        self.assertIn('export BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS="${BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS:-2000}"', text)
+        self.assertIn('export BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS="${BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS:-16}"', text)
         self.assertIn('export BEST_DS_MIN_SIDE="${BEST_DS_MIN_SIDE:-160}"', text)
         self.assertIn('export BEST_DS_MAX_ASPECT_RATIO="${BEST_DS_MAX_ASPECT_RATIO:-4.0}"', text)
         self.assertIn('export TRAIN_PATIENCE="${TRAIN_PATIENCE:-5}"', text)
@@ -150,6 +155,7 @@ class TrainingSurfaceTests(unittest.TestCase):
         text = (ROOT / "scripts" / "full_pipeline_4090.sh").read_text(encoding="utf-8")
         self.assertIn('--max-per-source-split-class "$BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS"', text)
         self.assertIn('--min-hf-sources-per-split-class "$BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS"', text)
+        self.assertIn('--hf-discovery-workers "$BEST_DS_HF_DISCOVERY_WORKERS"', text)
         self.assertIn('--hf-query-pause-ms "$BEST_DS_HF_QUERY_PAUSE_MS"', text)
         self.assertIn('--transient-error-cooldown-ms "$BEST_DS_TRANSIENT_ERROR_COOLDOWN_MS"', text)
         self.assertNotIn("BEST_DS_LOCAL_", text)
@@ -158,6 +164,10 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertIn('PIPELINE_RELEASE_OUT="${PIPELINE_RELEASE_OUT:-$ENS_OUT/release}"', text)
         self.assertIn("write_release_bundle()", text)
         self.assertIn("scripts/export_best_release.py", text)
+
+    def test_report_writer_no_longer_tracks_removed_fast_profile_env(self) -> None:
+        text = (ROOT / "scripts" / "write_pipeline_report.py").read_text(encoding="utf-8")
+        self.assertNotIn('"FAST_"', text)
 
     def test_distill_script_stays_safetensors_only_for_best_artifacts(self) -> None:
         text = (ROOT / "scripts" / "train_distill.py").read_text(encoding="utf-8")

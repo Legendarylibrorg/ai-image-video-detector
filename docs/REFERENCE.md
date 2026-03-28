@@ -146,10 +146,10 @@ docker compose run --rm pipeline-gpu ./local.sh run
 
 The Compose services:
 - bind-mount the repo at `/workspace`
-- reuse `.env`
-- keep Hugging Face and pip caches in named Docker volumes
+- auto-read `HF_TOKEN` and `HUGGINGFACE_HUB_TOKEN` from the repo `.env`
+- keep Hugging Face and pip caches under `./.local` and in named Docker volumes
 - drop Linux capabilities and enable `no-new-privileges`
-- use a read-only container root filesystem with writable `tmpfs` scratch space
+- keep the repo checkout writable and use `tmpfs` scratch space
 - apply a PID limit to reduce blast radius if a process misbehaves
 
 GPU mode requires Docker Engine, the Docker Compose plugin, and the NVIDIA Container Toolkit on the host.
@@ -179,7 +179,6 @@ For command-level control, use:
 
 ```bash
 bash scripts/do.sh pipeline
-bash scripts/do.sh collect-diverse
 bash scripts/do.sh train-existing
 ```
 

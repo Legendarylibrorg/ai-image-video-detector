@@ -121,12 +121,11 @@ Path map:
 - host repo root: your current working directory
 - container repo root: `/workspace`
 - container venv: `/opt/aid-venv`
-- repo env file: `./.env` on the host, loaded into Compose
-- general source tree: read-only inside the container
+- repo env file: `./.env` on the host, auto-read by Docker Compose for `HF_TOKEN` and `HUGGINGFACE_HUB_TOKEN`
+- general source tree: writable inside the container
 - writable host/container path pairs:
   - `./.local` <-> `/workspace/.local`
   - `./data_best` <-> `/workspace/data_best`
-  - `./data_best_fast` <-> `/workspace/data_best_fast`
   - `./data_new` <-> `/workspace/data_new`
   - `./video_data` <-> `/workspace/video_data`
   - `./artifacts_ens` <-> `/workspace/artifacts_ens`
@@ -137,11 +136,11 @@ Path map:
   - `./incoming_review_queue` <-> `/workspace/incoming_review_queue`
 
 Notes:
-- the Compose services mount the source checkout at `/workspace` read-only and expose only the expected data and artifact directories as writable bind mounts
-- datasets and artifacts still live in the checkout you started from, but the container cannot rewrite the general source tree
+- the Compose services mount the source checkout at `/workspace` so normal editing, setup, and patching still work in-container
+- datasets, artifacts, and caches still live in the checkout you started from
 - `pipeline` uses the CPU-only `Dockerfile`, while `pipeline-gpu` uses `Dockerfile.gpu` with the CUDA runtime
 - the container entrypoint creates or reuses an isolated venv volume at `/opt/aid-venv` and runs `bash scripts/install_deps.sh`
-- the Compose services drop all Linux capabilities, enable `no-new-privileges`, use a read-only container root filesystem, and keep writable scratch space in `tmpfs`
+- the Compose services drop all Linux capabilities, enable `no-new-privileges`, and keep scratch space in `tmpfs`
 - the VM is the main isolation boundary; Compose is the second layer inside it
 
 Security model:
@@ -149,7 +148,7 @@ Security model:
 - Docker reduces exposure further inside that VM, but it does not guarantee safety from malicious packages
 - dependency installers and imported packages still execute code, only inside the container
 - because selected repo data and artifact directories stay writable, malicious code could still change those writable paths inside the VM
-- the general source checkout is mounted read-only in Compose, which helps protect the repo code and docs from accidental or malicious rewrites during installs and runs
+- the general source checkout is writable in Compose so the normal repo workflow stays simple; the VM remains the main isolation boundary
 - keep the repo in a dedicated VM workspace and avoid mounting unrelated secrets into the container
 
 Best security with GPU:

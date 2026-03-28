@@ -20,7 +20,7 @@ from build_best_dataset_policy import (
 )
 from build_best_dataset_sources import DEFAULT_ALLOWED_LICENSE_TAGS, build_source_list
 from build_best_dataset_support import build_summary, make_source_report, run_source_acceptance_loop, write_summary_files
-from dataset_builder_common import configure_hf_cache_env, targets_met
+from dataset_builder_common import HF_CACHE_DIR_DEFAULT, configure_hf_cache_env, targets_met
 from hf_data import (
     LoadedDatasetSource,
     append_source_manifest_entry,
@@ -255,12 +255,13 @@ def main():
     ap.add_argument("--discover-hf", action="store_true", default=False)
     ap.add_argument("--no-discover-hf", dest="discover_hf", action="store_false")
     ap.add_argument("--hf-query", action="append", default=[])
-    ap.add_argument("--hf-discovery-limit", type=int, default=120, help="Per-query max datasets to scan in discovery")
-    ap.add_argument("--hf-max-sources", type=int, default=260, help="Global cap on discovered dataset ids")
-    ap.add_argument("--hf-min-downloads", type=int, default=80)
-    ap.add_argument("--hf-min-likes", type=int, default=2)
-    ap.add_argument("--hf-min-quality-score", type=float, default=1.7)
-    ap.add_argument("--hf-print-top", type=int, default=15)
+    ap.add_argument("--hf-discovery-limit", type=int, default=180, help="Per-query max datasets to scan in discovery")
+    ap.add_argument("--hf-max-sources", type=int, default=420, help="Global cap on discovered dataset ids")
+    ap.add_argument("--hf-min-downloads", type=int, default=25)
+    ap.add_argument("--hf-min-likes", type=int, default=1)
+    ap.add_argument("--hf-min-quality-score", type=float, default=1.35)
+    ap.add_argument("--hf-print-top", type=int, default=24)
+    ap.add_argument("--hf-discovery-workers", type=int, default=8, help="Parallel worker count for HF discovery queries")
     ap.add_argument("--hf-query-pause-ms", type=int, default=0, help="Pause between HF discovery queries to stay under page limits")
     ap.add_argument("--hf-license-allow", action="append", default=list(DEFAULT_ALLOWED_LICENSE_TAGS), help="Allowed open/free HF dataset license markers")
     ap.add_argument("--hf-require-open-license", action="store_true", default=True, help="Require discovered HF sources to advertise an allowed open/free license")
@@ -270,7 +271,7 @@ def main():
     ap.add_argument("--no-hf-cache-only-if-present", dest="hf_cache_only_if_present", action="store_false")
     ap.add_argument("--streaming", action="store_true", default=True, help="Use HF streaming mode to reduce metadata overhead")
     ap.add_argument("--no-streaming", dest="streaming", action="store_false")
-    ap.add_argument("--cache-dir", default="", help="HF datasets cache directory (improves resume and avoids repeated downloads)")
+    ap.add_argument("--cache-dir", default=HF_CACHE_DIR_DEFAULT, help="HF datasets cache directory (improves resume and avoids repeated downloads)")
     ap.add_argument("--stream-buffer-size", type=int, default=12000, help="Shuffle buffer for streaming datasets")
     ap.add_argument("--quiet-progress", action="store_true", default=True, help="Suppress noisy datasets map/filter progress bars")
     ap.add_argument("--verbose-progress", dest="quiet_progress", action="store_false")
