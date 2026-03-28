@@ -85,27 +85,27 @@ print_image_collection_args() {
       test_env="TEST_PER_CLASS"
       test_default="20000"
       prefix="BEST_DS"
-      discovery_limit_default="420"
-      max_sources_default="900"
-      min_downloads_default="25"
+      discovery_limit_default="520"
+      max_sources_default="1200"
+      min_downloads_default="15"
       min_likes_default="1"
-      min_quality_score_default="1.35"
-      print_top_default="36"
-      discovery_workers_default="8"
+      min_quality_score_default="1.25"
+      print_top_default="48"
+      discovery_workers_default="12"
       cache_file_default="./.local/hf_discovered_sources.txt"
       stream_buffer_default="18000"
       max_samples_default="18000"
-      max_per_source_class_default="6000"
-      max_per_source_split_class_default="1800"
+      max_per_source_class_default="5000"
+      max_per_source_split_class_default="1500"
       warmup_default="224"
-      min_sources_with_accepted_default="48"
-      min_sources_per_class_default="28"
-      base_pause_default="75"
-      jitter_default="75"
-      cooldown_default="8000"
+      min_sources_with_accepted_default="64"
+      min_sources_per_class_default="36"
+      base_pause_default="20"
+      jitter_default="20"
+      cooldown_default="3000"
       min_side_default="160"
       hardneg_fraction_default="0.35"
-      min_sources_per_split_class_default="16"
+      min_sources_per_split_class_default="20"
       no_default_sources_env="BEST_DS_NO_DEFAULT_SOURCES"
       sources_file_env="BEST_DS_SOURCES_FILE"
       extra_sources_env="BEST_DS_EXTRA_SOURCES"
@@ -206,17 +206,17 @@ print_diverse_common_args() {
   print_cli_flag_value_from_env_triplets \
     --stream-buffer-size "DIVERSE_STREAM_BUFFER_SIZE" "24000" \
     --max-samples-per-source "DIVERSE_MAX_SAMPLES_PER_SOURCE" "22000" \
-    --max-per-source-class "DIVERSE_MAX_PER_SOURCE_CLASS" "7000" \
-    --max-per-source-split-class "DIVERSE_MAX_PER_SOURCE_SPLIT_CLASS" "2200" \
+    --max-per-source-class "DIVERSE_MAX_PER_SOURCE_CLASS" "6000" \
+    --max-per-source-split-class "DIVERSE_MAX_PER_SOURCE_SPLIT_CLASS" "1800" \
     --acceptance-warmup-samples "DIVERSE_ACCEPTANCE_WARMUP_SAMPLES" "160" \
     --min-acceptance-rate "DIVERSE_MIN_ACCEPTANCE_RATE" "0.008" \
-    --min-hf-sources-with-accepted "DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED" "56" \
-    --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "28" \
-    --min-hf-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "16" \
-    --repo-base-pause-ms "DIVERSE_REPO_BASE_PAUSE_MS" "25" \
-    --repo-jitter-ms "DIVERSE_REPO_JITTER_MS" "25" \
-    --repo-cooldown-ms "DIVERSE_REPO_COOLDOWN_MS" "5000" \
-    --transient-error-cooldown-ms "DIVERSE_TRANSIENT_ERROR_COOLDOWN_MS" "1200" \
+    --min-hf-sources-with-accepted "DIVERSE_MIN_HF_SOURCES_WITH_ACCEPTED" "72" \
+    --min-hf-sources-per-class "DIVERSE_MIN_HF_SOURCES_PER_CLASS" "32" \
+    --min-hf-sources-per-split-class "DIVERSE_MIN_HF_SOURCES_PER_SPLIT_CLASS" "20" \
+    --repo-base-pause-ms "DIVERSE_REPO_BASE_PAUSE_MS" "10" \
+    --repo-jitter-ms "DIVERSE_REPO_JITTER_MS" "10" \
+    --repo-cooldown-ms "DIVERSE_REPO_COOLDOWN_MS" "2500" \
+    --transient-error-cooldown-ms "DIVERSE_TRANSIENT_ERROR_COOLDOWN_MS" "800" \
     --max-consecutive-failures "DIVERSE_MAX_CONSECUTIVE_FAILURES" "8" \
     --min-side "DIVERSE_MIN_SIDE" "160" \
     --max-aspect-ratio "DIVERSE_MAX_ASPECT_RATIO" "4.0" \
@@ -233,13 +233,13 @@ print_diverse_common_args() {
 print_diverse_discovery_args() {
   print_cli_flag --discover-hf
   print_cli_flag_value_from_env_triplets \
-    --hf-discovery-limit "DIVERSE_HF_DISCOVERY_LIMIT" "360" \
-    --hf-max-sources "DIVERSE_HF_MAX_SOURCES" "900" \
-    --hf-min-downloads "DIVERSE_HF_MIN_DOWNLOADS" "20" \
+    --hf-discovery-limit "DIVERSE_HF_DISCOVERY_LIMIT" "480" \
+    --hf-max-sources "DIVERSE_HF_MAX_SOURCES" "1200" \
+    --hf-min-downloads "DIVERSE_HF_MIN_DOWNLOADS" "10" \
     --hf-min-likes "DIVERSE_HF_MIN_LIKES" "1" \
-    --hf-min-quality-score "DIVERSE_HF_MIN_QUALITY_SCORE" "1.25" \
-    --hf-print-top "DIVERSE_HF_PRINT_TOP" "36" \
-    --hf-discovery-workers "DIVERSE_HF_DISCOVERY_WORKERS" "10" \
+    --hf-min-quality-score "DIVERSE_HF_MIN_QUALITY_SCORE" "1.15" \
+    --hf-print-top "DIVERSE_HF_PRINT_TOP" "48" \
+    --hf-discovery-workers "DIVERSE_HF_DISCOVERY_WORKERS" "12" \
     --hf-query-pause-ms "DIVERSE_HF_QUERY_PAUSE_MS" "0"
 }
 
@@ -311,7 +311,7 @@ print_video_collection_args() {
     --val-per-class "VIDEO_VAL_PER_CLASS" "250" \
     --mode "VIDEO_MODE" "snapshot" \
     --cache-dir "VIDEO_CACHE_DIR" "$HF_CACHE_DIR_DEFAULT" \
-    --snapshot-max-workers "VIDEO_SNAPSHOT_MAX_WORKERS" "4" \
+    --snapshot-max-workers "VIDEO_SNAPSHOT_MAX_WORKERS" "8" \
     --repo-base-pause-ms "VIDEO_REPO_BASE_PAUSE_MS" "150" \
     --repo-jitter-ms "VIDEO_REPO_JITTER_MS" "150" \
     --copy-sleep-ms "VIDEO_COPY_SLEEP_MS" "0" \

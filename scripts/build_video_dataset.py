@@ -141,7 +141,7 @@ def main():
     ap.add_argument("--val-per-class", type=int, default=60)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--mode", choices=["snapshot", "per-file"], default="snapshot")
-    ap.add_argument("--snapshot-max-workers", type=int, default=4)
+    ap.add_argument("--snapshot-max-workers", type=int, default=8)
     ap.add_argument("--chunk-size", type=int, default=20)
     ap.add_argument("--sleep-ms", type=int, default=40)
     ap.add_argument("--jitter-ms", type=int, default=80)
