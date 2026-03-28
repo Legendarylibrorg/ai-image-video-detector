@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import math
 import os
@@ -58,6 +59,25 @@ DEFAULT_DISCOVERY_QUERIES = [
     "id card document image",
     "poster infographic image",
     "logo icon brand image",
+    "architecture photo dataset",
+    "street photo dataset",
+    "travel photo dataset",
+    "fashion photo dataset",
+    "sports action photo dataset",
+    "vehicle road photo dataset",
+    "drone aerial photo dataset",
+    "satellite image dataset",
+    "microscopy image dataset",
+    "medical photo dataset",
+    "old photo scan dataset",
+    "film scan photo dataset",
+    "raw photo dataset",
+    "low light photo dataset",
+    "comic panel image dataset",
+    "meme screenshot dataset",
+    "infographic dataset image",
+    "desktop screenshot dataset",
+    "tablet screenshot image",
     "anime illustration real fake",
     "digital art illustration dataset",
     "3d render real fake",
@@ -172,6 +192,7 @@ def discovery_policy(args) -> dict[str, object]:
         "hf_min_likes": int(args.hf_min_likes),
         "hf_min_quality_score": float(args.hf_min_quality_score),
         "hf_print_top": int(args.hf_print_top),
+        "hf_discovery_workers": int(getattr(args, "hf_discovery_workers", 1)),
         "hf_query_pause_ms": int(args.hf_query_pause_ms),
         "hf_require_open_license": bool(getattr(args, "hf_require_open_license", True)),
         "hf_license_allow": list(getattr(args, "hf_license_allow", []) or list(DEFAULT_ALLOWED_LICENSE_TAGS)),
@@ -213,6 +234,7 @@ def discover_hf_sources(
     min_likes: int,
     min_quality_score: float,
     print_top_n: int,
+    query_workers: int = 1,
     query_pause_ms: int = 0,
     token: str | None = None,
     require_open_license: bool = True,
@@ -221,15 +243,15 @@ def discover_hf_sources(
     if HfApi is None:
         print("warning_hf_discovery_unavailable reason=huggingface_hub_missing")
         return []
-    token = normalize_hf_token(token)
-    api = HfApi(token=token)
     found: list[tuple[str, float, int, int]] = []
     allowed_licenses = {normalize_license_marker(tag) for tag in allowed_license_tags if normalize_license_marker(tag)}
-    for idx, q in enumerate(queries, start=1):
-        if idx > 1 and int(query_pause_ms) > 0:
-            time.sleep(int(query_pause_ms) / 1000.0)
+
+    def collect_query_candidates(query: str) -> list[tuple[str, float, int, int]]:
+        token_value = normalize_hf_token(token)
         try:
-            matches = api.list_datasets(search=q, limit=per_query_limit, sort="downloads")
+            api = HfApi(token=token_value)
+            matches = api.list_datasets(search=query, limit=per_query_limit, sort="downloads")
+            query_found: list[tuple[str, float, int, int]] = []
             for ds in matches:
                 ds_id = str(getattr(ds, "id", "") or "").strip()
                 if not ds_id:
@@ -266,10 +288,23 @@ def discover_hf_sources(
                     score -= 0.8
                 if score < min_quality_score:
                     continue
-                found.append((ds_id, score, downloads, likes))
+                query_found.append((ds_id, score, downloads, likes))
+            return query_found
         except Exception as e:
-            print(f"warning_hf_discovery_query_failed query={q!r} reason={e}")
-            continue
+            print(f"warning_hf_discovery_query_failed query={query!r} reason={e}")
+            return []
+
+    worker_count = max(1, int(query_workers))
+    if worker_count <= 1 or len(queries) <= 1:
+        for idx, q in enumerate(queries, start=1):
+            if idx > 1 and int(query_pause_ms) > 0:
+                time.sleep(int(query_pause_ms) / 1000.0)
+            found.extend(collect_query_candidates(q))
+    else:
+        with ThreadPoolExecutor(max_workers=min(worker_count, len(queries))) as pool:
+            futures = {pool.submit(collect_query_candidates, q): q for q in queries}
+            for future in as_completed(futures):
+                found.extend(future.result())
     found_sorted = sorted(found, key=lambda x: x[1], reverse=True)
     for ds_id, score, dl, lk in found_sorted[: max(0, int(print_top_n))]:
         print(f"hf_candidate id={ds_id} score={score:.3f} downloads={dl} likes={lk}")
@@ -325,6 +360,7 @@ def build_source_list(args) -> list[str]:
                 min_likes=args.hf_min_likes,
                 min_quality_score=args.hf_min_quality_score,
                 print_top_n=args.hf_print_top,
+                query_workers=getattr(args, "hf_discovery_workers", 1),
                 query_pause_ms=args.hf_query_pause_ms,
                 token=normalize_hf_token(os.environ.get(args.token_env)),
                 require_open_license=bool(getattr(args, "hf_require_open_license", True)),

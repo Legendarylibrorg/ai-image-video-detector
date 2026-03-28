@@ -52,8 +52,10 @@ docker compose run --rm pipeline-gpu ./local.sh status
   `/workspace`
 - container venv
   `/opt/aid-venv`
+- Hugging Face cache in container
+  `/workspace/.local/hf`
 - general source tree in container
-  read-only
+  writable
 
 For the full secure startup walkthrough, use [STARTUP.md](STARTUP.md).
 

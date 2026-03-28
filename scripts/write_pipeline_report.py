@@ -58,7 +58,7 @@ def _selected_env() -> dict[str, str]:
         "PIPELINE_MIN_FREE_GB",
         "PIPELINE_STAGE",
     }
-    prefixes = ("BEST_DS_", "FAST_", "VIDEO_", "RUN_", "SKIP_", "HARD_", "DISTILL_", "ENS_", "TRAIN_")
+    prefixes = ("BEST_DS_", "VIDEO_", "RUN_", "SKIP_", "HARD_", "DISTILL_", "ENS_", "TRAIN_")
     out: dict[str, str] = {}
     for key, value in os.environ.items():
         if key in exact or key.startswith(prefixes):

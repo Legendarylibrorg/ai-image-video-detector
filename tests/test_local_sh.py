@@ -42,7 +42,7 @@ class LocalShTests(unittest.TestCase):
         self.assertIn("./local.sh finetune", out)
         self.assertIn("./local.sh continuous", out)
         self.assertIn("/opt/aid-venv", out)
-        self.assertIn("source checkout is mounted read-only", out)
+        self.assertIn("Hugging Face caches live under ./.local/hf and are reused by Compose", out)
         self.assertIn("setup creates or reuses ./.venv", out)
         self.assertNotIn("advanced aliases still work", out.lower())
         self.assertNotIn("detect <image>", out)

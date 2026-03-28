@@ -68,15 +68,15 @@ Secure path map:
 - host repo root: your current working directory
 - container repo root: `/workspace`
 - container virtualenv: `/opt/aid-venv`
-- repo env file: `./.env` on the host, loaded into Compose with `env_file`
-- general source tree under `/workspace`: read-only
-- writable data and artifact paths: `./.local`, `./data_best`, `./data_best_fast`, `./data_new`, `./video_data`, `./artifacts_ens`, `./artifacts_sweep`, `./artifacts_finetune_metadata`, `./video_artifacts`, `./incoming_model_outputs`, `./incoming_review_queue`
+- repo env file: `./.env` on the host, auto-read by Docker Compose for `HF_TOKEN` and `HUGGINGFACE_HUB_TOKEN`
+- general source tree under `/workspace`: writable
+- writable data and artifact paths: `./.local`, `./data_best`, `./data_new`, `./video_data`, `./artifacts_ens`, `./artifacts_sweep`, `./artifacts_finetune_metadata`, `./video_artifacts`, `./incoming_model_outputs`, `./incoming_review_queue`
 
 Notes:
 - `pipeline` uses the CPU-only `Dockerfile`; `pipeline-gpu` uses `Dockerfile.gpu`
 - dependency install happens inside the isolated container venv at `/opt/aid-venv`
-- the container keeps Hugging Face and pip caches in named volumes
-- the Compose services use `cap_drop: [ALL]`, `no-new-privileges`, a read-only root filesystem, and `tmpfs` scratch space
+- the container keeps Hugging Face and pip caches under `./.local` and in named volumes for reuse
+- the Compose services keep `cap_drop: [ALL]`, `no-new-privileges`, and `tmpfs` scratch space, but the checkout and container filesystem stay writable so setup and patching are simpler
 - the VM is the main isolation boundary; Compose is the second layer
 - for the full step-by-step walkthrough, use [docs/STARTUP.md](docs/STARTUP.md)
 

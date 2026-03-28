@@ -40,23 +40,11 @@ class DoShTests(unittest.TestCase):
 
     def test_best_profile_emits_split_source_diversity_gate(self) -> None:
         out = self.run_bash("source scripts/do.sh; print_image_collection_args best")
-        self.assertIn("--min-hf-sources-per-split-class\n12\n", out)
-        self.assertIn("--max-per-source-class\n10000\n", out)
-        self.assertIn("--max-per-source-split-class\n3000\n", out)
+        self.assertIn("--min-hf-sources-per-split-class\n16\n", out)
+        self.assertIn("--max-per-source-class\n6000\n", out)
+        self.assertIn("--max-per-source-split-class\n1800\n", out)
+        self.assertIn("--hf-discovery-workers\n8\n", out)
         self.assertIn("--hardneg-fraction\n0.35\n", out)
-        self.assertIn("--min-side\n160\n", out)
-        self.assertIn("--max-aspect-ratio\n4.0\n", out)
-
-    def test_fast_profile_defaults_to_hf_sources_only_and_split_source_gate(self) -> None:
-        out = self.run_bash("source scripts/do.sh; print_image_collection_args fast")
-        self.assertNotIn("--local-source\n", out)
-        self.assertNotIn("--local-source-real\n", out)
-        self.assertNotIn("--local-source-ai\n", out)
-        self.assertIn("--cache-dir\n./.local/hf\n", out)
-        self.assertIn("--min-hf-sources-per-split-class\n6\n", out)
-        self.assertIn("--max-per-source-class\n3000\n", out)
-        self.assertIn("--max-per-source-split-class\n1000\n", out)
-        self.assertIn("--hardneg-fraction\n0.25\n", out)
         self.assertIn("--min-side\n160\n", out)
         self.assertIn("--max-aspect-ratio\n4.0\n", out)
 
@@ -69,6 +57,12 @@ class DoShTests(unittest.TestCase):
         self.assertIn("train-existing", out)
         self.assertIn("retrain", out)
         self.assertIn("continuous", out)
+        self.assertNotIn("collect-fast", out)
+        self.assertNotIn("collect-diverse", out)
+        self.assertNotIn("train-image", out)
+        self.assertNotIn("train-video", out)
+        self.assertNotIn("train-all", out)
+        self.assertNotIn("deps-update", out)
         self.assertNotIn("detect", out)
 
     def test_no_arg_do_script_shows_usage_without_removed_start_alias(self) -> None:
@@ -85,21 +79,22 @@ class DoShTests(unittest.TestCase):
         )
         self.assertIn("--cache-dir\n./.local/hf\n", out)
         self.assertIn("--hf-cache-only-if-present\n", out)
-        self.assertIn("--max-samples-per-source\n40000\n", out)
-        self.assertIn("--acceptance-warmup-samples\n192\n", out)
-        self.assertIn("--min-acceptance-rate\n0.02\n", out)
-        self.assertIn("--max-per-source-class\n12000\n", out)
-        self.assertIn("--max-per-source-split-class\n4000\n", out)
-        self.assertIn("--min-hf-sources-per-class\n20\n", out)
-        self.assertIn("--min-hf-sources-per-split-class\n12\n", out)
-        self.assertIn("--hf-discovery-limit\n180\n", out)
-        self.assertIn("--hf-max-sources\n480\n", out)
-        self.assertIn("--hf-min-quality-score\n1.95\n", out)
-        self.assertIn("--hf-print-top\n24\n", out)
-        self.assertIn("--repo-base-pause-ms\n150\n", out)
-        self.assertIn("--repo-cooldown-ms\n15000\n", out)
-        self.assertIn("--transient-error-cooldown-ms\n2500\n", out)
-        self.assertIn("--hf-query-pause-ms\n900\n", out)
+        self.assertIn("--max-samples-per-source\n22000\n", out)
+        self.assertIn("--acceptance-warmup-samples\n160\n", out)
+        self.assertIn("--min-acceptance-rate\n0.008\n", out)
+        self.assertIn("--max-per-source-class\n7000\n", out)
+        self.assertIn("--max-per-source-split-class\n2200\n", out)
+        self.assertIn("--min-hf-sources-per-class\n28\n", out)
+        self.assertIn("--min-hf-sources-per-split-class\n16\n", out)
+        self.assertIn("--hf-discovery-limit\n360\n", out)
+        self.assertIn("--hf-max-sources\n900\n", out)
+        self.assertIn("--hf-min-quality-score\n1.25\n", out)
+        self.assertIn("--hf-print-top\n36\n", out)
+        self.assertIn("--hf-discovery-workers\n10\n", out)
+        self.assertIn("--repo-base-pause-ms\n25\n", out)
+        self.assertIn("--repo-cooldown-ms\n5000\n", out)
+        self.assertIn("--transient-error-cooldown-ms\n1200\n", out)
+        self.assertIn("--hf-query-pause-ms\n0\n", out)
         self.assertIn("--min-side\n160\n", out)
         self.assertIn("--max-aspect-ratio\n4.0\n", out)
 
@@ -110,32 +105,22 @@ class DoShTests(unittest.TestCase):
         self.assertIn("--repo-cooldown-ms\n12000\n", out)
         self.assertIn("--min-video-bytes\n200000\n", out)
 
-    def test_collect_diverse_cycle_uses_two_snapshot_workers_by_default(self) -> None:
+    def test_removed_internal_aliases_and_fast_profile_are_gone(self) -> None:
         out = self.run_bash(
             "source scripts/do.sh; "
-            "collect_diverse_image_data(){ :; }; "
-            "ingest_outputs(){ :; }; "
-            "collect_video_data(){ printf 'workers=%s\\n' \"$VIDEO_SNAPSHOT_MAX_WORKERS\"; }; "
-            "collect_diverse_cycle"
+            "declare -f collect_fast_data 2>/dev/null || true; "
+            "declare -f collect_diverse_cycle 2>/dev/null || true; "
+            "declare -f train_image_pipeline 2>/dev/null || true; "
+            "declare -f train_all_pipeline 2>/dev/null || true; "
+            "declare -f train_video_only 2>/dev/null || true"
         )
-        self.assertIn("workers=2", out)
-
-    def test_collect_fast_data_builds_args_without_mapfile(self) -> None:
-        out = self.run_bash(
-            "source scripts/do.sh; "
-            "run_image_dataset_build(){ printf '%q\\n' \"$@\"; }; "
-            "FAST_HF_QUERIES='query one,query two'; "
-            "collect_fast_data"
-        )
-        self.assertIn("./data_best_fast", out)
-        self.assertIn("query\\ one\\,query\\ two", out)
-        self.assertIn("--require-full-targets", out)
+        self.assertEqual(out.strip(), "")
 
     def test_profiled_image_collection_helper_is_shared(self) -> None:
-        out = self.run_bash("source scripts/do.sh; declare -f collect_profiled_image_data; declare -f collect_image_data; declare -f collect_fast_data")
+        out = self.run_bash("source scripts/do.sh; declare -f collect_profiled_image_data; declare -f collect_image_data")
         self.assertIn("collect_profiled_image_data ()", out)
         self.assertIn('collect_profiled_image_data best "$out" "$query_csv"', out)
-        self.assertIn('collect_profiled_image_data fast "$out" "$query_csv"', out)
+        self.assertNotIn('collect_profiled_image_data fast "$out" "$query_csv"', out)
 
     def test_collect_diverse_image_data_builds_cached_args_without_mapfile(self) -> None:
         out = self.run_bash(
@@ -213,13 +198,13 @@ class DoShTests(unittest.TestCase):
     def test_load_env_file_preserves_explicit_env_overrides(self) -> None:
         out = self.run_bash(
             "tmpenv=$(mktemp); "
-            "printf 'MALWARE_SCAN=1\\nFAST_NO_DEFAULT_SOURCES=1\\n' > \"$tmpenv\"; "
+            "printf 'MALWARE_SCAN=1\\nBEST_DS_NO_DEFAULT_SOURCES=1\\n' > \"$tmpenv\"; "
             "ENV_FILE=\"$tmpenv\"; "
             "MALWARE_SCAN=0; "
-            "FAST_NO_DEFAULT_SOURCES=0; "
+            "BEST_DS_NO_DEFAULT_SOURCES=0; "
             "source scripts/do.sh; "
             "load_env_file; "
-            "printf '%s %s\\n' \"$MALWARE_SCAN\" \"$FAST_NO_DEFAULT_SOURCES\""
+            "printf '%s %s\\n' \"$MALWARE_SCAN\" \"$BEST_DS_NO_DEFAULT_SOURCES\""
         )
         self.assertEqual(out.strip().splitlines()[-1], "0 0")
 

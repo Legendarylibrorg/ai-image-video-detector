@@ -194,9 +194,9 @@ check_isolation_posture() {
 
   if [[ "$in_container" == "1" ]]; then
     if [[ -w "$ROOT_DIR/README.md" ]]; then
-      emit_warn "source_checkout_writable_in_container=1 prefer_read_only_source_mount=1"
+      emit_ok "source_checkout_writable_in_container=1"
     else
-      emit_ok "source_checkout_read_only_in_container=1"
+      emit_warn "source_checkout_read_only_in_container=1"
     fi
     if [[ "$VENV_DIR" == "$ROOT_DIR"* ]]; then
       emit_warn "container_venv_inside_checkout=1 prefer_isolated_venv_volume=1"

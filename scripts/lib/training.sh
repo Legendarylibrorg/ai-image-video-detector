@@ -219,19 +219,6 @@ run_prepared_max_quality_pipeline() {
   env "${env_args[@]}" bash scripts/max_quality_4090.sh
 }
 
-train_image_pipeline() {
-  prepare_training_image_data
-  local collected_root="${DATA_DIR:-./data_best}"
-  run_prepared_max_quality_pipeline "$collected_root" 1
-}
-
-train_all_pipeline() {
-  prepare_training_image_data
-  require_video_training_data "${VIDEO_OUT:-./video_data}"
-  local collected_root="${DATA_DIR:-./data_best}"
-  run_prepared_max_quality_pipeline "$collected_root"
-}
-
 train_existing_pipeline() {
   prepare_training_image_data
   local collected_root="${DATA_DIR:-./data_best}"
@@ -291,27 +278,6 @@ run_weekly_retrain_cycle() {
 run_full_pipeline() {
   wait_for_training_to_finish "pipeline"
   with_training_lock bash scripts/max_quality_4090.sh
-}
-
-train_video_only() {
-  require_video_training_data "${VIDEO_OUT:-./video_data}"
-  ensure_env
-  local -a resume_arg=()
-  if [[ "${VIDEO_TRAIN_RESUME:-1}" == "1" ]]; then
-    resume_arg=(--resume "${VIDEO_ARTIFACTS_OUT:-./video_artifacts}/last_video.pt")
-  fi
-  aid-video-train \
-    --data "${VIDEO_OUT:-./video_data}" \
-    --out "${VIDEO_ARTIFACTS_OUT:-./video_artifacts}" \
-    --epochs "${VIDEO_TRAIN_EPOCHS:-30}" \
-    --batch-size "${VIDEO_TRAIN_BATCH_SIZE:-4}" \
-    --img-size "${VIDEO_TRAIN_IMG_SIZE:-224}" \
-    --frames "${VIDEO_TRAIN_FRAMES:-24}" \
-    --grad-accum "${VIDEO_TRAIN_GRAD_ACCUM:-2}" \
-    --lr "${VIDEO_TRAIN_LR:-1e-4}" \
-    --patience "${VIDEO_TRAIN_PATIENCE:-6}" \
-    --min-delta "${VIDEO_TRAIN_MIN_DELTA:-0.001}" \
-    "${resume_arg[@]}"
 }
 
 show_status() {

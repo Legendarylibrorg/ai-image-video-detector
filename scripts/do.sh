@@ -7,16 +7,11 @@ set -euo pipefail
 #   bash scripts/do.sh smoke
 #   bash scripts/do.sh smoke-real
 #   bash scripts/do.sh collect
-#   bash scripts/do.sh collect-diverse
-#   bash scripts/do.sh collect-fast
-#   bash scripts/do.sh collect-image
-#   bash scripts/do.sh collect-video
 #   bash scripts/do.sh collection-status
 #   bash scripts/do.sh ingest
 #   bash scripts/do.sh scan
 #   bash scripts/do.sh retrain
 #   bash scripts/do.sh continuous
-#   bash scripts/do.sh deps-update
 #   bash scripts/do.sh doctor
 #   bash scripts/do.sh preflight
 
@@ -27,7 +22,7 @@ ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 ENV_READY=0
 PREPARED_IMAGE_DATA_DIR=""
 PIPELINE_WAIT_FOR_TRAINING_SEC="${PIPELINE_WAIT_FOR_TRAINING_SEC:-600}"
-BEST_HF_QUERY_CSV_DEFAULT="real camera photo dataset,smartphone photo dataset,dslr photo dataset,webcam image dataset,cctv frame image dataset,portrait selfie real fake,group photo real fake,indoor room photo dataset,outdoor landscape photo dataset,product photo dataset,food photo dataset,animal photo dataset,night photo dataset,macro close up photo dataset,panorama photo dataset,high resolution photo dataset,low resolution image dataset,meme image real vs ai,captioned image real ai,screenshot dataset image,chat ui screenshot,browser screenshot image,dashboard screenshot dataset,mobile app screenshot image,website screenshot dataset,screen capture ui dataset,image poster infographic,logo brand image dataset,advertisement creative image,receipt scanned document image,id card document image,invoice form document scan,passport scan image,document camera capture dataset,anime illustration real fake,digital art illustration dataset,manga artwork dataset,3d render real fake,cgi synthetic image real,game render frame dataset,watermarked social media image,recompressed image dataset,heavily edited real photo,jpeg photo dataset,png image dataset,webp image dataset,extreme aspect ratio image,deepfake face swap image,diffusion generated image latest,stock photo real ai,image manipulation detection,synthetic portrait dataset"
+BEST_HF_QUERY_CSV_DEFAULT="real camera photo dataset,smartphone photo dataset,dslr photo dataset,webcam image dataset,cctv frame image dataset,portrait selfie real fake,group photo real fake,indoor room photo dataset,outdoor landscape photo dataset,product photo dataset,food photo dataset,animal photo dataset,night photo dataset,macro close up photo dataset,panorama photo dataset,high resolution photo dataset,low resolution image dataset,street photo dataset,travel photo dataset,architecture photo dataset,fashion photo dataset,sports action photo dataset,vehicle road photo dataset,drone aerial photo dataset,satellite image dataset,meme image real vs ai,captioned image real ai,screenshot dataset image,chat ui screenshot,browser screenshot image,dashboard screenshot dataset,mobile app screenshot image,website screenshot dataset,screen capture ui dataset,desktop screenshot dataset,tablet screenshot image,image poster infographic,logo brand image dataset,advertisement creative image,receipt scanned document image,id card document image,invoice form document scan,passport scan image,document camera capture dataset,newspaper scan image,textbook page image,old photo scan dataset,film scan photo dataset,raw photo dataset,anime illustration real fake,digital art illustration dataset,manga artwork dataset,comic panel image dataset,3d render real fake,cgi synthetic image real,game render frame dataset,watermarked social media image,recompressed image dataset,heavily edited real photo,jpeg photo dataset,png image dataset,webp image dataset,extreme aspect ratio image,deepfake face swap image,diffusion generated image latest,midjourney generated image dataset,dalle generated image dataset,flux generated image dataset,stable diffusion image dataset,stock photo real ai,image manipulation detection,synthetic portrait dataset"
 DIVERSE_HF_QUERY_CSV_DEFAULT="$BEST_HF_QUERY_CSV_DEFAULT"
 
 source "$ROOT_DIR/scripts/lib/core.sh"
@@ -76,22 +71,6 @@ case "$cmd" in
     run_collection_command collect_full_cycle
     ;;
 
-  collect-diverse)
-    run_collection_command collect_diverse_cycle
-    ;;
-
-  collect-fast)
-    run_collection_command collect_fast_data
-    ;;
-
-  collect-image)
-    run_collection_command collect_image_data
-    ;;
-
-  collect-video)
-    run_collection_command collect_video_data
-    ;;
-
   collection-status)
     show_collection_status "$@"
     ;;
@@ -107,24 +86,6 @@ case "$cmd" in
   train-existing)
     # Train from collected image data already on disk, with video if available.
     with_training_lock train_existing_pipeline
-    ;;
-
-  train-image)
-    # Image pipeline only, assumes data already collected.
-    with_training_lock train_image_pipeline
-    ;;
-
-  train-video)
-    with_training_lock train_video_only
-    ;;
-
-  deps-update)
-    bash scripts/update_deps_lock.sh
-    ;;
-
-  train-all)
-    # Image + video training, assumes data already collected.
-    with_training_lock train_all_pipeline
     ;;
 
   retrain)
