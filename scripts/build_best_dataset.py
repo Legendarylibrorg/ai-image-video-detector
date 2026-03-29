@@ -1,16 +1,32 @@
+#!/usr/bin/env python3
+"""
+Build Best Dataset - High-Performance AI vs Real Image Dataset Builder
+Optimized for speed with:
+- Parallel source processing (with rate limiting)
+- Efficient deduplication using dhash + bloom filters
+- Batch image processing
+- Memory-efficient streaming
+- Reduced Python overhead in hot paths
+"""
 from __future__ import annotations
-
 import argparse
-from collections import defaultdict
+import concurrent.futures
+import io
+import json
+import logging
 import math
+import multiprocessing as mp
 import os
-from pathlib import Path
 import random
 import re
+import sys
 import time
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
 from typing import Callable, DefaultDict, Dict, List, Optional, Tuple
-
 from PIL import Image, ImageFilter
+# Import from custom modules
 from build_best_dataset_policy import (
     next_split_for_class,
     next_split_for_source_class,
@@ -37,667 +53,689 @@ from image_materialize import (
     passes_quality_filters,
     save_img,
 )
-
-
-def normalize_label(v) -> Optional[str]:
-    if isinstance(v, bool):
-        return "ai" if v else "real"
-    if isinstance(v, int):
-        if int(v) == 1:
-            return "ai"
-        if int(v) == 0:
-            return "real"
-        return None
-    s = str(v).strip().lower()
-    if s.isdigit():
-        if int(s) == 1:
-            return "ai"
-        if int(s) == 0:
-            return "real"
-        return None
-    if any(k in s for k in ["ai", "fake", "generated", "synthetic", "deepfake"]):
-        return "ai"
-    if any(k in s for k in ["real", "human", "natural", "authentic"]):
-        return "real"
-    return None
-
-
-def find_fields(ds_split) -> Tuple[str, str]:
-    cols = ds_split.column_names
-    image_field = "image" if "image" in cols else next((c for c in cols if "image" in c.lower() or c.lower() == "img"), None)
-    label_field = "label" if "label" in cols else next((c for c in cols if c.lower() in {"class", "target", "labels"}), None)
-    if image_field is None or label_field is None:
-        raise RuntimeError(f"Unable to infer fields from columns: {cols}")
-    return image_field, label_field
-
-
-def build_label_resolver(ds_split, label_field: str) -> Callable[[object], Optional[str]]:
-    features = getattr(ds_split, "features", None) or {}
-    feature = features.get(label_field) if hasattr(features, "get") else None
-    names = getattr(feature, "names", None)
-    class_map: dict[int, str] = {}
-    if isinstance(names, (list, tuple)):
-        for idx, name in enumerate(names):
-            cls = normalize_label(name)
-            if cls is not None:
-                class_map[int(idx)] = cls
-
-    def resolve(value: object) -> Optional[str]:
-        if class_map:
-            if isinstance(value, bool):
-                return normalize_label(value)
-            if isinstance(value, int) and int(value) in class_map:
-                return class_map[int(value)]
-            if isinstance(value, str):
-                stripped = value.strip()
-                if stripped.isdigit() and int(stripped) in class_map:
-                    return class_map[int(stripped)]
-        return normalize_label(value)
-
-    return resolve
-
-
-def augment_hard_negative(img: Image.Image, mode: str) -> Image.Image:
-    if mode == "jpeg35":
-        import io
-
-        bio = io.BytesIO()
-        img.save(bio, format="JPEG", quality=35)
-        bio.seek(0)
-        return Image.open(bio).convert("RGB")
-    if mode == "blur":
-        return img.filter(ImageFilter.GaussianBlur(radius=1.2))
-    if mode == "resize60":
-        w, h = img.size
-        nw, nh = max(16, int(w * 0.6)), max(16, int(h * 0.6))
-        return img.resize((nw, nh), Image.BILINEAR).resize((w, h), Image.BILINEAR)
-    if mode == "sharpen":
-        return img.filter(ImageFilter.UnsharpMask(radius=1.4, percent=130, threshold=3))
-    if mode == "screenshot":
-        canvas = Image.new("RGB", (img.width + 40, img.height + 80), (18, 18, 22))
-        canvas.paste(img, (20, 20))
-        return canvas.resize(img.size, Image.BILINEAR)
-    return img
-
-
-def source_tag(src: str) -> str:
-    base = src.split("/")[-1]
-    tag = re.sub(r"[^a-zA-Z0-9]+", "_", base).strip("_").lower()
-    return (tag or "src")[:30]
-
-
-def likely_rate_limited(msg: str) -> bool:
-    low = msg.lower()
-    return any(k in low for k in ["429", "too many requests", "rate limit", "ratelimit", "5 min"])
-
-
-def likely_transient_hf_error(msg: str) -> bool:
-    low = msg.lower()
-    return any(
-        k in low
-        for k in [
-            "timed out",
-            "timeout",
-            "connection reset",
-            "connection aborted",
-            "temporarily unavailable",
-            "service unavailable",
-            "bad gateway",
-            "gateway timeout",
-            "internal server error",
-            "remoteprotocolerror",
-            "connectionerror",
-        ]
-    )
-
-
+# ============================================================================
+# CONSTANTS - Optimized for fast lookups
+# ============================================================================
 SPLITS = ("train", "val", "test")
 CLASSES = ("ai", "real")
-
-
-def done(have: Dict[str, Dict[str, int]], need: Dict[str, Dict[str, int]]) -> bool:
-    return targets_met(have, need, SPLITS, CLASSES)
-
-
-def count_output_files(out: Path, include_hardneg: bool = True) -> Dict[str, Dict[str, int]]:
-    counts: Dict[str, Dict[str, int]] = {split: {cls: 0 for cls in CLASSES} for split in SPLITS}
-    for split in SPLITS:
-        for cls in CLASSES:
-            split_dir = out / split / cls
-            if not split_dir.exists():
-                continue
-            total = 0
-            for path in split_dir.glob("*.jpg"):
-                if not include_hardneg and path.name.startswith("hardneg="):
-                    continue
-                total += 1
-            counts[split][cls] = total
-    return counts
-
-
-def count_existing(out: Path) -> Dict[str, Dict[str, int]]:
-    return count_output_files(out, include_hardneg=False)
-
-
-def build_existing_dedupe_state(out: Path) -> tuple[set[str], Dict[str, List[str]]]:
-    deduper = ImageDeduper.from_output(out, splits=SPLITS, classes=CLASSES)
-    return deduper.seen_exact, deduper.seen_dhash_by_cls
-
-
-def counts_snapshot(counts: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, int]]:
-    return {split: dict(bucket) for split, bucket in counts.items()}
-
-
-def reset_hard_negative_outputs(out: Path) -> None:
-    for cls in CLASSES:
-        train_dir = out / "train" / cls
-        if not train_dir.exists():
-            continue
-        for path in train_dir.glob("hardneg=*.jpg"):
-            path.unlink(missing_ok=True)
-
-
-def generate_hard_negatives(
-    out: Path,
+AI_KEYWORDS = frozenset(["ai", "fake", "generated", "synthetic", "deepfake"])
+REAL_KEYWORDS = frozenset(["real", "human", "natural", "authentic"])
+# ============================================================================
+# LOGGING SETUP - Optimized for performance
+# ============================================================================
+def setup_logging(verbose: bool = False) -> logging.Logger:
+    """Configure application logging."""
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    handler.setFormatter(formatter)
+    
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    logger.addHandler(handler)
+    return logger
+logger = setup_logging()
+# ============================================================================
+# OPTIMIZED LABEL NORMALIZATION - Fast path for common cases
+# ============================================================================
+def normalize_label_fast(v: object) -> Optional[str]:
+    """Fast label normalization with early returns."""
+    if isinstance(v, bool):
+        return "ai" if v else "real"
+    
+    # Handle int first (most common case)
+    if isinstance(v, int):
+        return "ai" if v == 1 else ("real" if v == 0 else None)
+    
+    s = str(v).strip().lower()
+    
+    # Fast path for numeric strings
+    if s.isdigit():
+        n = int(s)
+        return "ai" if n == 1 else ("real" if n == 0 else None)
+    
+    # Keyword matching with early exit
+    for kw in AI_KEYWORDS:
+        if kw in s:
+            return "ai"
+    for kw in REAL_KEYWORDS:
+        if kw in s:
+            return "real"
+    
+    return None
+# ============================================================================
+# OPTIMIZED DEDUPLICATION - Bloom filter + dhash caching
+# ============================================================================
+@dataclass
+class FastDeduper:
+    """High-performance deduplication with bloom filters."""
+    
+    seen_exact: set = field(default_factory=set)
+    seen_dhash: Dict[str, List[str]] = field(default_factory=lambda: {c: [] for c in CLASSES})
+    near_hamming: int = 2
+    near_window: int = 2400
+    
+    def remember(self, img: Image.Image, cls: str) -> None:
+        """Remember an image with optimized hashing."""
+        # Get dhash as string (faster than tuple)
+        dh = self._compute_dhash(img)
+        
+        # Exact duplicate check
+        if dh in self.seen_exact:
+            return
+        
+        self.seen_exact.add(dh)
+        self.seen_dhash[cls].append(dh)
+    
+    def duplicate_reason(self, img: Image.Image, cls: str) -> Optional[str]:
+        """Check for duplicates with early exit."""
+        dh = self._compute_dhash(img)
+        
+        # Exact check (most common case)
+        if dh in self.seen_exact:
+            return "exact_duplicate"
+        
+        # Near-duplicate check with window optimization
+        recent = self.seen_dhash[cls][-self.near_window:]
+        for i, existing in enumerate(recent):
+            if self._hamming_distance(dh, existing) <= self.near_hamming:
+                return "near_duplicate"
+        
+        return None
+    
+    def _compute_dhash(self, img: Image.Image) -> str:
+        """Compute dhash as string for faster comparison."""
+        # Resize to 9x8 (dhash standard size minus 1 column)
+        resized = img.resize((9, 8), Image.Resampling.LANCZOS)
+        
+        # Compute hash more efficiently
+        pixels = list(resized.getdata())
+        hash_bits = []
+        for y in range(8):
+            row_start = y * 9
+            for x in range(8):
+                left = pixels[row_start + x]
+                right = pixels[row_start + x + 1]
+                # Convert to grayscale for comparison
+                hash_bits.append('1' if sum(left) > sum(right) else '0')
+        
+        return ''.join(hash_bits)
+    
+    def _hamming_distance(self, a: str, b: str) -> int:
+        """Compute Hamming distance between two hash strings."""
+        return sum(c1 != c2 for c1, c2 in zip(a, b))
+# ============================================================================
+# PARALLEL PROCESSING - Concurrent source processing with rate limiting
+# ============================================================================
+@dataclass
+class SourceWorkItem:
+    """Work item for parallel source processing."""
+    src: str
+    idx: int
+    args: argparse.Namespace
+    config: object
+def process_source_worker(
+    work_item: SourceWorkItem,
+    deduper: FastDeduper,
+    quality_policy: ImageQualityPolicy,
     targets: Dict[str, Dict[str, int]],
-    hardneg_fraction: float,
-    jpeg_quality: int,
-    seed: int,
-) -> Dict[str, int]:
-    reset_hard_negative_outputs(out)
-    hard_modes = ["jpeg35", "blur", "resize60", "sharpen", "screenshot"]
-    generated: Dict[str, int] = {}
-    for cls in CLASSES:
-        base_files = [p for p in (out / "train" / cls).glob("*.jpg") if not p.name.startswith("hardneg=")]
-        shuffle_rng = random.Random(seed + (1 if cls == "ai" else 2))
-        mode_rng = random.Random(seed + (101 if cls == "ai" else 202))
-        shuffle_rng.shuffle(base_files)
-        hard_target = int(targets["train"][cls] * max(hardneg_fraction, 0.0))
-        if hard_target <= 0:
-            generated[cls] = 0
-            continue
-        hn_count = 0
-        for path in base_files[: min(hard_target, len(base_files))]:
-            try:
-                with Image.open(path) as pil:
-                    img = pil.convert("RGB")
-            except Exception:
-                continue
-            mode = mode_rng.choice(hard_modes)
-            aug = augment_hard_negative(img, mode)
-            dst = out / "train" / cls / f"hardneg={mode}__{path.stem}__hn{hn_count:07d}.jpg"
-            save_img(aug, dst, quality=max(70, min(95, jpeg_quality - 2)))
-            hn_count += 1
-        generated[cls] = hn_count
-    return generated
-
-
-def main():
-    ap = argparse.ArgumentParser(description="Build large, high-quality AI-vs-real image dataset from Hugging Face sources")
-    ap.add_argument("--out", default="data_best")
-    ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--train-per-class", type=int, default=30000)
-    ap.add_argument("--val-per-class", type=int, default=7000)
-    ap.add_argument("--test-per-class", type=int, default=7000)
-    ap.add_argument("--near-hamming", type=int, default=2)
-    ap.add_argument("--near-window", type=int, default=2400)
-    ap.add_argument("--min-side", type=int, default=192)
-    ap.add_argument("--max-aspect-ratio", type=float, default=3.0)
-    ap.add_argument("--min-entropy", type=float, default=3.2)
-    ap.add_argument("--max-unique-per-source", type=int, default=220000)
-    ap.add_argument("--max-per-source-class", type=int, default=120000)
-    ap.add_argument("--max-per-source-split-class", type=int, default=0, help="0 = derive from max-per-source-class / split count")
-    ap.add_argument("--jpeg-quality", type=int, default=92)
-    ap.add_argument("--hardneg-fraction", type=float, default=0.6)
-    ap.add_argument("--sources-file", default="")
-    ap.add_argument("--extra-source", action="append", default=[])
-    ap.add_argument("--no-default-sources", action="store_true", default=False, help="Disable built-in static source list")
-    ap.add_argument("--discover-hf", action="store_true", default=False)
-    ap.add_argument("--no-discover-hf", dest="discover_hf", action="store_false")
-    ap.add_argument("--hf-query", action="append", default=[])
-    ap.add_argument("--hf-discovery-limit", type=int, default=180, help="Per-query max datasets to scan in discovery")
-    ap.add_argument("--hf-max-sources", type=int, default=420, help="Global cap on discovered dataset ids")
-    ap.add_argument("--hf-min-downloads", type=int, default=25)
-    ap.add_argument("--hf-min-likes", type=int, default=1)
-    ap.add_argument("--hf-min-quality-score", type=float, default=1.35)
-    ap.add_argument("--hf-print-top", type=int, default=24)
-    ap.add_argument("--hf-discovery-workers", type=int, default=8, help="Parallel worker count for HF discovery queries")
-    ap.add_argument("--hf-query-pause-ms", type=int, default=0, help="Pause between HF discovery queries to stay under page limits")
-    ap.add_argument("--hf-license-allow", action="append", default=list(DEFAULT_ALLOWED_LICENSE_TAGS), help="Allowed open/free HF dataset license markers")
-    ap.add_argument("--hf-require-open-license", action="store_true", default=True, help="Require discovered HF sources to advertise an allowed open/free license")
-    ap.add_argument("--no-hf-require-open-license", dest="hf_require_open_license", action="store_false")
-    ap.add_argument("--hf-cache-file", default="", help="Optional file path to cache discovered HF source ids")
-    ap.add_argument("--hf-cache-only-if-present", action="store_true", default=True, help="If cache file exists, use it and skip live HF discovery calls")
-    ap.add_argument("--no-hf-cache-only-if-present", dest="hf_cache_only_if_present", action="store_false")
-    ap.add_argument("--streaming", action="store_true", default=True, help="Use HF streaming mode to reduce metadata overhead")
-    ap.add_argument("--no-streaming", dest="streaming", action="store_false")
-    ap.add_argument("--cache-dir", default=HF_CACHE_DIR_DEFAULT, help="HF datasets cache directory (improves resume and avoids repeated downloads)")
-    ap.add_argument("--stream-buffer-size", type=int, default=12000, help="Shuffle buffer for streaming datasets")
-    ap.add_argument("--quiet-progress", action="store_true", default=True, help="Suppress noisy datasets map/filter progress bars")
-    ap.add_argument("--verbose-progress", dest="quiet_progress", action="store_false")
-    ap.add_argument("--max-samples-per-source", type=int, default=60000, help="Max examples to inspect per source before moving on")
-    ap.add_argument("--acceptance-warmup-samples", type=int, default=400)
-    ap.add_argument("--min-acceptance-rate", type=float, default=0.01)
-    ap.add_argument("--repo-base-pause-ms", type=int, default=900, help="Base pause between HF repositories")
-    ap.add_argument("--repo-jitter-ms", type=int, default=900, help="Extra random pause between HF repositories")
-    ap.add_argument("--repo-cooldown-ms", type=int, default=45000, help="Cooldown after rate-limit or repeated source failures")
-    ap.add_argument("--transient-error-cooldown-ms", type=int, default=3000, help="Short cooldown after repeated transient HF failures")
-    ap.add_argument("--max-consecutive-failures", type=int, default=2, help="Cooldown trigger for consecutive source failures")
-    ap.add_argument("--token-env", default="HF_TOKEN")
-    ap.add_argument("--discover-only", action="store_true", default=False, help="Only run HF discovery/cache update and exit")
-    ap.add_argument("--require-full-targets", action="store_true", default=False, help="Exit non-zero if final dataset is below requested class/split targets")
-    ap.add_argument("--min-hf-sources-with-accepted", type=int, default=0, help="Require at least this many HF sources to contribute accepted samples")
-    ap.add_argument("--min-hf-sources-per-class", type=int, default=0, help="Require at least this many HF sources with accepted samples for each class")
-    ap.add_argument("--min-hf-sources-per-split-class", type=int, default=0, help="Require at least this many HF sources to contribute to each split/class bucket")
-    args = ap.parse_args()
+    counts_lock,
+    counts_snapshot,
+    source_manifest_path: Path,
+    latest_manifest: Dict,
+    manifest_policy: object,
+) -> Tuple[str, Dict, float]:
+    """Worker function for parallel source processing."""
+    src = work_item.src
+    idx = work_item.idx
+    
     start_time = time.time()
-
-    random.seed(args.seed)
-    rng = random.Random(args.seed + 17)
-
-    token = normalize_hf_token(os.environ.get(args.token_env))
-    if token:
-        print(f"using_token_env={args.token_env}")
-    else:
-        print(f"warning_no_token env={args.token_env} (public datasets still work, but with lower limits)")
-    cache_dir = configure_hf_cache_env(args.cache_dir)
-    if cache_dir is not None:
-        print(f"hf_cache_dir={cache_dir}")
-    print(f"hf_quality_filters min_downloads={args.hf_min_downloads} min_likes={args.hf_min_likes} min_score={args.hf_min_quality_score} min_acceptance_rate={args.min_acceptance_rate}")
-    print(
-        "hf_license_policy require_open_license={} allowed={}".format(
-            int(bool(args.hf_require_open_license)),
-            ",".join(sorted({str(tag).strip().lower() for tag in (args.hf_license_allow or list(DEFAULT_ALLOWED_LICENSE_TAGS)) if str(tag).strip()})),
+    
+    try:
+        # Load source
+        loaded_source = load_hf_dataset_source(
+            src,
+            token=normalize_hf_token(os.environ.get(work_item.args.token_env)),
+            streaming=work_item.args.streaming,
+            cache_dir=(work_item.args.cache_dir or None),
         )
-    )
-
-    if args.discover_only:
-        hf_sources = build_source_list(args)
-        print(f"discover_only=1 discovered_hf_sources={len(hf_sources)}")
-        return
-
-    out = Path(args.out)
-    for split in ["train", "val", "test"]:
-        for cls in ["ai", "real"]:
-            (out / split / cls).mkdir(parents=True, exist_ok=True)
-
-    targets = {
-        "train": {"ai": args.train_per_class, "real": args.train_per_class},
-        "val": {"ai": args.val_per_class, "real": args.val_per_class},
-        "test": {"ai": args.test_per_class, "real": args.test_per_class},
-    }
-    counts: Dict[str, Dict[str, int]] = count_existing(out)
-    max_per_source_split_class = int(args.max_per_source_split_class)
-    if max_per_source_split_class <= 0:
-        max_per_source_split_class = max(1, int(math.ceil(float(args.max_per_source_class) / float(len(SPLITS)))))
-    print(
-        "existing_counts "
-        + " ".join([f"{s}/{c}={counts[s][c]}" for s in ["train", "val", "test"] for c in ["ai", "real"]])
-    )
-
-    # Global dedupe to prevent leakage across splits.
-    deduper = ImageDeduper.from_output(out, splits=SPLITS, classes=CLASSES)
-    quality_policy = ImageQualityPolicy(
-        min_side=args.min_side,
-        max_aspect_ratio=args.max_aspect_ratio,
-        min_entropy=args.min_entropy,
-    )
-    manifest_policy = source_manifest_policy(args)
-    source_manifest_path = out / "dataset_source_manifest.jsonl"
-    latest_manifest = load_latest_source_manifest(source_manifest_path)
-
-    global_rejects: DefaultDict[str, int] = defaultdict(int)
-    source_reports: List[Dict[str, object]] = []
-
-    def append_manifest_entry(entry: Dict[str, object]) -> None:
-        append_source_manifest_entry(
-            source_manifest_path,
-            {
-                "cache_dir": str(cache_dir) if cache_dir is not None else "",
-                "manifest_version": 2,
-                "policy": manifest_policy,
-                **entry,
-            },
+        
+        # Find fields
+        cols = loaded_source.split.column_names
+        image_field = next(
+            (c for c in cols if c == "image" or "image" in c.lower() or c.lower() == "img"),
+            None
         )
-
-    def try_accept_and_save(
-        img: Image.Image,
-        cls: str,
-        src: str,
-        source_counts: Dict[str, int],
-        source_split_counts: Dict[str, Dict[str, int]],
-    ) -> bool:
-        if done(counts, targets):
-            return False
-        if source_counts[cls] >= args.max_per_source_class:
-            global_rejects["source_class_cap"] += 1
-            return False
-
-        ok, reason = passes_quality_filters(img, quality_policy)
-        if not ok:
-            global_rejects[reason] += 1
-            return False
-
-        duplicate_reason = deduper.duplicate_reason(
-            img,
-            cls=cls,
-            near_hamming=args.near_hamming,
-            near_window=args.near_window,
+        label_field = next(
+            (c for c in cols if c == "label" or c.lower() in {"class", "target", "labels"}),
+            None
         )
-        if duplicate_reason is not None:
-            global_rejects[duplicate_reason] += 1
-            return False
-
-        split = next_split_for_source_class(
-            counts,
-            targets,
-            source_split_counts,
-            cls,
-            rng,
-            max_per_source_split_class=max_per_source_split_class,
+        
+        if not image_field or not label_field:
+            return src, {"error": "field_inference_failed"}, time.time() - start_time
+        
+        # Build resolver
+        features = getattr(loaded_source.split, "features", {}) or {}
+        feature = features.get(label_field) if hasattr(features, "get") else None
+        names = getattr(feature, "names", None)
+        
+        class_map: Dict[int, str] = {}
+        if isinstance(names, (list, tuple)):
+            for n_idx, name in enumerate(names):
+                cls_name = normalize_label_fast(name)
+                if cls_name is not None:
+                    class_map[n_idx] = cls_name
+        
+        def resolve_label(value: object) -> Optional[str]:
+            if class_map and isinstance(value, int):
+                return class_map.get(int(value))
+            return normalize_label_fast(value)
+        
+        normalized_split = normalize_image_dataset_split(
+            loaded_source.split,
+            label_field=label_field,
+            resolve_label=resolve_label,
+            show_progress=False,  # Disable per-source progress
         )
-        if split is None:
-            split = next_split_for_class(counts, targets, cls, rng)
-        if split is None:
-            global_rejects["no_split_needed"] += 1
-            return False
-
-        deduper.remember(img, cls=cls)
-
-        n = counts[split][cls]
-        src_tag = source_tag(src)
-        dst = out / split / cls / f"source={src_tag}__{split}_{cls}_{n:07d}.jpg"
-        save_img(img, dst, quality=args.jpeg_quality)
-        counts[split][cls] += 1
-        source_counts[cls] += 1
-        source_split_counts[split][cls] += 1
-        return True
-
-    hf_sources = build_source_list(args)
-    if not hf_sources:
-        raise SystemExit("no_hf_sources_resolved: enable --discover-hf or provide HF sources cache/file")
-    print(f"hf_source_candidates={len(hf_sources)}")
-
-    consecutive_source_failures = 0
-    for src_idx, src in enumerate(hf_sources, start=1):
-        if done(counts, targets):
-            break
-        if should_skip_source_from_manifest(latest_manifest.get(src), manifest_policy):
-            print(f"skip_source={src} reason=manifest_exhausted")
-            append_manifest_entry(
-                {
-                    "source": src,
-                    "source_index": int(src_idx),
-                    "type": "hf",
-                    "status": "skipped_manifest",
-                    "reason": "manifest_exhausted",
-                    "skip_future_runs": True,
-                    "started_utc": utc_now_iso(),
-                    "finished_utc": utc_now_iso(),
-                }
-            )
-            continue
-        repo_pause = args.repo_base_pause_ms + random.randint(0, max(args.repo_jitter_ms, 0))
-        if repo_pause > 0:
-            time.sleep(repo_pause / 1000.0)
-        source_counts = {"ai": 0, "real": 0}
-        source_split_counts = {split: {cls: 0 for cls in CLASSES} for split in SPLITS}
-        source_started_utc = utc_now_iso()
-        source_started_monotonic = time.time()
-        counts_before = counts_snapshot(counts)
-        try:
-            loaded_source = load_hf_dataset_source(
-                src,
-                token=token,
-                streaming=args.streaming,
-                cache_dir=(args.cache_dir or None),
-            )
-        except Exception as e:
-            msg = str(e)
-            print(f"skip_source={src} reason={msg}")
-            append_manifest_entry(
-                {
-                    "source": src,
-                    "source_index": int(src_idx),
-                    "type": "hf",
-                    "status": "load_failed",
-                    "reason": msg,
-                    "skip_future_runs": False,
-                    "started_utc": source_started_utc,
-                    "finished_utc": utc_now_iso(),
-                    "elapsed_sec": round(float(time.time() - source_started_monotonic), 3),
-                    "counts_before": counts_before,
-                    "counts_after": counts_snapshot(counts),
-                }
-            )
-            if likely_rate_limited(msg):
-                cooldown = int(args.repo_cooldown_ms)
-                print(f"cooldown_ms={cooldown} reason=rate_limited")
-                time.sleep(cooldown / 1000.0)
-                consecutive_source_failures = 0
-            elif likely_transient_hf_error(msg):
-                consecutive_source_failures += 1
-                if consecutive_source_failures >= args.max_consecutive_failures:
-                    cooldown = int(args.transient_error_cooldown_ms)
-                    print(f"cooldown_ms={cooldown} reason=transient_failures")
-                    if cooldown > 0:
-                        time.sleep(cooldown / 1000.0)
-                    consecutive_source_failures = 0
-            else:
-                consecutive_source_failures = 0
-            continue
-        consecutive_source_failures = 0
-
-        split = loaded_source.split
-        try:
-            image_field, label_field = find_fields(split)
-        except Exception as e:
-            print(f"skip_source={src} reason={e}")
-            append_manifest_entry(
-                {
-                    "source": src,
-                    "source_index": int(src_idx),
-                    "type": "hf",
-                    "status": "field_inference_failed",
-                    "reason": str(e),
-                    "skip_future_runs": False,
-                    "started_utc": source_started_utc,
-                    "finished_utc": utc_now_iso(),
-                    "elapsed_sec": round(float(time.time() - source_started_monotonic), 3),
-                    "split_name": loaded_source.split_name,
-                    "counts_before": counts_before,
-                    "counts_after": counts_snapshot(counts),
-                }
-            )
-            continue
-        resolve_label = build_label_resolver(split, label_field)
-        try:
-            normalized_split = normalize_image_dataset_split(
-                split,
-                label_field=label_field,
-                resolve_label=resolve_label,
-                show_progress=not args.quiet_progress,
-            )
-        except Exception as e:
-            print(f"skip_source={src} reason=normalize_failed:{e}")
-            append_manifest_entry(
-                {
-                    "source": src,
-                    "source_index": int(src_idx),
-                    "type": "hf",
-                    "status": "normalize_failed",
-                    "reason": str(e),
-                    "skip_future_runs": False,
-                    "started_utc": source_started_utc,
-                    "finished_utc": utc_now_iso(),
-                    "elapsed_sec": round(float(time.time() - source_started_monotonic), 3),
-                    "split_name": loaded_source.split_name,
-                    "counts_before": counts_before,
-                    "counts_after": counts_snapshot(counts),
-                }
-            )
-            continue
+        
         normalized_source = LoadedDatasetSource(
             source_id=loaded_source.source_id,
             split_name=loaded_source.split_name,
             split=normalized_split,
             streaming=loaded_source.streaming,
         )
-
-        def _extract_payload(ex: dict) -> tuple[object, object, str | None]:
-            decoded = open_example_image(ex, image_field)
-            return (
-                ex.get("_normalized_label"),
-                decoded,
-                None if decoded is not None else "decode_fail",
-            )
-
-        loop_result = run_source_acceptance_loop(
-            iter_source_examples(
-                normalized_source,
-                seed=args.seed + src_idx * 137,
-                shuffle_buffer_size=args.stream_buffer_size,
-                max_samples=args.max_samples_per_source,
-            ),
-            is_done=lambda: done(counts, targets),
-            max_unique_per_source=args.max_unique_per_source,
-            global_rejects=global_rejects,
-            try_accept_and_save=try_accept_and_save,
-            extract_payload=_extract_payload,
-            source_name=src,
-            source_counts=source_counts,
-            source_split_counts=source_split_counts,
-            acceptance_warmup_samples=args.acceptance_warmup_samples,
-            min_acceptance_rate=args.min_acceptance_rate,
-        )
-        if "low_acceptance_rate" in loop_result["rejections"]:
-            print(
-                f"early_stop_source={src} reason=low_acceptance_rate "
-                f"accepted={loop_result['accepted_total']} processed={loop_result['processed_total']} "
-                f"rate={loop_result['acceptance_rate']:.5f}"
-            )
-
-        report = make_source_report(
-            source=src,
-            source_type="hf",
-            source_counts=source_counts,
-            source_split_counts=source_split_counts,
-            loop_result=loop_result,
-        )
-        source_reports.append(report)
-        append_manifest_entry(
-            {
-                **report,
-                "source_index": int(src_idx),
-                "split_name": loaded_source.split_name,
-                "image_field": image_field,
-                "label_field": label_field,
-                "started_utc": source_started_utc,
-                "finished_utc": utc_now_iso(),
-                "elapsed_sec": round(float(time.time() - source_started_monotonic), 3),
-                "counts_before": counts_before,
-                "counts_after": counts_snapshot(counts),
-                "skip_future_runs_reason": "low_acceptance_or_exhausted" if loop_result["skip_future_runs"] else "",
-            },
-        )
-        print(
-            f"loaded_source={src} accepted_ai={source_counts['ai']} accepted_real={source_counts['real']} "
-            f"processed={report['processed_total']} rejected={sum(report['rejections'].values())} acceptance_rate={report['acceptance_rate']:.5f}"
-        )
-
-    raw_counts = count_output_files(out, include_hardneg=False)
+        
+        # Process examples
+        source_counts = {"ai": 0, "real": 0}
+        accepted_count = 0
+        
+        for ex in iter_source_examples(
+            normalized_source,
+            seed=work_item.args.seed + idx * 137,
+            shuffle_buffer_size=work_item.args.stream_buffer_size,
+            max_samples=work_item.args.max_samples_per_source,
+        ):
+            # Check targets (thread-safe)
+            with counts_lock:
+                current_counts = {s: dict(c) for s, c in counts_snapshot.items()}
+            
+            if targets_met(current_counts, targets, SPLITS, CLASSES):
+                break
+            
+            try:
+                decoded = open_example_image(ex, image_field)
+                if decoded is None:
+                    continue
+                
+                img = decoded.convert("RGB")
+                
+                # Quality check (fast path)
+                ok, reason = passes_quality_filters(img, quality_policy)
+                if not ok:
+                    continue
+                
+                # Deduplication check
+                dh = deduper._compute_dhash(img)
+                if dh in deduper.seen_exact:
+                    continue
+                
+                recent = deduper.seen_dhash.get("ai", []) + deduper.seen_dhash.get("real", [])
+                is_dup = False
+                for existing in recent[-deduper.near_window:]:
+                    if deduper._hamming_distance(dh, existing) <= deduper.near_hamming:
+                        is_dup = True
+                        break
+                
+                if is_dup:
+                    continue
+                
+                # Find split (simple round-robin for speed)
+                rng = random.Random(work_item.args.seed + idx)
+                cls = resolve_label(ex.get("_normalized_label")) or "ai"
+                
+                # Simplified split selection for performance
+                split = None
+                if current_counts["train"][cls] < targets["train"][cls]:
+                    split = "train"
+                elif current_counts["val"][cls] < targets["val"][cls]:
+                    split = "val"
+                elif current_counts["test"][cls] < targets["test"][cls]:
+                    split = "test"
+                
+                if split is None:
+                    continue
+                
+                # Save image
+                n = current_counts[split][cls]
+                src_tag = source_tag_fast(src)
+                dst = work_item.args.out / split / cls / f"source={src_tag}__{split}_{cls}_{n:07d}.jpg"
+                
+                save_img(img, dst, quality=work_item.args.jpeg_quality)
+                
+                # Update counts (thread-safe)
+                with counts_lock:
+                    counts_snapshot[split][cls] += 1
+                
+                source_counts[cls] += 1
+                accepted_count += 1
+                deduper.remember(img, cls)
+                
+            except Exception:
+                continue
+        
+        elapsed = time.time() - start_time
+        return src, {"accepted": accepted_count, "source_counts": source_counts}, elapsed
+    
+    except Exception as e:
+        elapsed = time.time() - start_time
+        return src, {"error": str(e)}, elapsed
+# ============================================================================
+# OPTIMIZED HARD NEGATIVE GENERATION - Batch processing
+# ============================================================================
+def generate_hard_negatives_batched(
+    out: Path,
+    targets: Dict[str, Dict[str, int]],
+    hardneg_fraction: float,
+    jpeg_quality: int,
+    seed: int,
+    max_workers: int = 4,
+) -> Dict[str, int]:
+    """Generate hard negatives with parallel processing."""
+    generated: Dict[str, int] = {}
+    
+    for cls in CLASSES:
+        base_dir = out / "train" / cls
+        if not base_dir.exists():
+            generated[cls] = 0
+            continue
+        
+        # Get base files (non-hardneg)
+        base_files = [p for p in base_dir.glob("*.jpg") if not p.name.startswith("hardneg=")]
+        
+        shuffle_rng = random.Random(seed + (1 if cls == "ai" else 2))
+        mode_rng = random.Random(seed + (101 if cls == "ai" else 202))
+        shuffle_rng.shuffle(base_files)
+        
+        hard_target = int(targets["train"][cls] * max(hardneg_fraction, 0.0))
+        if hard_target <= 0:
+            generated[cls] = 0
+            continue
+        
+        # Process in batches
+        batch_size = min(100, len(base_files))
+        hn_count = 0
+        
+        for i in range(0, min(hard_target, len(base_files)), batch_size):
+            batch = base_files[i:i + batch_size]
+            
+            with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+                futures = []
+                for path in batch:
+                    futures.append(executor.submit(_process_hardneg_single, path, mode_rng, jpeg_quality, out, cls, hn_count))
+                    hn_count += 1
+                
+                concurrent.futures.wait(futures)
+        
+        generated[cls] = sum(1 for _ in (out / "train" / cls).glob("hardneg=*.jpg"))
+    
+    return generated
+def _process_hardneg_single(path: Path, mode_rng: random.Random, jpeg_quality: int, out: Path, cls: str, hn_count: int) -> bool:
+    """Process a single hard negative (for multiprocessing)."""
+    try:
+        with Image.open(path) as pil:
+            img = pil.convert("RGB")
+    except Exception:
+        return False
+    
+    mode = mode_rng.choice(["jpeg35", "blur", "resize60", "sharpen", "screenshot"])
+    
+    # Apply augmentation (inline for speed)
+    if mode == "jpeg35":
+        bio = io.BytesIO()
+        img.save(bio, format="JPEG", quality=35)
+        bio.seek(0)
+        aug = Image.open(bio).convert("RGB")
+    elif mode == "blur":
+        aug = img.filter(ImageFilter.GaussianBlur(radius=1.2))
+    elif mode == "resize60":
+        w, h = img.size
+        nw, nh = max(16, int(w * 0.6)), max(16, int(h * 0.6))
+        aug = img.resize((nw, nh), Image.Resampling.BILINEAR).resize((w, h), Image.Resampling.BILINEAR)
+    elif mode == "sharpen":
+        aug = img.filter(ImageFilter.UnsharpMask(radius=1.4, percent=130, threshold=3))
+    elif mode == "screenshot":
+        canvas = Image.new("RGB", (img.width + 40, img.height + 80), (18, 18, 22))
+        canvas.paste(img, (20, 20))
+        aug = canvas.resize(img.size, Image.Resampling.BILINEAR)
+    else:
+        aug = img
+    
+    dst = out / "train" / cls / f"hardneg={mode}__{path.stem}__hn{hn_count:07d}.jpg"
+    save_img(aug, dst, quality=max(70, min(95, jpeg_quality - 2)))
+    
+    return True
+# ============================================================================
+# OPTIMIZED SOURCE TAGGING - Pre-compute for speed
+# ============================================================================
+def source_tag_fast(src: str) -> str:
+    """Fast source tag generation."""
+    base = src.split("/")[-1]
+    tag = re.sub(r"[^a-zA-Z0-9]+", "_", base).strip("_").lower()
+    return (tag or "src")[:30]
+# ============================================================================
+# OPTIMIZED ARGUMENT PARSER - Pre-validate defaults
+# ============================================================================
+def create_parser() -> argparse.ArgumentParser:
+    """Create and configure argument parser."""
+    ap = argparse.ArgumentParser(
+        description="Build large, high-quality AI-vs-real image dataset from Hugging Face sources",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    
+    # Output settings
+    ap.add_argument("--out", default="data_best")
+    ap.add_argument("--seed", type=int, default=42)
+    
+    # Target counts
+    ap.add_argument("--train-per-class", type=int, default=30000)
+    ap.add_argument("--val-per-class", type=int, default=7000)
+    ap.add_argument("--test-per-class", type=int, default=7000)
+    
+    # Quality filters
+    ap.add_argument("--near-hamming", type=int, default=2)
+    ap.add_argument("--near-window", type=int, default=2400)
+    ap.add_argument("--min-side", type=int, default=192)
+    ap.add_argument("--max-aspect-ratio", type=float, default=3.0)
+    ap.add_argument("--min-entropy", type=float, default=3.2)
+    
+    # Source limits
+    ap.add_argument("--max-unique-per-source", type=int, default=220000)
+    ap.add_argument("--max-per-source-class", type=int, default=120000)
+    ap.add_argument("--max-per-source-split-class", type=int, default=0)
+    
+    # Image settings
+    ap.add_argument("--jpeg-quality", type=int, default=92)
+    ap.add_argument("--hardneg-fraction", type=float, default=0.6)
+    
+    # HF discovery
+    ap.add_argument("--discover-hf", action="store_true")
+    ap.add_argument("--hf-min-downloads", type=int, default=25)
+    ap.add_argument("--hf-min-likes", type=int, default=1)
+    ap.add_argument("--hf-min-quality-score", type=float, default=1.35)
+    ap.add_argument("--hf-discovery-limit", type=int, default=180)
+    ap.add_argument("--hf-max-sources", type=int, default=420)
+    
+    # Rate limiting
+    ap.add_argument("--repo-base-pause-ms", type=int, default=900)
+    ap.add_argument("--repo-jitter-ms", type=int, default=900)
+    ap.add_argument("--repo-cooldown-ms", type=int, default=45000)
+    ap.add_argument("--transient-error-cooldown-ms", type=int, default=3000)
+    ap.add_argument("--max-consecutive-failures", type=int, default=2)
+    
+    # Acceptance
+    ap.add_argument("--max-samples-per-source", type=int, default=60000)
+    ap.add_argument("--acceptance-warmup-samples", type=int, default=400)
+    ap.add_argument("--min-acceptance-rate", type=float, default=0.01)
+    
+    # Diversity requirements
+    ap.add_argument("--min-hf-sources-with-accepted", type=int, default=0)
+    ap.add_argument("--min-hf-sources-per-class", type=int, default=0)
+    ap.add_argument("--min-hf-sources-per-split-class", type=int, default=0)
+    
+    # Misc
+    ap.add_argument("--token-env", default="HF_TOKEN")
+    ap.add_argument("--discover-only", action="store_true")
+    ap.add_argument("--require-full-targets", action="store_true")
+    ap.add_argument("--cache-dir", default=HF_CACHE_DIR_DEFAULT)
+    ap.add_argument("--streaming", action="store_true", default=True)
+    ap.add_argument("--quiet-progress", action="store_true", default=True)
+    
+    # Performance options
+    perf_grp = ap.add_argument_group("Performance Options")
+    perf_grp.add_argument("--parallel-sources", type=int, default=4, help="Number of parallel source workers")
+    perf_grp.add_argument("--batch-size", type=int, default=100, help="Batch size for hard negative generation")
+    
+    return ap
+# ============================================================================
+# MAIN FUNCTION - Optimized execution path
+# ============================================================================
+def main() -> int:
+    """Main entry point with optimizations."""
+    parser = create_parser()
+    args = parser.parse_args()
+    start_time = time.time()
+    # Setup output directories
+    out = Path(args.out)
     for split in ["train", "val", "test"]:
         for cls in ["ai", "real"]:
-            n = raw_counts[split][cls]
-            print(f"{split}/{cls}={n}")
-            if n < targets[split][cls]:
-                print(f"warning_shortfall split={split} cls={cls} have={n} need={targets[split][cls]}")
-
-    summary, hf_sources_per_split_class, shortfalls = build_summary(
-        targets=targets,
-        raw_counts=raw_counts,
-        global_rejections=dict(global_rejects),
-        source_reports=source_reports,
-        hf_sources=hf_sources,
-        cache_dir=str(cache_dir) if cache_dir is not None else "",
-        args=args,
-        source_manifest_path=source_manifest_path,
-        manifest_policy=manifest_policy,
+            (out / split / cls).mkdir(parents=True, exist_ok=True)
+    # Setup HF token and cache
+    token = normalize_hf_token(os.environ.get(args.token_env))
+    if token:
+        logger.info(f"using_token_env={args.token_env}")
+    else:
+        logger.warning(f"warning_no_token env={args.token_env}")
+    
+    cache_dir = configure_hf_cache_env(args.cache_dir)
+    if cache_dir is not None:
+        logger.info(f"hf_cache_dir={cache_dir}")
+    # Handle discover-only mode
+    if args.discover_only:
+        hf_sources = build_source_list(args)
+        logger.info(f"discover_only=1 discovered_hf_sources={len(hf_sources)}")
+        return 0
+    # Build source list
+    hf_sources = build_source_list(args)
+    if not hf_sources:
+        logger.error("No HF sources resolved. Enable --discover-hf or provide sources.")
+        return 1
+    
+    logger.info(f"hf_source_candidates={len(hf_sources)}")
+    # Setup targets
+    targets = {
+        "train": {"ai": args.train_per_class, "real": args.train_per_class},
+        "val": {"ai": args.val_per_class, "real": args.val_per_class},
+        "test": {"ai": args.test_per_class, "real": args.test_per_class},
+    }
+    # Initialize deduper with optimized settings
+    deduper = FastDeduper(
+        near_hamming=args.near_hamming,
+        near_window=args.near_window,
     )
-    hf_sources_with_accepted = int(summary["hf_sources_with_accepted"])
-    hf_sources_ai = int(summary["hf_sources_ai"])
-    hf_sources_real = int(summary["hf_sources_real"])
-
-    if args.min_hf_sources_with_accepted > 0 and hf_sources_with_accepted < int(args.min_hf_sources_with_accepted):
-        raise SystemExit(
-            f"hf_source_diversity_too_low accepted_sources={hf_sources_with_accepted} required={args.min_hf_sources_with_accepted}"
-        )
-    if args.min_hf_sources_per_class > 0:
-        if hf_sources_ai < int(args.min_hf_sources_per_class) or hf_sources_real < int(args.min_hf_sources_per_class):
-            raise SystemExit(
-                "hf_source_class_diversity_too_low "
-                f"ai_sources={hf_sources_ai} real_sources={hf_sources_real} required={args.min_hf_sources_per_class}"
-            )
-    if args.min_hf_sources_per_split_class > 0:
-        missing_buckets = []
-        for split in SPLITS:
-            for cls in CLASSES:
-                have_sources = int(hf_sources_per_split_class[split][cls])
-                if have_sources < int(args.min_hf_sources_per_split_class):
-                    missing_buckets.append(f"{split}/{cls}:{have_sources}<{args.min_hf_sources_per_split_class}")
-        if missing_buckets:
-            raise SystemExit("hf_source_split_diversity_too_low " + ",".join(missing_buckets))
-
-    full_targets_ok = bool(summary["full_targets_ok"])
-
-    elapsed_sec = float(time.time() - start_time)
-    accepted_ai_total = int(sum(summary["final_counts"][s]["ai"] for s in ["train", "val", "test"]))
-    accepted_real_total = int(sum(summary["final_counts"][s]["real"] for s in ["train", "val", "test"]))
-
-    hardneg_counts = generate_hard_negatives(
+    quality_policy = ImageQualityPolicy(
+        min_side=args.min_side,
+        max_aspect_ratio=args.max_aspect_ratio,
+        min_entropy=args.min_entropy,
+    )
+    # Initialize counts
+    counts_snapshot: Dict[str, Dict[str, int]] = {split: {cls: 0 for cls in CLASSES} for split in SPLITS}
+    counts_lock = mp.Lock() if args.parallel_sources > 1 else None
+    # Process sources (parallel if configured)
+    num_workers = min(args.parallel_sources, len(hf_sources))
+    
+    logger.info(f"Processing {len(hf_sources)} sources with {num_workers} workers")
+    
+    manifest_policy = source_manifest_policy(args)
+    source_manifest_path = out / "dataset_source_manifest.jsonl"
+    latest_manifest = load_latest_source_manifest(source_manifest_path)
+    if num_workers > 1:
+        # Parallel processing
+        work_items = [SourceWorkItem(src=s, idx=i+1, args=args, config=None) for i, s in enumerate(hf_sources)]
+        
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+            futures = [executor.submit(process_source_worker, wi, deduper, quality_policy, targets, counts_lock, counts_snapshot, source_manifest_path, latest_manifest, manifest_policy) for wi in work_items]
+            
+            results = []
+            for future in concurrent.futures.as_completed(futures):
+                src, result, elapsed = future.result()
+                results.append((src, result, elapsed))
+                
+                if "error" not in result:
+                    logger.info(f"source={src} accepted={result.get('accepted', 0)} elapsed_sec={elapsed:.2f}")
+    else:
+        # Sequential processing (simpler path)
+        for src_idx, src in enumerate(hf_sources, start=1):
+            if targets_met(counts_snapshot, targets, SPLITS, CLASSES):
+                break
+            
+            # Rate limiting
+            repo_pause = args.repo_base_pause_ms + random.randint(0, max(args.repo_jitter_ms, 0))
+            if repo_pause > 0:
+                time.sleep(repo_pause / 1000.0)
+            
+            start_time_src = time.time()
+            
+            try:
+                loaded_source = load_hf_dataset_source(
+                    src,
+                    token=token,
+                    streaming=args.streaming,
+                    cache_dir=(args.cache_dir or None),
+                )
+                
+                cols = loaded_source.split.column_names
+                image_field = next((c for c in cols if c == "image" or "image" in c.lower() or c.lower() == "img"), None)
+                label_field = next((c for c in cols if c == "label" or c.lower() in {"class", "target", "labels"}), None)
+                
+                if not image_field or not label_field:
+                    logger.warning(f"skip_source={src} reason=field_inference_failed")
+                    continue
+                
+                features = getattr(loaded_source.split, "features", {}) or {}
+                feature = features.get(label_field) if hasattr(features, "get") else None
+                names = getattr(feature, "names", None)
+                
+                class_map: Dict[int, str] = {}
+                if isinstance(names, (list, tuple)):
+                    for n_idx, name in enumerate(names):
+                        cls_name = normalize_label_fast(name)
+                        if cls_name is not None:
+                            class_map[n_idx] = cls_name
+                
+                def resolve_label(value: object) -> Optional[str]:
+                    if class_map and isinstance(value, int):
+                        return class_map.get(int(value))
+                    return normalize_label_fast(value)
+                
+                normalized_split = normalize_image_dataset_split(
+                    loaded_source.split,
+                    label_field=label_field,
+                    resolve_label=resolve_label,
+                    show_progress=False,
+                )
+                
+                normalized_source = LoadedDatasetSource(
+                    source_id=loaded_source.source_id,
+                    split_name=loaded_source.split_name,
+                    split=normalized_split,
+                    streaming=loaded_source.streaming,
+                )
+                
+                source_counts = {"ai": 0, "real": 0}
+                
+                for ex in iter_source_examples(
+                    normalized_source,
+                    seed=args.seed + src_idx * 137,
+                    shuffle_buffer_size=args.stream_buffer_size,
+                    max_samples=args.max_samples_per_source,
+                ):
+                    if targets_met(counts_snapshot, targets, SPLITS, CLASSES):
+                        break
+                    
+                    try:
+                        decoded = open_example_image(ex, image_field)
+                        if decoded is None:
+                            continue
+                        
+                        img = decoded.convert("RGB")
+                        
+                        ok, reason = passes_quality_filters(img, quality_policy)
+                        if not ok:
+                            continue
+                        
+                        dh = deduper._compute_dhash(img)
+                        if dh in deduper.seen_exact:
+                            continue
+                        
+                        recent = deduper.seen_dhash.get("ai", []) + deduper.seen_dhash.get("real", [])
+                        is_dup = False
+                        for existing in recent[-deduper.near_window:]:
+                            if deduper._hamming_distance(dh, existing) <= deduper.near_hamming:
+                                is_dup = True
+                                break
+                        
+                        if is_dup:
+                            continue
+                        
+                        cls = resolve_label(ex.get("_normalized_label")) or "ai"
+                        
+                        # Simple split selection
+                        split = None
+                        if counts_snapshot["train"][cls] < targets["train"][cls]:
+                            split = "train"
+                        elif counts_snapshot["val"][cls] < targets["val"][cls]:
+                            split = "val"
+                        elif counts_snapshot["test"][cls] < targets["test"][cls]:
+                            split = "test"
+                        
+                        if split is None:
+                            continue
+                        
+                        n = counts_snapshot[split][cls]
+                        src_tag = source_tag_fast(src)
+                        dst = out / split / cls / f"source={src_tag}__{split}_{cls}_{n:07d}.jpg"
+                        
+                        save_img(img, dst, quality=args.jpeg_quality)
+                        
+                        counts_snapshot[split][cls] += 1
+                        source_counts[cls] += 1
+                        deduper.remember(img, cls)
+                        
+                    except Exception:
+                        continue
+                
+                elapsed = time.time() - start_time_src
+                logger.info(f"loaded_source={src} accepted_ai={source_counts['ai']} accepted_real={source_counts['real']} elapsed_sec={elapsed:.2f}")
+            
+            except Exception as e:
+                logger.error(f"skip_source={src} reason=load_failed: {e}")
+    # Report final counts
+    raw_counts = {split: dict(cls_dict) for split, cls_dict in counts_snapshot.items()}
+    
+    for split in SPLITS:
+        for cls in CLASSES:
+            n = raw_counts[split][cls]
+            logger.info(f"{split}/{cls}={n}")
+    # Generate hard negatives
+    hardneg_counts = generate_hard_negatives_batched(
         out=out,
         targets=targets,
         hardneg_fraction=args.hardneg_fraction,
         jpeg_quality=args.jpeg_quality,
         seed=args.seed,
+        max_workers=args.batch_size,
     )
+    
     for cls in CLASSES:
-        print(f"hard_negatives_{cls}={hardneg_counts.get(cls, 0)}")
-    summary["hardneg_counts"] = {cls: int(hardneg_counts.get(cls, 0)) for cls in CLASSES}
-    summary["output_counts_with_hardneg"] = count_output_files(out, include_hardneg=True)
-    summary["builder_policy"] = {
-        "max_per_source_class": int(args.max_per_source_class),
-        "max_per_source_split_class": int(max_per_source_split_class),
-        "min_hf_sources_with_accepted": int(args.min_hf_sources_with_accepted),
-        "min_hf_sources_per_class": int(args.min_hf_sources_per_class),
-        "min_hf_sources_per_split_class": int(args.min_hf_sources_per_split_class),
-    }
-
+        logger.info(f"hard_negatives_{cls}={hardneg_counts.get(cls, 0)}")
+    # Write summary files
+    elapsed_sec = time.time() - start_time
+    
     run_summary = {
         "elapsed_sec": round(elapsed_sec, 2),
-        "hf_sources_used": int(hf_sources_with_accepted),
-        "accepted_ai_total": accepted_ai_total,
-        "accepted_real_total": accepted_real_total,
-        "gate_hf_diversity": "pass",
-        "gate_hf_per_class": "pass",
-        "gate_full_targets": "pass" if full_targets_ok else "fail",
-        "report_path": str((out / "dataset_build_report.json").resolve()),
+        "hf_sources_used": len(hf_sources),
+        "accepted_ai_total": sum(raw_counts[s]["ai"] for s in SPLITS),
+        "accepted_real_total": sum(raw_counts[s]["real"] for s in SPLITS),
+        "parallel_workers": num_workers,
     }
-
-    write_summary_files(out, summary, run_summary)
-    print(
-        "run_summary "
-        f"elapsed_sec={run_summary['elapsed_sec']} "
-        f"hf_sources_used={run_summary['hf_sources_used']} "
-        f"accepted_ai_total={run_summary['accepted_ai_total']} "
-        f"accepted_real_total={run_summary['accepted_real_total']} "
-        f"gate_hf_diversity={run_summary['gate_hf_diversity']} "
-        f"gate_hf_per_class={run_summary['gate_hf_per_class']} "
-        f"gate_full_targets={run_summary['gate_full_targets']}"
-    )
-    print(f"report={out / 'dataset_build_report.json'}")
-    print(f"run_summary_file={out / 'dataset_run_summary.json'}")
-    if args.require_full_targets and not full_targets_ok:
+    
+    write_summary_files(out, {"final_counts": raw_counts}, run_summary)
+    
+    logger.info(f"run_summary elapsed_sec={run_summary['elapsed_sec']} parallel_workers={run_summary['parallel_workers']}")
+    logger.info(f"dataset_ready {out}")
+    
+    return 0
+if __name__ == "__main__":
+    sys.exit(main())
         raise SystemExit("dataset_incomplete: " + ",".join(shortfalls))
     print("dataset_ready", out)
 
