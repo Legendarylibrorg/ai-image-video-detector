@@ -7,14 +7,12 @@ from typing import Any
 
 
 def read_json_dict(path: str | Path) -> dict[str, Any]:
-    target = Path(path)
-    if not target.exists():
-        return {}
+    from ..io_limits import read_json_file_limited
+
     try:
-        data = json.loads(target.read_text(encoding="utf-8"))
+        return read_json_file_limited(path)
     except Exception:
         return {}
-    return data if isinstance(data, dict) else {}
 
 
 def write_json_dict(path: str | Path, payload: dict[str, Any], *, indent: int = 2) -> None:

@@ -142,7 +142,7 @@ else
   else
     echo "deps_lock=missing file=$LOCK_FILE fallback=pyproject_resolve"
   fi
-  pip_cmd install --upgrade --upgrade-strategy eager -e ".[${DEPS_EXTRA}]"
+  pip_cmd install --upgrade --upgrade-strategy eager -e .
 fi
 
 if ! verify_python_deps >/dev/null 2>&1; then

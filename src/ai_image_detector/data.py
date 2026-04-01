@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from functools import lru_cache
 import io
 import random
 from pathlib import Path
@@ -10,6 +9,7 @@ import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import datasets, transforms
 
+from .io_limits import open_image_rgb
 from .metadata import extract_metadata_features, metadata_feature_dim
 from .runtime import resolve_num_workers
 
@@ -131,13 +131,17 @@ class MetadataImageFolder(datasets.ImageFolder):
         sample = self.loader(path)
         if self.transform is not None:
             sample = self.transform(sample)
-        metadata_features = _metadata_feature_tensor(path)
+        metadata_features = torch.tensor(extract_metadata_features(path), dtype=torch.float32)
         return sample, metadata_features, target
 
 
-@lru_cache(maxsize=65536)
-def _metadata_feature_tensor(path: str) -> torch.Tensor:
-    return torch.tensor(extract_metadata_features(path), dtype=torch.float32)
+def make_jailed_rgb_loader(root_dir: Path):
+    root_res = root_dir.resolve()
+
+    def loader(path: str) -> Image.Image:
+        return open_image_rgb(path, root=root_res)
+
+    return loader
 
 
 def make_loaders(
@@ -154,8 +158,10 @@ def make_loaders(
     train_tf, val_tf = make_transforms(img_size)
 
     dataset_cls = MetadataImageFolder if use_metadata_features else datasets.ImageFolder
-    train_ds = dataset_cls(train_dir, transform=train_tf)
-    val_ds = dataset_cls(val_dir, transform=val_tf)
+    train_loader_fn = make_jailed_rgb_loader(train_dir)
+    val_loader_fn = make_jailed_rgb_loader(val_dir)
+    train_ds = dataset_cls(train_dir, transform=train_tf, loader=train_loader_fn)
+    val_ds = dataset_cls(val_dir, transform=val_tf, loader=val_loader_fn)
 
     train_targets = list(train_ds.targets)
     sampler, class_counts, class_weights = build_weighted_sampler(train_targets, train_ds.classes)

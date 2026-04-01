@@ -14,52 +14,24 @@ run_do() {
 
 print_usage() {
   cat <<EOF
-usage: ./local.sh [setup|deps|doctor|docker-doctor|collect|run|status|smoke|smoke-real|collect-status|train|retrain|finetune|continuous]
+usage: ./local.sh [setup|deps|doctor|docker-doctor|collect|run|train|retrain|finetune|continuous|status|collect-status|smoke|smoke-real]
 
-Linux bash commands:
+Full command map and stage meanings: docs/COMMANDS.md
+Docker VM walkthrough and native Linux bootstrap: docs/STARTUP.md
 
-Docker-first:
-  docker compose build
-  ./local.sh docker-doctor
-  docker compose run --rm pipeline ./local.sh deps
-  docker compose run --rm pipeline ./local.sh doctor
-  docker compose run --rm pipeline-gpu ./local.sh doctor
-  docker compose run --rm pipeline-gpu ./local.sh smoke
-  docker compose run --rm pipeline-gpu ./local.sh run
-  docker compose run --rm pipeline-gpu ./local.sh status
-  container venv lives at /opt/aid-venv
-  Hugging Face caches live under ./.local/hf and are reused by Compose
-
-one-line install:
-  curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
-
-Native Linux fallback:
-  sudo apt-get update
-  sudo apt-get install -y $APT_PACKAGES
-  sudo freshclam || true
+Typical native path:
+  sudo apt-get update && sudo apt-get install -y $APT_PACKAGES && sudo freshclam || true
   ./local.sh setup
   printf "HF_TOKEN='your_token_here'\n" >> .env
-  ./local.sh smoke
-  ./local.sh run
-  ./local.sh status
-  setup creates or reuses ./.venv, installs pinned deps, and runs doctor
-  do not use sudo for repo commands
+  ./local.sh smoke && ./local.sh run
+  (no sudo for repo commands after system packages)
 
-Main commands:
-  ./local.sh setup    # bootstrap deps and local env
-  ./local.sh docker-doctor # verify docker, compose, and repo docker files
-  ./local.sh collect  # collect HF image/video data only
-  ./local.sh run      # canonical HF collect + train pipeline
-  ./local.sh train    # train only from data already collected
-  ./local.sh retrain  # retrain on top of existing collected data
-  ./local.sh finetune # metadata-aware finetune on top of an existing checkpoint
-  ./local.sh continuous # continuous collection + retraining loop
-  ./local.sh status   # current pipeline and artifact summary
-  ./local.sh collect-status # current dataset build and resume state
+Typical Compose path (repo root after clone):
+  ./local.sh docker-doctor && docker compose build
+  then CPU/GPU steps in docs/STARTUP.md (container venv: /opt/aid-venv, caches under ./.local/hf)
 
-Validation:
-  ./local.sh smoke      # tiny local end-to-end pipeline smoke
-  ./local.sh smoke-real # tiny real HF + CUDA smoke on a tokenized GPU box
+One-line Linux install from upstream:
+  curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
 EOF
 }
 

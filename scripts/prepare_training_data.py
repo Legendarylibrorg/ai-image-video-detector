@@ -29,7 +29,11 @@ def _iter_bucket_files(root: Path, split: str, cls: str) -> list[Path]:
     bucket = split_root / cls
     if not bucket.exists():
         return []
-    return sorted(p for p in bucket.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
+    return sorted(
+        p
+        for p in bucket.iterdir()
+        if p.is_file() and not p.is_symlink() and p.suffix.lower() in IMAGE_EXTS
+    )
 
 
 def _count_output_files(root: Path) -> dict[str, dict[str, int]]:

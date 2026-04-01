@@ -9,6 +9,12 @@ source "$ROOT_DIR/scripts/lib/core.sh"
 
 load_env_file
 
+PIPELINE_PROFILE="${PIPELINE_PROFILE:-standard}"
+if [[ "$PIPELINE_PROFILE" == "max_quality" ]]; then
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/scripts/lib/pipeline_max_quality_env.inc.sh"
+fi
+
 DATA_DIR="${DATA_DIR:-./data_best}"
 TRAIN_PER_CLASS="${TRAIN_PER_CLASS:-40000}"
 VAL_PER_CLASS="${VAL_PER_CLASS:-9000}"

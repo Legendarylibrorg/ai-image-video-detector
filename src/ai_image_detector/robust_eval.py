@@ -10,7 +10,7 @@ import torch
 from PIL import Image, ImageFilter
 from torchvision import datasets
 
-from .data import make_eval_transform
+from .data import make_eval_transform, make_jailed_rgb_loader
 from .ensemble import EnsembleDetector, load_models, metadata_features_from_paths
 from .metrics import full_metric_report
 
@@ -48,8 +48,9 @@ def main() -> None:
     ap.add_argument("--out", default="./artifacts/robust_eval.json")
     args = ap.parse_args()
 
-    val_dir = Path(args.data) / "val"
-    ds = datasets.ImageFolder(val_dir)
+    val_dir = (Path(args.data) / "val").resolve()
+    val_loader_fn = make_jailed_rgb_loader(val_dir)
+    ds = datasets.ImageFolder(val_dir, loader=val_loader_fn)
     if "ai" not in ds.class_to_idx:
         raise ValueError(f"expected class 'ai' in {ds.class_to_idx}")
     ai_idx = int(ds.class_to_idx["ai"])
@@ -74,7 +75,7 @@ def main() -> None:
             batch_labels = [1 if int(y) == ai_idx else 0 for _, y in batch_samples]
             variant_batches: dict[str, list[torch.Tensor]] = {name: [] for name in variant_names}
             for path, _ in batch_samples:
-                img = Image.open(path).convert("RGB")
+                img = val_loader_fn(path)
                 for name, vimg in _variants(img).items():
                     variant_batches[name].append(tf(vimg))
 

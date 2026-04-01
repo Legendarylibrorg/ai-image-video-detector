@@ -44,26 +44,7 @@ test -f scripts/install_deps.sh
 ./local.sh docker-doctor
 ```
 
-Exact secure setup:
-
-```bash
-git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
-cd ai-image-video-detector
-test -f docker-compose.yml
-test -f Dockerfile
-test -f Dockerfile.gpu
-test -f local.sh
-./local.sh docker-doctor
-docker compose build
-docker compose run --rm pipeline ./local.sh deps
-docker compose run --rm pipeline ./local.sh doctor
-printf "HF_TOKEN='your_token_here'\n" >> .env
-test -f .env
-docker compose run --rm pipeline-gpu ./local.sh doctor
-docker compose run --rm pipeline-gpu ./local.sh smoke
-docker compose run --rm pipeline-gpu ./local.sh run
-docker compose run --rm pipeline-gpu ./local.sh status
-```
+Full clone-to-`docker compose` walkthrough (including `docker compose build`, CPU deps/doctor, `.env`, and GPU steps) lives in [docs/STARTUP.md](docs/STARTUP.md) under **Exact secure startup**.
 
 Secure path map:
 - host repo root: your current working directory
@@ -117,23 +98,16 @@ If you want to split the full flow:
 ./local.sh retrain
 ```
 
-## Dependency Profiles
+## Python dependencies
 
-The repo now keeps the base package lightweight:
+Runtime libraries (PyTorch, Hugging Face, OpenCV, and related packages) are declared in `pyproject.toml` under `[project] dependencies`. A normal install pulls the full pipeline stack:
 
-- `pip install -e .`
-  Installs the package without the heavy training/collection stack.
-- `pip install -e '.[pipeline]'`
-  Installs the full local pipeline dependency set.
-- `pip install -e '.[training]'`
-  Installs the image-training stack only.
-- `pip install -e '.[collection]'`
-  Installs the Hugging Face collection stack only.
-- `pip install -e '.[video]'`
-  Installs the video-specific stack only.
+```bash
+pip install -e .
+```
 
-For native local Linux use, prefer `./local.sh deps` or `./local.sh setup`; those install the full `pipeline` profile into `./.venv`.
-The packaged `aid-*` commands are lightweight wrappers and will tell you which extra to install if you run them without the required dependency profile.
+For native local Linux use, prefer `./local.sh deps` or `./local.sh setup`; those install the same dependency set into `./.venv` using `scripts/install_deps.sh`.
+The packaged `aid-*` commands are thin entrypoints; if imports fail, they print `run=pip install -e .` on stderr.
 
 ## Repo Layout
 
@@ -227,7 +201,7 @@ curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-det
 
 Important notes:
 - `./local.sh setup` bootstraps `./.venv`, retries dependency install and doctor checks, and does not stop to prompt for `HF_TOKEN` by default.
-- A direct package install can stay lightweight with `pip install -e .`, but the full repo workflow expects `./local.sh deps` or `pip install -e '.[pipeline]'`.
+- The full repo workflow expects `./local.sh deps` or `pip install -e .` so the declared runtime dependencies are present.
 - The main operator commands are `./local.sh collect`, `./local.sh train`, `./local.sh retrain`, `./local.sh finetune`, `./local.sh continuous`, and `./local.sh collect-status`.
 - `./local.sh run` is the canonical full pipeline path and writes reports under `./.local/reports` plus release artifacts under `./artifacts_ens/release`.
 - `./local.sh smoke` is the tiny local end-to-end validation path. `./local.sh smoke-real` is the optional real Hugging Face + CUDA validation path.

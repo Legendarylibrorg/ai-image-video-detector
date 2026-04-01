@@ -118,6 +118,7 @@ class TrainingSurfaceTests(unittest.TestCase):
 
     def test_reference_doc_stays_pipeline_focused(self) -> None:
         text = (ROOT / "docs" / "REFERENCE.md").read_text(encoding="utf-8")
+        self.assertIn("[COMMANDS.md](COMMANDS.md)", text)
         self.assertIn("Pipeline tools", text)
         self.assertIn("RTX 4090", text)
         self.assertNotIn("collect-diverse", text)
@@ -125,8 +126,8 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertNotIn("aid-explain --model", text)
         self.assertNotIn("aid-video-detect-temporal", text)
 
-    def test_max_quality_wrapper_enables_quality_thresholding_and_refinement(self) -> None:
-        text = (ROOT / "scripts" / "max_quality_4090.sh").read_text(encoding="utf-8")
+    def test_max_quality_profile_env_enables_quality_thresholding_and_refinement(self) -> None:
+        text = (ROOT / "scripts" / "lib" / "pipeline_max_quality_env.inc.sh").read_text(encoding="utf-8")
         self.assertIn('export RUN_HARD_RETRAIN="${RUN_HARD_RETRAIN:-1}"', text)
         self.assertIn('export RUN_DOMAIN_THRESHOLDS="${RUN_DOMAIN_THRESHOLDS:-1}"', text)
         self.assertIn('export RUN_ROBUST_EVAL="${RUN_ROBUST_EVAL:-1}"', text)
@@ -154,6 +155,8 @@ class TrainingSurfaceTests(unittest.TestCase):
 
     def test_full_pipeline_passes_quality_collection_guardrails(self) -> None:
         text = (ROOT / "scripts" / "full_pipeline_4090.sh").read_text(encoding="utf-8")
+        self.assertIn('PIPELINE_PROFILE="${PIPELINE_PROFILE:-standard}"', text)
+        self.assertIn('pipeline_max_quality_env.inc.sh', text)
         self.assertIn('--max-per-source-split-class "$BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS"', text)
         self.assertIn('--min-hf-sources-per-split-class "$BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS"', text)
         self.assertIn('--hf-discovery-workers "$BEST_DS_HF_DISCOVERY_WORKERS"', text)

@@ -216,7 +216,8 @@ run_prepared_max_quality_pipeline() {
   if [[ "$disable_video_train" == "1" ]]; then
     env_args+=(RUN_VIDEO_TRAIN=0)
   fi
-  env "${env_args[@]}" bash scripts/max_quality_4090.sh
+  env_args+=(PIPELINE_PROFILE=max_quality)
+  env "${env_args[@]}" bash scripts/full_pipeline_4090.sh
 }
 
 train_existing_pipeline() {
@@ -277,7 +278,7 @@ run_weekly_retrain_cycle() {
 
 run_full_pipeline() {
   wait_for_training_to_finish "pipeline"
-  with_training_lock bash scripts/max_quality_4090.sh
+  with_training_lock env PIPELINE_PROFILE=max_quality bash scripts/full_pipeline_4090.sh
 }
 
 show_status() {

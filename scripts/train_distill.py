@@ -10,7 +10,12 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision import datasets
 
-from ai_image_detector.checkpoints import save_safetensors_checkpoint, save_training_checkpoint
+from ai_image_detector.checkpoints import (
+    args_dict_for_checkpoint,
+    load_training_checkpoint,
+    save_safetensors_checkpoint,
+    save_training_checkpoint,
+)
 from ai_image_detector.data import MetadataImageFolder, build_loader_kwargs, make_eval_transform, unpack_image_batch
 from ai_image_detector.ensemble import EnsembleDetector, load_models
 from ai_image_detector.model import build_model
@@ -67,7 +72,7 @@ def main():
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, **build_loader_kwargs(num_workers=args.num_workers))
 
     config = {
-        "args": vars(args),
+        "args": args_dict_for_checkpoint(args),
         "git_commit": git_commit(),
         "dataset_counts": {"train": len(train_ds), "val": len(val_ds)},
         "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -98,7 +103,7 @@ def main():
 
     resume_path = Path(args.resume) if args.resume else (out / "last.pt")
     if resume_path.exists():
-        ckpt = torch.load(resume_path, map_location=device)
+        ckpt = load_training_checkpoint(resume_path, map_location=device)
         student.load_state_dict(ckpt["state_dict"])
         if "optimizer" in ckpt:
             opt.load_state_dict(ckpt["optimizer"])
