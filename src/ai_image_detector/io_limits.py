@@ -22,6 +22,13 @@ MAX_PROVENANCE_SCAN_BYTES = int(os.environ.get("AID_MAX_PROVENANCE_SCAN_BYTES", 
 # JSON configs (ensemble, domain, tools).
 MAX_JSON_CONFIG_BYTES = int(os.environ.get("AID_MAX_JSON_CONFIG_BYTES", str(2 * 1024 * 1024)))
 
+# Video files (OpenCV decode DoS mitigation).
+MAX_VIDEO_FILE_BYTES = int(os.environ.get("AID_MAX_VIDEO_FILE_BYTES", str(2 * 1024**3)))
+MAX_VIDEO_DECODE_FRAMES = int(os.environ.get("AID_MAX_VIDEO_DECODE_FRAMES", str(500_000)))
+
+# Safetensors string metadata (checkpoint sidecar JSON).
+MAX_SAFETENSORS_METADATA_BYTES = int(os.environ.get("AID_MAX_SAFETENSORS_METADATA_BYTES", str(256 * 1024)))
+
 _pil_limits_applied = False
 
 
@@ -68,6 +75,14 @@ def reject_symlink(path: str | Path) -> Path:
     p = Path(path)
     if p.is_symlink():
         raise ValueError(f"symlink_not_allowed path={p}")
+    return p
+
+
+def prepare_video_path(path: str | Path) -> Path:
+    """Validate a video path before OpenCV: no symlink on leaf, bounded file size."""
+    p = Path(path)
+    reject_symlink(p)
+    check_file_size(p, max_bytes=MAX_VIDEO_FILE_BYTES)
     return p
 
 

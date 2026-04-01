@@ -9,6 +9,8 @@ from typing import Iterable
 
 from PIL import Image
 
+from ai_image_detector.io_limits import open_image_rgb
+
 
 @dataclass(frozen=True)
 class ImageQualityPolicy:
@@ -131,8 +133,7 @@ def open_example_image(example: dict, image_field: str) -> Image.Image | None:
 
 def open_local_image(path: Path) -> Image.Image | None:
     try:
-        with Image.open(path) as img:
-            return img.convert("RGB")
+        return open_image_rgb(path)
     except Exception:
         return None
 

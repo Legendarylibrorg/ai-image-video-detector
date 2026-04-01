@@ -48,7 +48,7 @@ def main():
 
     image_path = Path(args.image)
     image_bytes = read_bytes_limited(image_path)
-    img = open_image_rgb(image_path, allow_symlink=True)
+    img = open_image_rgb(image_path, allow_symlink=False)
     x = tf(img).unsqueeze(0).to(device)
     metadata_features = torch.tensor([extract_metadata_features(args.image)], dtype=x.dtype, device=device)
 

@@ -163,7 +163,7 @@ class SetupLinuxTests(unittest.TestCase):
             )
 
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assertIn("DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates git unzip python3", proc.stdout)
+        self.assertIn("DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates git python3", proc.stdout)
 
     def test_setup_linux_reruns_apt_when_stage_marker_is_stale(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -202,7 +202,7 @@ class SetupLinuxTests(unittest.TestCase):
     def test_setup_linux_skips_apt_when_stage_marker_matches_packages(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             stage_dir = Path(tmpdir)
-            apt_packages = "curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon"
+            apt_packages = "curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon"
             (stage_dir / "apt_deps.done").write_text(f"packages={apt_packages}\n", encoding="utf-8")
             bin_dir = stage_dir / "bin"
             bin_dir.mkdir()

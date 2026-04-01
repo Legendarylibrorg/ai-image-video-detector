@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from .io_limits import check_file_size, reject_symlink
+from .io_limits import MAX_SAFETENSORS_METADATA_BYTES, check_file_size, reject_symlink
 
 _MAX_TRAINING_CHECKPOINT_BYTES = int(
     os.environ.get("AID_MAX_TRAINING_CHECKPOINT_BYTES", str(2 * 1024**3))
@@ -147,14 +147,15 @@ def load_safetensors_checkpoint(path: str | Path, map_location: Any = None) -> d
     with safe_open(str(in_path), framework="pt", device="cpu") as f:
         metadata = f.metadata() or {}
 
-    meta_text = metadata.get("checkpoint_meta", "{}")
+    meta_text = metadata.get("checkpoint_meta", "{}") or "{}"
     meta: dict[str, Any] = {}
-    try:
-        parsed = json.loads(meta_text) if meta_text else {}
-        if isinstance(parsed, dict):
-            meta = parsed
-    except Exception:
-        meta = {}
+    if len(meta_text.encode("utf-8")) <= MAX_SAFETENSORS_METADATA_BYTES:
+        try:
+            parsed = json.loads(meta_text) if meta_text else {}
+            if isinstance(parsed, dict):
+                meta = parsed
+        except Exception:
+            meta = {}
 
     if map_location is not None:
         target = str(map_location)

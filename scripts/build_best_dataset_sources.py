@@ -5,6 +5,7 @@ import json
 import math
 import os
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -229,9 +230,15 @@ def load_cache_policy(cache_path: Path) -> dict[str, object] | None:
     policy_path = cache_policy_path(cache_path)
     if not policy_path.exists():
         return None
+    src = Path(__file__).resolve().parent.parent / "src"
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
     try:
-        return json.loads(policy_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        from ai_image_detector.io_limits import read_json_file_limited
+
+        data = read_json_file_limited(policy_path)
+        return data if data else None
+    except (OSError, ValueError, UnicodeDecodeError):
         return None
 
 

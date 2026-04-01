@@ -145,7 +145,7 @@ Use `sudo` only for Linux package-manager commands such as:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 ```
 

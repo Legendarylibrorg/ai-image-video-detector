@@ -8,7 +8,7 @@ from typing import Iterable
 
 from PIL import Image
 
-from ai_image_detector.io_limits import MAX_IMAGE_FILE_BYTES, check_file_size
+from ai_image_detector.io_limits import MAX_IMAGE_FILE_BYTES, check_file_size, configure_pil_limits
 
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
@@ -45,6 +45,7 @@ def main() -> None:
     ap.add_argument("--jpeg-quality", type=int, default=92)
     ap.add_argument("--min-side", type=int, default=128)
     args = ap.parse_args()
+    configure_pil_limits()
 
     src_root = Path(args.src)
     dst_root = Path(args.dst)

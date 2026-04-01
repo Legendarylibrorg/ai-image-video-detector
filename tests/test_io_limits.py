@@ -10,6 +10,7 @@ from ai_image_detector.io_limits import (
     MAX_JSON_CONFIG_BYTES,
     open_image_rgb,
     path_must_be_under,
+    prepare_video_path,
     read_json_file_limited,
     validate_domain_config,
     validate_ensemble_config,
@@ -51,6 +52,18 @@ class IoLimitsTests(unittest.TestCase):
     def test_validate_tools_rejects_large_bias(self) -> None:
         with self.assertRaises(ValueError):
             validate_tools_config({"risk_bias": 9.0})
+
+    def test_prepare_video_path_rejects_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "a.bin"
+            target.write_bytes(b"x")
+            link = Path(tmp) / "v.mp4"
+            try:
+                link.symlink_to(target)
+            except OSError:
+                self.skipTest("symlinks not supported")
+            with self.assertRaises(ValueError):
+                prepare_video_path(link)
 
     def test_open_image_rgb_writes_small_png(self) -> None:
         from PIL import Image

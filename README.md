@@ -116,7 +116,7 @@ Important top-level paths:
 - `./local.sh`
   Small public command surface for setup, smoke, run, status, troubleshooting, and train-from-existing-data.
 - `./install.sh`
-  Optional one-line Linux installer for clone or ZIP-based use.
+  Optional one-line Linux installer (`git clone` or reuse an existing tree from tarball extract).
 - `./docker-compose.yml`
   Optional Compose entrypoint for an isolated CPU or GPU container workflow.
 - `./Dockerfile`
@@ -173,7 +173,7 @@ The public commands line up to the project structure like this:
 
 ## Native Linux Startup
 
-For the detailed clone path, ZIP path, and native Linux startup flow, use [docs/STARTUP.md](docs/STARTUP.md).
+For obtain-the-source options (`git clone` vs `curl` + `tar`), system packages, and native Linux startup, use [docs/STARTUP.md](docs/STARTUP.md).
 
 Shortest native Linux fallback after you are already in the repo root:
 
@@ -185,9 +185,7 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh status
 ```
 
-Run `bash ./install.sh` only from inside the repo root after cloning or unzipping.
-If you unzip the repo first, `bash ./install.sh` reuses that extracted folder and does not create a nested repo inside it.
-If you want the installer to fetch the repo for you, use the one-line curl command instead.
+Run `bash ./install.sh` only from inside the repo root after a `git clone` or after extracting a **`.tar.gz`** source archive (`curl` + `tar`; see [docs/STARTUP.md](docs/STARTUP.md)). The installer reuses that directory and does not create a nested checkout. To fetch and bootstrap in one step, use the curl installer below.
 
 Shortcuts:
 

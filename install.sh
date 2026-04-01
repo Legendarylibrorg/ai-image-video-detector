@@ -6,7 +6,7 @@ INSTALL_DIR="${INSTALL_DIR:-$PWD/ai-image-video-detector}"
 INSTALL_SYSTEM_DEPS="${INSTALL_SYSTEM_DEPS:-1}"
 DRY_RUN="${DRY_RUN:-0}"
 INSTALL_ASSUME_LINUX="${INSTALL_ASSUME_LINUX:-0}"
-APT_PACKAGES="${APT_PACKAGES:-curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon}"
+APT_PACKAGES="${APT_PACKAGES:-curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon}"
 ROOT_DIR=""
 CALLER_DIR="$PWD"
 

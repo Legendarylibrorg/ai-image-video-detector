@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 cmd="${1:-help}"
 shift || true
 
-APT_PACKAGES="${APT_PACKAGES:-curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon}"
+APT_PACKAGES="${APT_PACKAGES:-curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon}"
 
 run_do() {
   bash scripts/do.sh "$@"

@@ -115,7 +115,7 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("native fallback uses a local virtualenv at `./.venv`", text)
         self.assertIn("shell snippets in this README use Linux `bash` command syntax", text)
         self.assertIn("curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash", text)
-        self.assertIn("For the detailed clone path, ZIP path, and native Linux startup flow, use [docs/STARTUP.md](docs/STARTUP.md).", text)
+        self.assertIn("For obtain-the-source options (`git clone` vs `curl` + `tar`)", text)
         self.assertIn("Exact secure startup", text)
         self.assertIn("./local.sh setup", text)
         self.assertIn("./local.sh collect", text)
@@ -153,17 +153,22 @@ class DocsSurfaceTests(unittest.TestCase):
 
     def test_startup_doc_marks_sudo_only_for_system_commands(self) -> None:
         text = (ROOT / "docs" / "STARTUP.md").read_text(encoding="utf-8")
-        self.assertIn("Clone path:", text)
-        self.assertIn("ZIP path:", text)
-        self.assertIn("Already inside the repo root:", text)
+        self.assertIn("### Obtain the source", text)
+        self.assertIn("#### 1. Git clone (recommended)", text)
+        self.assertIn("#### 2. Source tarball with `curl` and `tar`", text)
+        self.assertIn("curl -fsSL -o ai-image-video-detector.tar.gz", text)
+        self.assertIn("tar -xzf ai-image-video-detector.tar.gz", text)
+        self.assertIn("mv ai-image-video-detector-main ai-image-video-detector", text)
+        self.assertIn("### Already inside the repository", text)
         self.assertIn("sudo apt-get update", text)
         self.assertIn(
-            "sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon",
+            "sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon",
             text,
         )
+        self.assertNotIn("unzip", text)
         self.assertIn("curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash", text)
         self.assertIn("bash ./install.sh", text)
-        self.assertIn("Run `bash ./install.sh` only from inside the repo root", text)
+        self.assertIn("Run `bash ./install.sh` only from inside this repository", text)
         self.assertIn("Do not use `sudo` for repo commands", text)
         self.assertIn("native Linux fallback", text)
         self.assertIn("shell snippets in this document use Linux `bash` command syntax", text)
@@ -190,12 +195,6 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertNotIn("## Manual Linux bootstrap", text)
         self.assertNotIn("cd /path/to/image-spam", text)
         self.assertNotIn("## Setup options", text)
-        self.assertNotIn(
-            "sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon",
-            text,
-        )
-        self.assertIn("unzip ai-image-video-detector-main.zip", text)
-        self.assertIn("cd ai-image-video-detector-main", text)
         _assert_phrases(self, text, _COMPOSE_WALKTHROUGH_PHRASES, label="startup: ")
         _assert_phrases(self, text, _COMMON_TOOLING_PHRASES, label="startup: ")
 
@@ -217,10 +216,11 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("./local.sh train", text)
         self.assertIn("./local.sh finetune", text)
         self.assertNotIn("## Raw `scripts/do.sh` commands", text)
-        self.assertNotIn(
+        self.assertIn(
             "sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon",
             text,
         )
+        self.assertNotIn("unzip", text)
         self.assertIn("## Sudo guidance", text)
         self.assertIn("Do not add `sudo` to the repo commands", text)
         _assert_phrases(self, text, _COMPOSE_WALKTHROUGH_PHRASES, label="commands: ")

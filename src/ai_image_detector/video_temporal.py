@@ -22,6 +22,7 @@ from .checkpoints import (
     save_training_checkpoint,
 )
 from .data import build_loader_kwargs
+from .io_limits import MAX_VIDEO_DECODE_FRAMES, prepare_video_path
 from .release_tools import write_timestamped_release
 from .runtime import build_adamw, configure_torch_runtime, git_commit, seed_all
 
@@ -38,17 +39,23 @@ def _collect_videos(root: Path) -> List[Tuple[str, int]]:
             continue
         for p in d.rglob("*"):
             if p.suffix.lower() in VIDEO_EXTS:
+                if p.is_symlink():
+                    continue
                 out.append((str(p), y))
     return out
 
 
 def _sample_frames(path: str, num_frames: int, size: int, random_offset: bool) -> np.ndarray:
-    cap = cv2.VideoCapture(path)
+    vpath = prepare_video_path(path)
+    vpath_s = str(vpath)
+    cap = cv2.VideoCapture(vpath_s)
     if not cap.isOpened():
-        raise RuntimeError(f"unable to open video: {path}")
+        raise RuntimeError(f"unable to open video: {vpath_s}")
 
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    total = max(total, 1)
+    total_raw = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_raw < 1:
+        total_raw = 1
+    total = max(1, min(total_raw, MAX_VIDEO_DECODE_FRAMES))
 
     if total <= num_frames:
         indices = list(range(total))
@@ -66,7 +73,8 @@ def _sample_frames(path: str, num_frames: int, size: int, random_offset: bool) -
         target_pos[idx].append(pos)
 
     out = [None] * len(indices)
-    while True:
+    max_read = min(MAX_VIDEO_DECODE_FRAMES, max(indices) + 1 if indices else 1)
+    while current < max_read:
         ok, frame = cap.read()
         if not ok:
             break

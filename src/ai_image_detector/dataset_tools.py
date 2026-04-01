@@ -6,13 +6,21 @@ import hashlib
 import json
 from pathlib import Path
 
+from .io_limits import MAX_IMAGE_FILE_BYTES, check_file_size, configure_pil_limits
 from .utils import read_json_dict
 
 
 def _walk_images(root: Path):
     for p in root.rglob("*"):
-        if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}:
-            yield p
+        if p.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}:
+            continue
+        if not p.is_file() or p.is_symlink():
+            continue
+        try:
+            check_file_size(p, max_bytes=MAX_IMAGE_FILE_BYTES)
+        except (OSError, ValueError):
+            continue
+        yield p
 
 
 def _sha256(path: Path) -> str:
@@ -31,6 +39,11 @@ def _dhash(path: Path) -> str:
         from PIL import Image
     except Exception:
         return ""
+    configure_pil_limits()
+    try:
+        check_file_size(path, max_bytes=MAX_IMAGE_FILE_BYTES)
+    except (OSError, ValueError):
+        return ""
     img = Image.open(path).convert("L").resize((9, 8))
     px = list(img.tobytes())
     bits = []
@@ -48,6 +61,7 @@ def _hamming_hex(a: str, b: str) -> int:
 
 
 def cmd_manifest(data_root: str, out_csv: str):
+    configure_pil_limits()
     root = Path(data_root)
     rows = []
     for p in _walk_images(root):
@@ -74,6 +88,7 @@ def cmd_manifest(data_root: str, out_csv: str):
 
 
 def cmd_dedupe(data_root: str, dry_run: bool):
+    configure_pil_limits()
     root = Path(data_root)
     seen: dict[str, Path] = {}
     dupes: list[Path] = []
@@ -96,6 +111,7 @@ def cmd_dedupe(data_root: str, dry_run: bool):
 
 
 def cmd_near_dupes(data_root: str, max_images: int, max_hamming: int):
+    configure_pil_limits()
     root = Path(data_root)
     items = []
     for i, p in enumerate(_walk_images(root)):
@@ -116,6 +132,7 @@ def cmd_near_dupes(data_root: str, max_images: int, max_hamming: int):
 
 
 def cmd_balance_report(data_root: str):
+    configure_pil_limits()
     root = Path(data_root)
     counts: dict[str, int] = {}
     for p in _walk_images(root):
