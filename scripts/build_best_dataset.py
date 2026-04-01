@@ -11,6 +11,8 @@ import time
 from typing import Callable, DefaultDict, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageFilter
+
+from ai_image_detector.io_limits import configure_pil_limits, open_image_rgb
 from build_best_dataset_policy import (
     next_split_for_class,
     next_split_for_source_class,
@@ -205,6 +207,7 @@ def generate_hard_negatives(
     seed: int,
 ) -> Dict[str, int]:
     reset_hard_negative_outputs(out)
+    configure_pil_limits()
     hard_modes = ["jpeg35", "blur", "resize60", "sharpen", "screenshot"]
     generated: Dict[str, int] = {}
     for cls in CLASSES:
@@ -219,8 +222,7 @@ def generate_hard_negatives(
         hn_count = 0
         for path in base_files[: min(hard_target, len(base_files))]:
             try:
-                with Image.open(path) as pil:
-                    img = pil.convert("RGB")
+                img = open_image_rgb(path)
             except Exception:
                 continue
             mode = mode_rng.choice(hard_modes)

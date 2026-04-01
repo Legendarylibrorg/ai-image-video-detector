@@ -151,11 +151,54 @@ Best security with GPU:
 
 Linux is the supported native host path.
 
-Clone path:
+### Obtain the source
+
+Use **one** of the following.
+
+#### 1. Git clone (recommended)
+
+```bash
+git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
+cd ai-image-video-detector
+```
+
+#### 2. Source tarball with `curl` and `tar`
+
+For environments where `git` is unavailable, fetch an archive from GitHub and extract it with standard Linux tools. Replace `refs/heads/main` with `refs/tags/<tag>` when pinning a release.
+
+```bash
+curl -fsSL -o ai-image-video-detector.tar.gz \
+  https://github.com/Legendarylibrorg/ai-image-video-detector/archive/refs/heads/main.tar.gz
+tar -xzf ai-image-video-detector.tar.gz
+mv ai-image-video-detector-main ai-image-video-detector
+cd ai-image-video-detector
+```
+
+### System packages (`sudo`)
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo freshclam || true
+```
+
+### Bootstrap the repo (no `sudo`)
+
+From the repository root (after clone or tarball extract):
+
+```bash
+./local.sh setup
+printf "HF_TOKEN='your_token_here'\n" >> .env
+./local.sh smoke
+./local.sh run
+./local.sh status
+```
+
+### Combined: clone + packages + bootstrap
+
+```bash
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
 cd ai-image-video-detector
@@ -166,26 +209,11 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh status
 ```
 
-ZIP path:
+### Already inside the repository
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
-sudo freshclam || true
-unzip ai-image-video-detector-main.zip
-cd ai-image-video-detector-main
-./local.sh setup
-printf "HF_TOKEN='your_token_here'\n" >> .env
-./local.sh smoke
-./local.sh run
-./local.sh status
-```
-
-Already inside the repo root:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 ./local.sh setup
 printf "HF_TOKEN='your_token_here'\n" >> .env
@@ -194,17 +222,15 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh status
 ```
 
-Run `bash ./install.sh` only from inside the repo root after cloning or unzipping.
-If you unzip the repo first, `bash ./install.sh` reuses that extracted folder and does not create a nested repo inside it.
-If you want the installer to fetch the repo for you, use the curl installer instead.
+Run `bash ./install.sh` only from inside this repository after you have the source tree (clone or tarball). If you extracted a tarball, `install.sh` reuses that directory and does not create a nested checkout.
 
-Optional shortcuts:
+One-line installer (clones with `git` when needed):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
 ```
 
-`./local.sh setup` is the short native fallback bootstrap once you are already in the repo root.
+`./local.sh setup` is the short native bootstrap once `local.sh` is present.
 
 ## macOS startup
 
@@ -281,7 +307,7 @@ Use `sudo` for Linux package-manager commands such as `apt-get` and `freshclam`:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y curl ca-certificates git unzip python3 python3-venv python3-pip build-essential clamav clamav-daemon
+sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
 sudo freshclam || true
 ```
 
@@ -300,7 +326,7 @@ It does not stop to prompt for `HF_TOKEN` by default.
 
 ## Manual Linux fallback
 
-If `./local.sh setup` does not finish cleanly, use the `Already inside the repo root` path above and then follow this fallback step summary:
+If `./local.sh setup` does not finish cleanly, use the **Already inside the repository** path above and then follow this fallback step summary:
 
 Fallback step summary:
 - `python3 -m venv .venv`

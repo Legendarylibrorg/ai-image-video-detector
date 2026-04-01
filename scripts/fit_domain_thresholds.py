@@ -6,10 +6,10 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from PIL import Image
 from torchvision import datasets
 
 from ai_image_detector.data import make_eval_transform
+from ai_image_detector.io_limits import open_image_rgb
 from ai_image_detector.domain import DOMAIN_NAMES, classify_domain
 from ai_image_detector.ensemble import EnsembleDetector, load_models, metadata_features_from_paths
 from ai_image_detector.metrics import find_best_threshold, full_metric_report
@@ -42,7 +42,7 @@ def main() -> None:
 
     with torch.no_grad():
         for path, y in ds.samples:
-            img = Image.open(path).convert("RGB")
+            img = open_image_rgb(path)
             x = tf(img).unsqueeze(0).to(device)
             metadata_features = None
             if loaded.uses_metadata_features:
