@@ -166,6 +166,7 @@ The public commands line up to the project structure like this:
 ## Open Source Notes
 
 - License: MIT (see `LICENSE`).
+- Contributing: branch from `main`, keep changes focused, run `python -m unittest discover -s tests -p 'test_*.py'` before opening a PR.
 - Security reporting: see `SECURITY.md`.
 - Do not commit secrets (tokens, keys) or private datasets.
 - Dataset and model licenses vary by source; verify each source license before commercial or production use.
@@ -214,7 +215,5 @@ Use these if you need more detail:
   The small public command surface.
 - [docs/REFERENCE.md](docs/REFERENCE.md)
   Higher-level reference notes for datasets, training, evaluation, video, and pipeline modes.
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-  Contribution guidance.
 - [SECURITY.md](SECURITY.md)
   Security reporting guidance.
