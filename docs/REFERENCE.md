@@ -194,5 +194,4 @@ DATA_DIR=./data_best EPOCHS=14 SKIP_SWEEP=1 bash scripts/full_pipeline_4090.sh
 
 - [STARTUP.md](STARTUP.md)
 - [COMMANDS.md](COMMANDS.md)
-- [../CONTRIBUTING.md](../CONTRIBUTING.md)
 - [../SECURITY.md](../SECURITY.md)
