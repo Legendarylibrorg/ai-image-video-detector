@@ -9,6 +9,7 @@ import torch
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import datasets, transforms
 
+from .dataset_integrity import preflight_dataset_tree
 from .io_limits import open_image_rgb
 from .metadata import extract_metadata_features, metadata_feature_dim
 from .runtime import resolve_num_workers
@@ -150,8 +151,12 @@ def make_loaders(
     batch_size: int,
     num_workers: int = 4,
     use_metadata_features: bool = False,
+    *,
+    skip_data_preflight: bool = False,
 ):
     root = Path(data_root)
+    if not skip_data_preflight:
+        preflight_dataset_tree(root)
     train_dir = root / "train"
     val_dir = root / "val"
 
@@ -188,6 +193,7 @@ def make_loaders(
         val_loader,
         train_ds.classes,
         train_ds.class_to_idx,
+        train_ds.samples,
         val_ds.samples,
         train_distribution,
         val_distribution,

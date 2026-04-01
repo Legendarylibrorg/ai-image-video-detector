@@ -16,7 +16,7 @@ jobs:
           python-version: '3.11'
       - name: Install
         run: bash scripts/install_deps.sh
-      - name: Unit Tests
+      - name: Unit tests and E2E smoke
+        env:
+          AID_E2E_SMOKE: "1"
         run: .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-      - name: Smoke
-        run: source .venv/bin/activate && bash scripts/smoke_resume_eval.sh

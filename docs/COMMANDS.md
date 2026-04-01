@@ -139,6 +139,11 @@ Everything else in the repo is internal support for the pipeline and is intentio
 
 If you need lower-level scripts or environment controls, use [docs/REFERENCE.md](docs/REFERENCE.md).
 
+## macOS and Windows (short)
+
+- **macOS:** Prefer [Docker Desktop](https://www.docker.com/products/docker-desktop/) and `docker compose run --rm pipeline ./local.sh …` (CPU). Copy-paste blocks live under **macOS startup** in [STARTUP.md](STARTUP.md). For native development, `python3 -m venv .venv`, `pip install -e .`, and `python -m unittest discover -s tests` are supported; full CUDA training does not match Linux.
+- **Windows:** Use **WSL2 Ubuntu** and run the Linux snippets from this file inside WSL, or use Docker Desktop with the same Compose commands as macOS (CPU `pipeline`).
+
 ## Sudo guidance
 
 Use `sudo` only for Linux package-manager commands such as:

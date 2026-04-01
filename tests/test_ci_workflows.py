@@ -12,7 +12,8 @@ class SmokeWorkflowTests(unittest.TestCase):
         text = (ROOT / ".github" / "workflows" / "smoke.yml").read_text(encoding="utf-8")
         self.assertIn("bash scripts/install_deps.sh", text)
         self.assertIn(".venv/bin/python -m unittest discover -s tests -p 'test_*.py'", text)
-        self.assertIn("source .venv/bin/activate && bash scripts/smoke_resume_eval.sh", text)
+        self.assertIn("AID_E2E_SMOKE", text)
+        self.assertNotIn("source .venv/bin/activate && bash scripts/smoke_resume_eval.sh", text)
         self.assertNotIn("python -m pip install -e .", text)
 
     def test_smoke_script_exercises_end_to_end_pipeline_outputs(self) -> None:

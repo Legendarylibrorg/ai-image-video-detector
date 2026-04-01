@@ -14,6 +14,14 @@ If you are on macOS or Windows, treat the Linux-native commands below as Linux-o
 
 It is not a production serving repo in the current mode.
 
+## Documentation map
+
+| Doc | Audience |
+|-----|----------|
+| [docs/STARTUP.md](docs/STARTUP.md) | Full walkthrough: Linux VM + Docker, native Linux (`apt`), **macOS** (Docker Desktop + optional Python dev), Windows / WSL2 |
+| [docs/COMMANDS.md](docs/COMMANDS.md) | `./local.sh` subcommands and Compose one-liners |
+| [docs/REFERENCE.md](docs/REFERENCE.md) | Repo layout, artifacts, **`AID_*` environment variables**, `aid-train` dataset/manifest flags |
+
 ## Secure Linux VM + Docker Compose
 
 Use this as the default runtime path when possible.

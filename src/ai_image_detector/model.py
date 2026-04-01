@@ -30,7 +30,7 @@ def model_runtime_spec(
         feature_dim = 256
     elif backbone == "effb2":
         feature_dim = 1408
-    elif backbone == "convnext_tiny":
+    elif backbone in {"convnext_tiny", "convnext_small"}:
         feature_dim = 768
     else:
         feature_dim = 1280
@@ -161,10 +161,14 @@ class EfficientBackbone(nn.Module):
 
 
 class ConvNeXtBackbone(nn.Module):
-    def __init__(self, pretrained: bool = True):
+    def __init__(self, variant: str = "tiny", pretrained: bool = True):
         super().__init__()
-        weights = models.ConvNeXt_Tiny_Weights.IMAGENET1K_V1 if pretrained else None
-        model = models.convnext_tiny(weights=weights)
+        if variant == "small":
+            weights = models.ConvNeXt_Small_Weights.IMAGENET1K_V1 if pretrained else None
+            model = models.convnext_small(weights=weights)
+        else:
+            weights = models.ConvNeXt_Tiny_Weights.IMAGENET1K_V1 if pretrained else None
+            model = models.convnext_tiny(weights=weights)
         self.features = model.features
         self.pool = nn.AdaptiveAvgPool2d(1)
         self.out_dim = 768
@@ -185,9 +189,13 @@ class AdvancedAIDetector(nn.Module):
             self.fft_branch = TinyBackbone(in_ch=3)
             self.noise_branch = TinyBackbone(in_ch=3)
         elif backbone == "convnext_tiny":
-            self.rgb_branch = ConvNeXtBackbone(pretrained=pretrained_backbone)
-            self.fft_branch = ConvNeXtBackbone(pretrained=pretrained_backbone)
-            self.noise_branch = ConvNeXtBackbone(pretrained=pretrained_backbone)
+            self.rgb_branch = ConvNeXtBackbone("tiny", pretrained=pretrained_backbone)
+            self.fft_branch = ConvNeXtBackbone("tiny", pretrained=pretrained_backbone)
+            self.noise_branch = ConvNeXtBackbone("tiny", pretrained=pretrained_backbone)
+        elif backbone == "convnext_small":
+            self.rgb_branch = ConvNeXtBackbone("small", pretrained=pretrained_backbone)
+            self.fft_branch = ConvNeXtBackbone("small", pretrained=pretrained_backbone)
+            self.noise_branch = ConvNeXtBackbone("small", pretrained=pretrained_backbone)
         elif backbone == "effb0":
             self.rgb_branch = EfficientBackbone("b0", pretrained=pretrained_backbone)
             self.fft_branch = EfficientBackbone("b0", pretrained=pretrained_backbone)

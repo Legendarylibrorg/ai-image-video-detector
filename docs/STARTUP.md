@@ -234,19 +234,47 @@ curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-det
 
 ## macOS startup
 
-macOS is not a supported native host path for the full Linux/CUDA workflow in this repo.
+macOS is **not** a substitute for a Linux + NVIDIA box for full CUDA training. Use macOS for:
 
-Use one of these options instead:
+1. **Docker Desktop + Compose (recommended)** — same repo commands as Linux, CPU-only `pipeline` service (no `pipeline-gpu` unless you have a supported GPU stack).
+2. **Native Python (optional)** — clone the repo, create `./.venv`, run **unit tests** or small experiments; large training and HF collection still belong in Linux or Docker.
+
+### macOS: Docker Desktop workflow
+
+Prerequisites: [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Mac, `git`, and a clone of this repo.
+
+From the repo root (same as Linux):
 
 ```bash
+cd ai-image-video-detector
+./local.sh docker-doctor
+docker compose build
+docker compose run --rm pipeline ./local.sh deps
 docker compose run --rm pipeline ./local.sh doctor
-docker compose run --rm pipeline ./local.sh collect
+printf "HF_TOKEN='your_token_here'\n" >> .env
+docker compose run --rm pipeline ./local.sh smoke
+```
+
+Use `pipeline` only on Mac (CPU). Do **not** expect `pipeline-gpu` to provide CUDA on Apple Silicon the same way as an NVIDIA Linux VM.
+
+### macOS: native checkout for development / tests
+
+Use this when you want to edit code and run the test suite without building GPU images.
+
+```bash
+cd ai-image-video-detector
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+export PYTHONPATH="$(pwd)/src"
+python -m unittest discover -s tests -v
 ```
 
 Notes:
-- use the Compose CPU service on macOS
-- the Linux-native `apt-get` setup steps in this repo do not apply on macOS
-- the CUDA-focused training path is not a native macOS path here
+- Use `python3` / `pip` from Homebrew or python.org if `python3` is not on your PATH.
+- PyTorch wheels for Mac may use MPS or CPU; behavior can differ from Linux+CUDA training.
+- The Linux-native `apt-get` and ClamAV steps in this document do not apply on macOS.
+- For anything matching production training, prefer **Linux VM + Compose** or **Docker `pipeline`** on Mac.
 
 ## Windows startup
 
