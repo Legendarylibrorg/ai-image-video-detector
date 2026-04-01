@@ -89,7 +89,8 @@ class TrainingSurfaceTests(unittest.TestCase):
     def test_train_module_skips_degenerate_best_checkpoint_promotion(self) -> None:
         text = (ROOT / "src" / "ai_image_detector" / "train.py").read_text(encoding="utf-8")
         self.assertIn("def _promotion_status(report: dict[str, Any]) -> tuple[bool, str]:", text)
-        self.assertIn('choices=["tiny", "effb0", "effb2", "convnext_tiny"]', text)
+        self.assertIn('choices=["tiny", "effb0", "effb2", "convnext_tiny", "convnext_small"]', text)
+        self.assertIn("--warmup-epochs", text)
         self.assertIn("--mixup-alpha", text)
         self.assertIn("--label-smoothing", text)
         self.assertIn("configure_torch_runtime(device, args.deterministic)", text)
@@ -110,7 +111,7 @@ class TrainingSurfaceTests(unittest.TestCase):
         self.assertNotIn('torch.save(ckpt, out / "best.pt")', text)
         self.assertIn('save_safetensors_checkpoint(out / "best.safetensors", ckpt)', text)
         self.assertIn("write_timestamped_release(", text)
-        self.assertIn('(out / "inference_spec.json").write_text', text)
+        self.assertIn('write_json_atomic(out / "inference_spec.json"', text)
         self.assertIn('runtime_spec": model_runtime_spec(', text)
         self.assertIn('(out / "best_checkpoint.txt").write_text(preferred_best.name', text)
         self.assertNotIn('--save-safetensors', text)
@@ -119,6 +120,11 @@ class TrainingSurfaceTests(unittest.TestCase):
     def test_reference_doc_stays_pipeline_focused(self) -> None:
         text = (ROOT / "docs" / "REFERENCE.md").read_text(encoding="utf-8")
         self.assertIn("[COMMANDS.md](COMMANDS.md)", text)
+        self.assertIn("Documentation map", text)
+        self.assertIn("Environment variables (`AID_*`)", text)
+        self.assertIn("`aid-train` dataset integrity flags", text)
+        self.assertIn("--strict-dataset", text)
+        self.assertIn("Modern training stack (`aid-train`)", text)
         self.assertIn("Pipeline tools", text)
         self.assertIn("RTX 4090", text)
         self.assertNotIn("collect-diverse", text)
@@ -176,7 +182,7 @@ class TrainingSurfaceTests(unittest.TestCase):
 
     def test_distill_script_stays_safetensors_only_for_best_artifacts(self) -> None:
         text = (ROOT / "scripts" / "train_distill.py").read_text(encoding="utf-8")
-        self.assertIn('choices=["tiny", "effb0", "convnext_tiny"]', text)
+        self.assertIn('choices=["tiny", "effb0", "convnext_tiny", "convnext_small"]', text)
         self.assertIn("--num-workers", text)
         self.assertIn("--amp", text)
         self.assertIn('"git_commit": git_commit()', text)

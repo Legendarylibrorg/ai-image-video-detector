@@ -24,7 +24,8 @@ from .checkpoints import (
 from .data import build_loader_kwargs
 from .io_limits import MAX_VIDEO_DECODE_FRAMES, prepare_video_path
 from .release_tools import write_timestamped_release
-from .runtime import build_adamw, configure_torch_runtime, git_commit, seed_all
+from .runtime import build_adamw, configure_torch_runtime, git_commit, seed_all, training_device
+from .utils.jsonio import write_json_atomic
 
 
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
@@ -216,7 +217,7 @@ def train_main() -> None:
         "dataset_counts": {"train": len(train_samples), "val": len(val_samples)},
         "created_utc": datetime.now(timezone.utc).isoformat(),
     }
-    (out / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+    write_json_atomic(out / "config.json", config, indent=2)
 
     train_ds = VideoDataset(train_samples, args.frames, args.img_size, augment=True)
     val_ds = VideoDataset(val_samples, args.frames, args.img_size, augment=False)
@@ -226,7 +227,7 @@ def train_main() -> None:
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, **dl_kwargs)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, **dl_kwargs)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = training_device()
     configure_torch_runtime(device, args.deterministic)
     model = TemporalVideoDetector(pretrained_backbone=args.pretrained_backbone).to(device)
     if device.type == "cuda":
@@ -337,19 +338,17 @@ def train_main() -> None:
                 )
                 preferred_best = out / "best_video.safetensors"
                 (out / "best_video_checkpoint.txt").write_text(str(preferred_best), encoding="utf-8")
-                (out / "best_video_metrics.json").write_text(
-                    json.dumps(
-                        {
-                            "epoch": epoch,
-                            "val_loss": float(val_loss),
-                            "val_acc": float(val_acc),
-                            "threshold": 0.5,
-                            "skipped_batches": int(skipped_batches),
-                            "lr": float(opt.param_groups[0]["lr"]),
-                        },
-                        indent=2,
-                    ),
-                    encoding="utf-8",
+                write_json_atomic(
+                    out / "best_video_metrics.json",
+                    {
+                        "epoch": epoch,
+                        "val_loss": float(val_loss),
+                        "val_acc": float(val_acc),
+                        "threshold": 0.5,
+                        "skipped_batches": int(skipped_batches),
+                        "lr": float(opt.param_groups[0]["lr"]),
+                    },
+                    indent=2,
                 )
             else:
                 no_improve += 1
@@ -383,7 +382,7 @@ def infer_main() -> None:
     ap.add_argument("--unknown-margin", type=float, default=0.08)
     args = ap.parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = training_device()
     ckpt = load_checkpoint(args.model, map_location=device)
     model = TemporalVideoDetector(pretrained_backbone=False).to(device)
     model.load_state_dict(ckpt["state_dict"])

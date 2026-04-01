@@ -122,7 +122,16 @@ def save_safetensors_checkpoint(path: str | Path, checkpoint: Mapping[str, Any])
     }
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    save_file(tensors, str(out), metadata=meta)
+    tmp = out.with_name(out.name + f".tmp.{os.getpid()}")
+    try:
+        save_file(tensors, str(tmp), metadata=meta)
+        os.replace(tmp, out)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 def save_training_checkpoint(
@@ -134,8 +143,27 @@ def save_training_checkpoint(
     torch = _torch()
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(dict(checkpoint), out)
-    (out.parent / latest_name).write_text(out.name, encoding="utf-8")
+    tmp = out.with_name(out.name + f".tmp.{os.getpid()}")
+    try:
+        torch.save(dict(checkpoint), tmp)
+        os.replace(tmp, out)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+    latest = out.parent / latest_name
+    tmp_latest = latest.with_name(latest.name + f".tmp.{os.getpid()}")
+    try:
+        tmp_latest.write_text(out.name, encoding="utf-8")
+        os.replace(tmp_latest, latest)
+    finally:
+        if tmp_latest.exists():
+            try:
+                tmp_latest.unlink()
+            except OSError:
+                pass
 
 
 def load_safetensors_checkpoint(path: str | Path, map_location: Any = None) -> dict[str, Any]:

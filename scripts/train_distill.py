@@ -18,9 +18,10 @@ from ai_image_detector.checkpoints import (
 )
 from ai_image_detector.data import MetadataImageFolder, build_loader_kwargs, make_eval_transform, unpack_image_batch
 from ai_image_detector.ensemble import EnsembleDetector, load_models
-from ai_image_detector.model import build_model
+from ai_image_detector.model import build_model, model_runtime_spec
 from ai_image_detector.release_tools import write_timestamped_release
-from ai_image_detector.runtime import build_adamw, configure_torch_runtime, git_commit, seed_all
+from ai_image_detector.runtime import build_adamw, configure_torch_runtime, git_commit, seed_all, training_device
+from ai_image_detector.utils.jsonio import write_json_atomic
 
 
 def main():
@@ -29,7 +30,11 @@ def main():
     ap.add_argument("--teacher", nargs="+", required=True)
     ap.add_argument("--ensemble-config", default="", help="Optional JSON with learned ensemble weights/threshold")
     ap.add_argument("--out", default="./artifacts_distill")
-    ap.add_argument("--student-backbone", choices=["tiny", "effb0", "convnext_tiny"], default="tiny")
+    ap.add_argument(
+        "--student-backbone",
+        choices=["tiny", "effb0", "convnext_tiny", "convnext_small"],
+        default="tiny",
+    )
     ap.add_argument("--img-size", type=int, default=256)
     ap.add_argument("--batch-size", type=int, default=64)
     ap.add_argument("--epochs", type=int, default=10)
@@ -52,7 +57,7 @@ def main():
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = training_device()
     configure_torch_runtime(device, args.deterministic)
     loaded = load_models(args.teacher, device, ensemble_config=args.ensemble_config)
     teacher = EnsembleDetector(loaded.models, weights=loaded.weights, img_sizes=loaded.img_sizes).to(device)
@@ -77,7 +82,7 @@ def main():
         "dataset_counts": {"train": len(train_ds), "val": len(val_ds)},
         "created_utc": datetime.now(timezone.utc).isoformat(),
     }
-    (out / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+    write_json_atomic(out / "config.json", config, indent=2)
 
     opt = build_adamw(student.parameters(), lr=args.lr, weight_decay=1e-4, device=device)
     use_amp = bool(args.amp and device.type == "cuda")
@@ -181,24 +186,32 @@ def main():
                     "temperature": 1.0,
                     "model_id": f"distilled-{args.student_backbone}",
                     "backbone": args.student_backbone,
-                    "metrics": {"val_acc": float(acc)},
+                    "metadata_feature_dim": 0,
+                    "use_metadata_features": False,
+                    "schema": "ai-image-detector-model-v1",
+                    "git_commit": str(config.get("git_commit", "")),
+                    "created_utc": str(config.get("created_utc", "")),
+                    "trainer": {
+                        "epochs": int(args.epochs),
+                        "base_lr": float(args.lr),
+                        "amp": bool(args.amp),
+                    },
+                    "runtime_spec": model_runtime_spec(backbone=args.student_backbone, img_size=args.img_size, metadata_feature_dim=0),
                 }
                 save_safetensors_checkpoint(out / "best.safetensors", ckpt)
                 preferred_best = out / "best.safetensors"
                 (out / "best_checkpoint.txt").write_text(str(preferred_best), encoding="utf-8")
-                (out / "best_model_summary.json").write_text(
-                    json.dumps(
-                        {
-                            "preferred_checkpoint": str(preferred_best),
-                            "student_backbone": args.student_backbone,
-                            "img_size": args.img_size,
-                            "threshold": 0.5,
-                            "temperature": 1.0,
-                            "metrics": {"val_acc": float(acc)},
-                        },
-                        indent=2,
-                    ),
-                    encoding="utf-8",
+                write_json_atomic(
+                    out / "best_model_summary.json",
+                    {
+                        "preferred_checkpoint": str(preferred_best),
+                        "student_backbone": args.student_backbone,
+                        "img_size": args.img_size,
+                        "threshold": 0.5,
+                        "temperature": 1.0,
+                        "metrics": {"val_acc": float(acc)},
+                    },
+                    indent=2,
                 )
             else:
                 no_improve += 1

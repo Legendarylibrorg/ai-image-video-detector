@@ -14,6 +14,7 @@ from .ensemble import EnsembleDetector, load_models
 from .metadata import analyze_metadata, extract_metadata_features
 from .provenance import analyze_provenance
 from .risk_tools import apply_risk_tools, load_tools_config
+from .runtime import training_device
 from .text_signals import analyze_text_signals
 
 
@@ -35,7 +36,7 @@ def main():
     args = ap.parse_args()
 
     configure_pil_limits()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = training_device()
     loaded = load_models(args.model, device, ensemble_config=args.ensemble_config)
     model = EnsembleDetector(loaded.models, weights=loaded.weights, img_sizes=loaded.img_sizes).to(device)
     model.eval()

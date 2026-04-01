@@ -140,6 +140,14 @@ run_cmd() {
   fi
 }
 
+# Bash-only trim (avoid `xargs` / `sysconf` — fails in some sandboxes, e.g. Cursor CI).
+trim_ws() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
 require_disk_free_gb() {
   local stage="$1"
   local min_gb="${2:-$PIPELINE_MIN_FREE_GB}"
@@ -487,7 +495,7 @@ if [[ "$SKIP_DATA" != "1" ]]; then
   if [[ -n "$BEST_DS_HF_QUERIES" ]]; then
     IFS=',' read -r -a _queries <<< "$BEST_DS_HF_QUERIES"
     for q in "${_queries[@]}"; do
-      q="$(echo "$q" | xargs)"
+      q="$(trim_ws "$q")"
       [[ -z "$q" ]] && continue
       dataset_cmd+=(--hf-query "$q")
     done
@@ -500,7 +508,7 @@ if [[ "$SKIP_DATA" != "1" ]]; then
   if [[ -n "$BEST_DS_EXTRA_SOURCES" ]]; then
     IFS=',' read -r -a _extra_sources <<< "$BEST_DS_EXTRA_SOURCES"
     for src in "${_extra_sources[@]}"; do
-      src="$(echo "$src" | xargs)"
+      src="$(trim_ws "$src")"
       [[ -z "$src" ]] && continue
       dataset_cmd+=(--extra-source "$src")
     done

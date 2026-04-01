@@ -32,6 +32,14 @@ class EnsembleTests(unittest.TestCase):
 
         self.assertEqual(tuple(out.shape), (2,))
 
+    def test_build_model_supports_convnext_small(self) -> None:
+        model = build_model(backbone="convnext_small", pretrained_backbone=False)
+
+        with torch.no_grad():
+            out = model(torch.zeros(2, 3, 64, 64))
+
+        self.assertEqual(tuple(out.shape), (2,))
+
     def test_binary_classification_loss_supports_soft_targets(self) -> None:
         logits = torch.tensor([0.25, -0.5, 0.9], dtype=torch.float32)
         targets = torch.tensor([0.1, 0.5, 0.9], dtype=torch.float32)

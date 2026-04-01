@@ -22,6 +22,16 @@ def seed_all(seed: int) -> None:
         torch.cuda.manual_seed_all(value)
 
 
+def training_device() -> torch.device:
+    """Resolve device for training and inference: CUDA if available, else Apple MPS, else CPU."""
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    mps = getattr(torch.backends, "mps", None)
+    if mps is not None and mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
 def resolve_num_workers(num_workers: int = 4) -> int:
     workers = int(num_workers)
     if workers >= 0:

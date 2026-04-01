@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.utils.data import DataLoader
 from sklearn.metrics import average_precision_score, balanced_accuracy_score, confusion_matrix, precision_recall_fscore_support, roc_auc_score
 from torchvision import datasets
@@ -24,10 +24,16 @@ from .checkpoints import (
     save_training_checkpoint,
 )
 from .data import MetadataImageFolder, build_loader_kwargs, make_eval_transform, make_loaders, unpack_image_batch
+from .dataset_integrity import (
+    assert_no_train_val_hash_overlap,
+    build_manifest_records,
+    write_dataset_manifest,
+)
 from .metrics import find_best_threshold, fit_temperature, full_metric_report, sigmoid
 from .model import build_model, model_runtime_spec
 from .release_tools import write_timestamped_release
-from .runtime import build_adamw, configure_torch_runtime, git_commit, seed_all
+from .runtime import build_adamw, configure_torch_runtime, git_commit, seed_all, training_device
+from .utils.jsonio import write_json_atomic
 
 
 def _path_tags(path: str) -> dict[str, str]:
@@ -120,6 +126,26 @@ def _apply_label_smoothing(targets: torch.Tensor, smoothing: float) -> torch.Ten
     if smoothing <= 0.0:
         return targets
     return targets * (1.0 - smoothing) + (0.5 * smoothing)
+
+
+def _build_lr_scheduler(
+    opt: torch.optim.Optimizer,
+    *,
+    epochs: int,
+    base_lr: float,
+    warmup_epochs: int,
+):
+    """Cosine decay; optional linear warmup (modern vision recipe)."""
+    eta_min = float(base_lr) * 0.05
+    e = max(int(epochs), 1)
+    w = max(int(warmup_epochs), 0)
+    if w == 0:
+        return CosineAnnealingLR(opt, T_max=e, eta_min=eta_min)
+    if w >= e:
+        raise ValueError(f"warmup_epochs ({w}) must be less than epochs ({e})")
+    warmup = LinearLR(opt, start_factor=0.01, end_factor=1.0, total_iters=w)
+    cosine = CosineAnnealingLR(opt, T_max=e - w, eta_min=eta_min)
+    return SequentialLR(opt, schedulers=[warmup, cosine], milestones=[w])
 
 
 def _mixup_batch(
@@ -295,7 +321,17 @@ def main():
     ap.add_argument("--ema-decay", type=float, default=0.999)
     ap.add_argument("--loss", choices=["ce", "bce", "focal"], default="ce")
     ap.add_argument("--focal-gamma", type=float, default=2.0)
-    ap.add_argument("--backbone", choices=["tiny", "effb0", "effb2", "convnext_tiny"], default="tiny")
+    ap.add_argument(
+        "--backbone",
+        choices=["tiny", "effb0", "effb2", "convnext_tiny", "convnext_small"],
+        default="tiny",
+    )
+    ap.add_argument(
+        "--warmup-epochs",
+        type=int,
+        default=0,
+        help="Linear LR warmup epochs before cosine decay (0 = cosine only, ViT/ConvNeXt-style recipe when >0)",
+    )
     ap.add_argument("--no-pretrained-backbone", action="store_true")
     ap.add_argument("--mixup-alpha", type=float, default=0.2, help="Beta(alpha, alpha) mixup strength; 0 disables")
     ap.add_argument("--label-smoothing", type=float, default=0.02, help="Binary label smoothing applied after mixup")
@@ -328,6 +364,22 @@ def main():
         default=0.25,
         help="Abort epoch if fraction of training batches skipped (non-finite loss) exceeds this (0-1)",
     )
+    ap.add_argument(
+        "--strict-dataset",
+        action="store_true",
+        help="Require SHA256 on train+val and abort if any file bytes appear in both splits (content leakage)",
+    )
+    ap.add_argument(
+        "--dataset-manifest",
+        choices=["off", "standard", "full"],
+        default="standard",
+        help="Write dataset_manifest.json: standard=val hashed + train paths; full=all hashed; off=skip",
+    )
+    ap.add_argument(
+        "--skip-data-preflight",
+        action="store_true",
+        help="Skip symlink/mount preflight (not recommended; tests may set AID_SKIP_DATA_PREFLIGHT instead)",
+    )
     args = ap.parse_args()
 
     out = Path(args.out)
@@ -335,14 +387,15 @@ def main():
     data_root = Path(args.data)
 
     seed_all(args.seed)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = training_device()
     configure_torch_runtime(device, args.deterministic)
-    train_loader, val_loader, classes, class_to_idx, val_samples, train_distribution, val_distribution, class_weight_map, metadata_dim = make_loaders(
+    train_loader, val_loader, classes, class_to_idx, train_samples, val_samples, train_distribution, val_distribution, class_weight_map, metadata_dim = make_loaders(
         args.data,
         args.img_size,
         args.batch_size,
         num_workers=args.num_workers,
         use_metadata_features=bool(args.use_metadata_features),
+        skip_data_preflight=bool(args.skip_data_preflight),
     )
     print(f"class_distribution train={train_distribution} val={val_distribution}")
     print(f"class_weights_inverse_freq={class_weight_map}")
@@ -358,8 +411,31 @@ def main():
             metadata_feature_dim=metadata_dim,
         ),
     }
-    (out / "config.json").write_text(json.dumps(run_config, indent=2), encoding="utf-8")
-    (out / "inference_spec.json").write_text(json.dumps(run_config["runtime_spec"], indent=2), encoding="utf-8")
+    if args.strict_dataset:
+        train_recs = build_manifest_records(train_samples, classes, data_root, hash_files=True)
+        val_recs = build_manifest_records(val_samples, classes, data_root, hash_files=True)
+        assert_no_train_val_hash_overlap(train_recs, val_recs)
+        if args.dataset_manifest != "off":
+            write_dataset_manifest(
+                out / "dataset_manifest.json",
+                data_root=data_root,
+                train_records=train_recs,
+                val_records=val_recs,
+            )
+            run_config["dataset_manifest"] = "dataset_manifest.json"
+    elif args.dataset_manifest != "off":
+        hash_train = args.dataset_manifest == "full"
+        train_recs = build_manifest_records(train_samples, classes, data_root, hash_files=hash_train)
+        val_recs = build_manifest_records(val_samples, classes, data_root, hash_files=True)
+        write_dataset_manifest(
+            out / "dataset_manifest.json",
+            data_root=data_root,
+            train_records=train_recs,
+            val_records=val_recs,
+        )
+        run_config["dataset_manifest"] = "dataset_manifest.json"
+    write_json_atomic(out / "config.json", run_config, indent=2)
+    write_json_atomic(out / "inference_spec.json", run_config["runtime_spec"], indent=2)
 
     if set(classes) != {"ai", "real"}:
         raise ValueError(f"Expected classes exactly ai/real, got {classes}")
@@ -380,7 +456,7 @@ def main():
         except Exception as exc:
             print(f"compile_disabled reason={exc}")
     opt = build_adamw(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, device=device)
-    sched = CosineAnnealingLR(opt, T_max=max(args.epochs, 1), eta_min=args.lr * 0.05)
+    sched = _build_lr_scheduler(opt, epochs=args.epochs, base_lr=args.lr, warmup_epochs=args.warmup_epochs)
     loss_fn: nn.Module = BinaryClassificationLoss(
         kind=args.loss,
         gamma=args.focal_gamma,
@@ -449,7 +525,10 @@ def main():
         if "optimizer" in ckpt:
             opt.load_state_dict(ckpt["optimizer"])
         if "scheduler" in ckpt:
-            sched.load_state_dict(ckpt["scheduler"])
+            try:
+                sched.load_state_dict(ckpt["scheduler"])
+            except Exception as exc:
+                print(f"scheduler_state_skipped reason={exc}")
         if "scaler" in ckpt:
             scaler.load_state_dict(ckpt["scaler"])
         best_auc = float(ckpt.get("best_auc", best_auc))
@@ -595,7 +674,7 @@ def main():
                 "metrics": report,
                 "group_metrics": grouped,
             }
-            (out / "last_metrics.json").write_text(json.dumps(last, indent=2), encoding="utf-8")
+            write_json_atomic(out / "last_metrics.json", last, indent=2)
             with (out / "training_log.jsonl").open("a", encoding="utf-8") as f:
                 f.write(json.dumps({"epoch": epoch, **report}) + "\n")
 
@@ -625,11 +704,31 @@ def main():
                     "threshold": float(threshold),
                     "temperature": float(temperature),
                     "model_id": model_id,
-                    "metrics": report,
-                    "classes": classes,
                     "backbone": args.backbone,
                     "metadata_feature_dim": metadata_dim,
                     "use_metadata_features": bool(args.use_metadata_features),
+                    # Keep safetensors metadata small and stable; detailed metrics live in JSON sidecars.
+                    "schema": "ai-image-detector-model-v1",
+                    "git_commit": str(run_config.get("git_commit", "")),
+                    "created_utc": str(run_config.get("created_utc", "")),
+                    "calibration": {
+                        "threshold_source": str(report.get("threshold_source", "")),
+                        "threshold_objective": str(report.get("threshold_objective", "")),
+                        "threshold_objective_score": report.get("threshold_objective_score"),
+                        "threshold_operable": bool(report.get("threshold_operable", True)),
+                        "threshold_search_status": str(report.get("threshold_search_status", "")),
+                        "temperature_nll": float(report.get("temperature_nll", 0.0)),
+                    },
+                    "trainer": {
+                        "epochs": int(args.epochs),
+                        "base_lr": float(args.lr),
+                        "warmup_epochs": int(args.warmup_epochs),
+                        "amp": bool(args.amp),
+                        "ema_decay": float(args.ema_decay),
+                        "mixup_alpha": float(args.mixup_alpha),
+                        "label_smoothing": float(args.label_smoothing),
+                        "weight_decay": float(args.weight_decay),
+                    },
                     "runtime_spec": model_runtime_spec(
                         backbone=args.backbone,
                         img_size=args.img_size,
@@ -640,46 +739,42 @@ def main():
                 preferred_best = out / "best.safetensors"
                 best_checkpoint_saved = True
                 (out / "best_checkpoint.txt").write_text(preferred_best.name, encoding="utf-8")
-                (out / "best_metrics.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-                (out / "best_group_metrics.json").write_text(json.dumps(grouped, indent=2), encoding="utf-8")
-                (out / "calibration.json").write_text(
-                    json.dumps(
-                        {
+                write_json_atomic(out / "best_metrics.json", report, indent=2)
+                write_json_atomic(out / "best_group_metrics.json", grouped, indent=2)
+                write_json_atomic(
+                    out / "calibration.json",
+                    {
+                        "threshold": float(threshold),
+                        "temperature": float(temperature),
+                        "objective": args.threshold_objective,
+                        "metrics": report,
+                        "runtime_spec": model_runtime_spec(
+                            backbone=args.backbone,
+                            img_size=args.img_size,
+                            metadata_feature_dim=metadata_dim,
+                        ),
+                    },
+                    indent=2,
+                )
+                write_json_atomic(
+                    out / "best_model_summary.json",
+                    {
+                        "epoch": epoch,
+                        "preferred_checkpoint": preferred_best.name,
+                        "metrics": report,
+                        "calibration": {
                             "threshold": float(threshold),
                             "temperature": float(temperature),
                             "objective": args.threshold_objective,
-                            "metrics": report,
-                            "runtime_spec": model_runtime_spec(
-                                backbone=args.backbone,
-                                img_size=args.img_size,
-                                metadata_feature_dim=metadata_dim,
-                            ),
+                            "objective_score": float(threshold_score) if threshold_score is not None else None,
                         },
-                        indent=2,
-                    ),
-                    encoding="utf-8",
-                )
-                (out / "best_model_summary.json").write_text(
-                    json.dumps(
-                        {
-                            "epoch": epoch,
-                            "preferred_checkpoint": preferred_best.name,
-                            "metrics": report,
-                            "calibration": {
-                                "threshold": float(threshold),
-                                "temperature": float(temperature),
-                                "objective": args.threshold_objective,
-                                "objective_score": float(threshold_score) if threshold_score is not None else None,
-                            },
-                            "runtime_spec": model_runtime_spec(
-                                backbone=args.backbone,
-                                img_size=args.img_size,
-                                metadata_feature_dim=metadata_dim,
-                            ),
-                        },
-                        indent=2,
-                    ),
-                    encoding="utf-8",
+                        "runtime_spec": model_runtime_spec(
+                            backbone=args.backbone,
+                            img_size=args.img_size,
+                            metadata_feature_dim=metadata_dim,
+                        ),
+                    },
+                    indent=2,
                 )
             else:
                 no_improve += 1
@@ -754,7 +849,7 @@ def main():
             threshold=float(best.get("threshold", args.decision_threshold)),
         )
         test_report["test_loss"] = test_loss_sum / max(test_total, 1)
-        (out / "test_metrics.json").write_text(json.dumps(test_report, indent=2), encoding="utf-8")
+        write_json_atomic(out / "test_metrics.json", test_report, indent=2)
         print(f"saved test metrics to {out / 'test_metrics.json'}")
 
     if args.export_release and (out / "best.safetensors").exists():
