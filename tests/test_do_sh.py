@@ -10,6 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DoShTests(unittest.TestCase):
+    def print_image_collection_args_best(self) -> str:
+        return self.run_bash("source scripts/do.sh; print_image_collection_args best")
+
     def run_bash(self, script: str) -> str:
         proc = subprocess.run(
             ["bash", "-lc", script],
@@ -30,7 +33,7 @@ class DoShTests(unittest.TestCase):
         )
 
     def test_best_profile_defaults_to_hf_sources_only(self) -> None:
-        out = self.run_bash("source scripts/do.sh; print_image_collection_args best")
+        out = self.print_image_collection_args_best()
         self.assertNotIn("--local-source\n", out)
         self.assertNotIn("--local-source-real\n", out)
         self.assertNotIn("--local-source-ai\n", out)
@@ -39,7 +42,7 @@ class DoShTests(unittest.TestCase):
         self.assertIn("--quiet-progress\n", out)
 
     def test_best_profile_emits_split_source_diversity_gate(self) -> None:
-        out = self.run_bash("source scripts/do.sh; print_image_collection_args best")
+        out = self.print_image_collection_args_best()
         self.assertIn("--min-hf-sources-per-split-class\n20\n", out)
         self.assertIn("--max-per-source-class\n5000\n", out)
         self.assertIn("--max-per-source-split-class\n1500\n", out)
@@ -297,7 +300,10 @@ class DoShTests(unittest.TestCase):
 
     def test_run_full_pipeline_uses_canonical_quality_wrapper(self) -> None:
         out = self.run_bash("source scripts/do.sh; declare -f run_full_pipeline")
-        self.assertIn('with_training_lock bash scripts/max_quality_4090.sh', out)
+        self.assertIn(
+            "with_training_lock env PIPELINE_PROFILE=max_quality bash scripts/full_pipeline_4090.sh",
+            out,
+        )
         self.assertNotIn('run_pipeline_stage', out)
 
     def test_wait_for_training_to_finish_clears_stale_lock(self) -> None:

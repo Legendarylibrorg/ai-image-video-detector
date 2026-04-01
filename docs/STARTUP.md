@@ -36,7 +36,7 @@ Linux VM setup checklist:
 6. Clone this repo inside that VM.
 7. Run the Compose workflow only from inside that VM.
 
-Linux VM repo-root check:
+Repo-root check:
 
 ```bash
 pwd
@@ -64,18 +64,6 @@ Detailed secure Docker config flow:
 6. Run the smoke pipeline in the GPU container.
 7. Run the full pipeline in the GPU container.
 8. Use `status` from the GPU container to inspect outputs.
-
-Repo-root check:
-
-```bash
-pwd
-test -f docker-compose.yml
-test -f Dockerfile
-test -f Dockerfile.gpu
-test -f local.sh
-test -f scripts/install_deps.sh
-./local.sh docker-doctor
-```
 
 Exact secure startup:
 
@@ -253,23 +241,16 @@ Notes:
 - if you want the closest match to the documented Linux path, use WSL2 Ubuntu
 - Compose is the cleaner isolation path when you want to avoid mixing repo deps into the Windows host
 
-## Dependency profiles
+## Python dependencies
 
-The package now supports a lightweight base install:
+The project declares its runtime stack in `pyproject.toml` (`torch`, `datasets`, `opencv-python-headless`, and related packages). Install everything with:
 
-- `pip install -e .`
-  Base package only, without the heavy training and collection stack.
-- `pip install -e '.[pipeline]'`
-  Full repo workflow dependencies.
-- `pip install -e '.[training]'`
-  Image-training stack.
-- `pip install -e '.[collection]'`
-  Hugging Face collection stack.
-- `pip install -e '.[video]'`
-  Video stack.
+```bash
+pip install -e .
+```
 
-For normal use inside this repo, prefer `./local.sh deps` or `./local.sh setup`; they install the full `pipeline` profile into `./.venv`.
-The packaged `aid-*` commands are thin wrappers and will print a clear “install this extra” hint if you run them without the required dependency profile.
+For normal use inside this repo, prefer `./local.sh deps` or `./local.sh setup`; they install the same set into `./.venv`.
+The packaged `aid-*` commands are thin wrappers; if imports fail, they print `run=pip install -e .` on stderr.
 
 ## What the pipeline does
 
@@ -329,7 +310,7 @@ Fallback step summary:
 - `./local.sh deps`
   Installs the pinned Python dependency set into `./.venv`.
   It also installs the repo CLI commands and the `hf` CLI into that venv.
-  Under the hood this is the full `pipeline` profile, not the lightweight base package.
+  Under the hood this installs the full dependency set from `pyproject.toml` into `./.venv`.
 - `./local.sh doctor`
   Verifies disk space, cache dirs, venv health, core Python deps, and token state.
 - `./local.sh smoke`

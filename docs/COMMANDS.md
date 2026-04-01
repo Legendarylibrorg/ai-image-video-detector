@@ -1,29 +1,12 @@
 # Command Guide
 
-This guide collects the repo command surfaces in one place.
-The recommended runtime path is a dedicated Linux VM first, then Docker Compose inside that VM.
-The main venv for that path is the isolated container virtualenv at `/opt/aid-venv`.
-The native fallback uses `./.venv`, created or reused by `./local.sh setup`.
-That native setup also installs `huggingface_hub`, the `hf` CLI, and the repo CLI commands into the same venv.
-Unless a section says otherwise, the command snippets in this file use Linux `bash` syntax.
-The Linux-native command blocks in this file are for native Linux hosts. If you are on macOS or Windows, use the platform notes in [STARTUP.md](STARTUP.md) instead of copying the `apt-get` steps directly.
+This file lists **`./local.sh`** and related command surfaces. For VM boundaries, host requirements, native `apt-get` bootstrap, and the full secure clone-to-run script, use [STARTUP.md](STARTUP.md). On macOS or Windows, use the platform sections there instead of assuming Linux-native steps here.
+
+The recommended path is a dedicated Linux VM, then Docker Compose. The main venv for that path is the isolated container virtualenv at `/opt/aid-venv`. Native fallback uses `./.venv` from `./local.sh setup` (also installs `huggingface_hub`, the `hf` CLI, and repo CLIs). Snippets use Linux `bash` syntax unless noted.
 
 ## Dedicated Linux VM + Docker Compose commands
 
-Use these first when possible:
-
-Important boundary:
-- Docker Compose is not a real VM.
-- For a true VM boundary on Linux, create the dedicated Linux VM first and run Docker inside it.
-
-Minimum needed inside the dedicated Linux VM:
-- `git`
-- Docker Engine
-- Docker Compose plugin
-- NVIDIA Container Toolkit for `pipeline-gpu`
-
-You do not need host Python, `pip`, or a host `./.venv` for this secure path.
-Run all commands in this section from the repo root, the directory that contains `docker-compose.yml`, `local.sh`, and `scripts/install_deps.sh`.
+From the repo root (the directory with `docker-compose.yml`, `local.sh`, and `scripts/install_deps.sh`):
 
 ```bash
 git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
@@ -36,8 +19,9 @@ test -f local.sh
 docker compose build
 docker compose run --rm pipeline ./local.sh deps
 docker compose run --rm pipeline ./local.sh doctor
-docker compose run --rm pipeline-gpu ./local.sh doctor
 printf "HF_TOKEN='your_token_here'\n" >> .env
+test -f .env
+docker compose run --rm pipeline-gpu ./local.sh doctor
 docker compose run --rm pipeline-gpu ./local.sh smoke
 docker compose run --rm pipeline-gpu ./local.sh run
 docker compose run --rm pipeline-gpu ./local.sh status
@@ -58,25 +42,18 @@ docker compose run --rm pipeline-gpu ./local.sh status
 - general source tree in container
   writable
 
-For the full secure startup walkthrough, use [STARTUP.md](STARTUP.md).
+For the full secure startup walkthrough, use [STARTUP.md](STARTUP.md). GPU hosts need the NVIDIA Container Toolkit for `pipeline-gpu`.
 
-## Dependency profiles
+## Python dependencies
 
-The package keeps the base install lightweight:
+Required packages are listed in `pyproject.toml` under `[project] dependencies` (training, collection, and video stacks together). Install with:
 
-- `pip install -e .`
-  Base package only.
-- `pip install -e '.[pipeline]'`
-  Full repo workflow dependencies.
-- `pip install -e '.[training]'`
-  Image-training dependencies.
-- `pip install -e '.[collection]'`
-  Hugging Face collection dependencies.
-- `pip install -e '.[video]'`
-  Video dependencies.
+```bash
+pip install -e .
+```
 
-For the native fallback workflow, use `./local.sh deps` or `./local.sh setup`; both install the full `pipeline` profile into `./.venv`.
-The packaged `aid-*` commands remain available, but they are lightweight wrappers and will print a missing-extra hint if you try to run them from a base no-deps install.
+For the native fallback workflow, use `./local.sh deps` or `./local.sh setup`; both install that set into `./.venv`.
+The packaged `aid-*` commands are thin wrappers; if a dependency is missing, they suggest `pip install -e .`.
 
 ## Pipeline at a glance
 
@@ -134,7 +111,7 @@ Main surface:
 - `./local.sh deps`
   Install the pinned Python dependencies into `./.venv` without running the full setup wrapper.
   This also installs the repo CLI commands and the `hf` CLI in that venv.
-  This is the full `pipeline` profile, not the lightweight base package.
+  This installs the full dependency set from `pyproject.toml`.
 - `./local.sh doctor`
   Run the health check directly.
 - `./local.sh run`

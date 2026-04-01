@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 from pathlib import Path
 
 import torch
 import torch.nn.functional as F
 
 from .checkpoints import load_checkpoint
+from .io_limits import read_json_file_limited, validate_ensemble_config
 from .metadata import extract_metadata_features
 from .model import AdvancedAIDetector, build_model
 
@@ -176,7 +176,8 @@ def load_models(model_paths: list[str], device: torch.device, ensemble_config: s
     temperature = float(sum(temps) / len(temps))
 
     if ensemble_config:
-        cfg = json.loads(Path(ensemble_config).read_text(encoding="utf-8"))
+        cfg = read_json_file_limited(ensemble_config)
+        validate_ensemble_config(cfg)
         weights = _resolve_model_weights(model_paths, cfg)
         if "threshold" in cfg:
             threshold = float(cfg["threshold"])

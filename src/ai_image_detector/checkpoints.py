@@ -1,8 +1,69 @@
 from __future__ import annotations
 
+import inspect
 import json
+import os
 from pathlib import Path
 from typing import Any, Mapping
+
+from .io_limits import check_file_size, reject_symlink
+
+_MAX_TRAINING_CHECKPOINT_BYTES = int(
+    os.environ.get("AID_MAX_TRAINING_CHECKPOINT_BYTES", str(2 * 1024**3))
+)
+
+_EXACT_SENSITIVE_ARG_KEYS = frozenset(
+    {
+        "api_key",
+        "auth_token",
+        "bearer_token",
+        "credential",
+        "hf_token",
+        "huggingface_token",
+        "openai_api_key",
+        "password",
+        "secret",
+        "token",
+        "wandb_api_key",
+    }
+)
+
+
+def _is_sensitive_arg_key(key: str) -> bool:
+    lk = key.lower()
+    if lk in _EXACT_SENSITIVE_ARG_KEYS:
+        return True
+    if lk.endswith("_password") or lk.endswith("_secret"):
+        return True
+    if lk.endswith("_token"):
+        return True
+    if "_api_key" in lk:
+        return True
+    return False
+
+
+def args_dict_for_checkpoint(args: Any) -> dict[str, Any]:
+    """Snapshot CLI args for JSON/checkpoints: primitives only, no obvious secret keys."""
+    raw = vars(args) if hasattr(args, "__dict__") else dict(args)
+    out: dict[str, Any] = {}
+    for key, value in raw.items():
+        if _is_sensitive_arg_key(key):
+            continue
+        out[key] = _primitive_for_checkpoint(value)
+    return out
+
+
+def _primitive_for_checkpoint(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, (str, int, float, bool, type(None))):
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_primitive_for_checkpoint(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _primitive_for_checkpoint(v) for k, v in value.items()}
+    return str(value)
+
 
 def _torch():
     import torch
@@ -111,3 +172,28 @@ def load_checkpoint(path: str | Path, map_location: Any = None) -> dict[str, Any
     if in_path.suffix.lower() == ".safetensors":
         return load_safetensors_checkpoint(in_path, map_location=map_location)
     raise RuntimeError("unsupported_checkpoint_format path={} use .safetensors".format(in_path))
+
+
+def load_training_checkpoint(path: str | Path, map_location: Any = None) -> dict[str, Any]:
+    """Load a `.pt` training checkpoint saved by `save_training_checkpoint`.
+
+    Uses ``weights_only=True`` when supported (PyTorch 2.2+). Arbitrary pickle gadgets are
+    not loaded; use checkpoints produced by this codebase or re-export legacy weights.
+    """
+    torch = _torch()
+    p = Path(path)
+    reject_symlink(p)
+    check_file_size(p, max_bytes=_MAX_TRAINING_CHECKPOINT_BYTES)
+
+    kwargs: dict[str, Any] = {"map_location": map_location}
+    if "weights_only" in inspect.signature(torch.load).parameters:
+        kwargs["weights_only"] = True
+
+    try:
+        return torch.load(p, **kwargs)
+    except Exception as first_exc:
+        raise RuntimeError(
+            "training_checkpoint_load_failed path={} "
+            "(not a weights_only-safe checkpoint; re-save with current save_training_checkpoint "
+            "or load weights via safetensors export)".format(p)
+        ) from first_exc

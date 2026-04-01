@@ -5,9 +5,9 @@ import json
 from pathlib import Path
 
 import torch
-from PIL import Image
 
 from .data import make_eval_transform
+from .io_limits import configure_pil_limits, open_image_rgb, read_bytes_limited
 from .decision import combined_risk, decide_label, image_ood_score
 from .domain import classify_domain, load_domain_config, resolve_domain_threshold
 from .ensemble import EnsembleDetector, load_models
@@ -34,6 +34,7 @@ def main():
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
+    configure_pil_limits()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     loaded = load_models(args.model, device, ensemble_config=args.ensemble_config)
     model = EnsembleDetector(loaded.models, weights=loaded.weights, img_sizes=loaded.img_sizes).to(device)
@@ -46,8 +47,8 @@ def main():
     tf = make_eval_transform(loaded.img_size)
 
     image_path = Path(args.image)
-    image_bytes = image_path.read_bytes()
-    img = Image.open(args.image).convert("RGB")
+    image_bytes = read_bytes_limited(image_path)
+    img = open_image_rgb(image_path, allow_symlink=True)
     x = tf(img).unsqueeze(0).to(device)
     metadata_features = torch.tensor([extract_metadata_features(args.image)], dtype=x.dtype, device=device)
 

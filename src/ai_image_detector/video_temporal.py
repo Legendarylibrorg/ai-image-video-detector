@@ -14,7 +14,13 @@ import torch.nn as nn
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, Dataset
 from torchvision import models
-from .checkpoints import load_checkpoint, save_safetensors_checkpoint, save_training_checkpoint
+from .checkpoints import (
+    args_dict_for_checkpoint,
+    load_checkpoint,
+    load_training_checkpoint,
+    save_safetensors_checkpoint,
+    save_training_checkpoint,
+)
 from .data import build_loader_kwargs
 from .release_tools import write_timestamped_release
 from .runtime import build_adamw, configure_torch_runtime, git_commit, seed_all
@@ -197,7 +203,7 @@ def train_main() -> None:
     out.mkdir(parents=True, exist_ok=True)
 
     config = {
-        "args": vars(args),
+        "args": args_dict_for_checkpoint(args),
         "git_commit": git_commit(),
         "dataset_counts": {"train": len(train_samples), "val": len(val_samples)},
         "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -252,7 +258,7 @@ def train_main() -> None:
 
     resume_path = Path(args.resume) if args.resume else (out / "last_video.pt")
     if resume_path.exists():
-        ckpt = torch.load(resume_path, map_location=device)
+        ckpt = load_training_checkpoint(resume_path, map_location=device)
         model.load_state_dict(ckpt["state_dict"])
         if "optimizer" in ckpt:
             opt.load_state_dict(ckpt["optimizer"])

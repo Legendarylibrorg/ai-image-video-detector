@@ -8,6 +8,8 @@ from typing import Iterable
 
 from PIL import Image
 
+from ai_image_detector.io_limits import MAX_IMAGE_FILE_BYTES, check_file_size
+
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
@@ -63,7 +65,10 @@ def main() -> None:
         archive_cls.mkdir(parents=True, exist_ok=True)
 
         for p in iter_images(src_cls):
+            if p.is_symlink():
+                continue
             try:
+                check_file_size(p, max_bytes=MAX_IMAGE_FILE_BYTES)
                 raw = p.read_bytes()
             except Exception:
                 continue

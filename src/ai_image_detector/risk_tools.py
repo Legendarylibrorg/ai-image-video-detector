@@ -3,14 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .utils import read_json_dict
+from .io_limits import read_json_file_limited, validate_tools_config
 
 
 def load_tools_config(path: str = "") -> dict[str, Any]:
     if not path:
         return {}
     p = Path(path)
-    return read_json_dict(p)
+    if not p.exists():
+        return {}
+    cfg = read_json_file_limited(p)
+    validate_tools_config(cfg)
+    return cfg
 
 
 def apply_risk_tools(

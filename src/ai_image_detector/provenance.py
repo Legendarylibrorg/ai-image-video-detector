@@ -3,11 +3,23 @@ from __future__ import annotations
 import io
 from typing import Any
 
+from .io_limits import MAX_IMAGE_FILE_BYTES, MAX_PROVENANCE_SCAN_BYTES
+
 
 def _safe_text(v: Any) -> str:
     if isinstance(v, bytes):
         return v.decode("utf-8", errors="ignore")
     return str(v)
+
+
+def _bounded_lower_blob(image_bytes: bytes) -> bytes:
+    """Scan only head+tail for substring markers (avoid OOM on huge files)."""
+    cap = min(len(image_bytes), MAX_IMAGE_FILE_BYTES)
+    buf = image_bytes[:cap]
+    n = min(len(buf), MAX_PROVENANCE_SCAN_BYTES)
+    if len(buf) <= n * 2:
+        return buf.lower()
+    return (buf[:n] + buf[-n:]).lower()
 
 
 def analyze_provenance(image_bytes: bytes) -> dict[str, Any]:
@@ -16,10 +28,9 @@ def analyze_provenance(image_bytes: bytes) -> dict[str, Any]:
     flags: list[str] = []
     score = 0.0
 
-    blob = image_bytes.lower()
+    blob = _bounded_lower_blob(image_bytes)
     if b"c2pa" in blob or b"content credentials" in blob:
         flags.append("has_content_credentials")
-        # Presence of credentials lowers ambiguity.
         score = max(score - 0.1, 0.0)
 
     ai_markers = [
@@ -35,16 +46,20 @@ def analyze_provenance(image_bytes: bytes) -> dict[str, Any]:
         flags.append("embedded_ai_tool_marker")
         score += 0.6
 
+    pil_buf = image_bytes[: min(len(image_bytes), MAX_IMAGE_FILE_BYTES)]
     try:
-        img = Image.open(io.BytesIO(image_bytes))
-        info = {str(k).lower(): _safe_text(v).lower() for k, v in img.info.items()}
-        joined = " ".join([f"{k}:{v}" for k, v in info.items()])
-        if "c2pa" in joined or "content credentials" in joined:
-            if "has_content_credentials" not in flags:
-                flags.append("has_content_credentials")
-        if any(s in joined for s in ("stable diffusion", "midjourney", "dall", "firefly")):
-            flags.append("metadata_ai_tool_marker")
-            score += 0.35
+        img = Image.open(io.BytesIO(pil_buf))
+        try:
+            info = {str(k).lower(): _safe_text(v).lower() for k, v in img.info.items()}
+            joined = " ".join([f"{k}:{v}" for k, v in info.items()])
+            if "c2pa" in joined or "content credentials" in joined:
+                if "has_content_credentials" not in flags:
+                    flags.append("has_content_credentials")
+            if any(s in joined for s in ("stable diffusion", "midjourney", "dall", "firefly")):
+                flags.append("metadata_ai_tool_marker")
+                score += 0.35
+        finally:
+            img.close()
     except Exception:
         flags.append("unreadable_provenance")
         score += 0.10

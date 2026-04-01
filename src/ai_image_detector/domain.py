@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
@@ -53,7 +52,11 @@ def load_domain_config(path: str = "") -> dict[str, Any]:
     p = Path(path)
     if not p.exists():
         return {}
-    return json.loads(p.read_text(encoding="utf-8"))
+    from .io_limits import read_json_file_limited, validate_domain_config
+
+    cfg = read_json_file_limited(p)
+    validate_domain_config(cfg)
+    return cfg
 
 
 def resolve_domain_threshold(base_threshold: float, domain: str, cfg: dict[str, Any]) -> float:

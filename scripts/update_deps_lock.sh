@@ -8,15 +8,13 @@ LOCK_FILE="${LOCK_FILE:-$ROOT_DIR/requirements.lock}"
 LOCK_VENV_DIR="${LOCK_VENV_DIR:-$ROOT_DIR/.venv.locktmp}"
 TMP_FILE="${LOCK_FILE}.tmp"
 KEEP_LOCK_VENV="${KEEP_LOCK_VENV:-0}"
-LOCK_EXTRA="${LOCK_EXTRA:-pipeline}"
-
 rm -rf "$LOCK_VENV_DIR"
 python3 -m venv "$LOCK_VENV_DIR"
 
 # shellcheck disable=SC1091
 source "$LOCK_VENV_DIR/bin/activate"
 python -m pip install --upgrade pip setuptools wheel
-pip install --upgrade --upgrade-strategy eager -e ".[${LOCK_EXTRA}]"
+pip install --upgrade --upgrade-strategy eager -e .
 if ! python - <<'PY' >/dev/null 2>&1
 import tomllib
 PY
@@ -27,7 +25,7 @@ python -m pip check
 
 # Keep the lock small and maintainable: pin only the project's direct runtime
 # dependencies and let pip resolve their transitives during install.
-python - <<'PY' "$ROOT_DIR/pyproject.toml" "$LOCK_EXTRA" > "$TMP_FILE"
+python - <<'PY' "$ROOT_DIR/pyproject.toml" > "$TMP_FILE"
 import importlib.metadata as md
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
@@ -39,10 +37,8 @@ except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
     import tomli as tomllib
 
 project = tomllib.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-extra_name = sys.argv[2]
 project_cfg = project.get("project", {})
 deps = list(project_cfg.get("dependencies", []))
-deps.extend(project_cfg.get("optional-dependencies", {}).get(extra_name, []))
 rows: list[str] = []
 
 for dep in deps:
@@ -72,4 +68,4 @@ if [[ "$KEEP_LOCK_VENV" != "1" ]]; then
   deactivate || true
   rm -rf "$LOCK_VENV_DIR"
 fi
-echo "deps_lock=updated file=$LOCK_FILE extra=$LOCK_EXTRA"
+echo "deps_lock=updated file=$LOCK_FILE"

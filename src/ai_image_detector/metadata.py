@@ -40,8 +40,13 @@ def _load_exif_dict(image_path: str) -> dict:
     import piexif
     from PIL import Image
 
+    from .io_limits import MAX_EXIF_BYTES, MAX_IMAGE_FILE_BYTES, check_file_size
+
+    check_file_size(image_path, max_bytes=MAX_IMAGE_FILE_BYTES)
     with Image.open(image_path) as img:
-        exif_bytes = img.info.get("exif", b"")
+        exif_bytes = img.info.get("exif", b"") or b""
+    if len(exif_bytes) > MAX_EXIF_BYTES:
+        exif_bytes = exif_bytes[:MAX_EXIF_BYTES]
     if exif_bytes:
         return piexif.load(exif_bytes)
     return {"0th": {}, "Exif": {}, "GPS": {}, "Interop": {}, "1st": {}, "thumbnail": None}
@@ -146,6 +151,9 @@ def _analyze_metadata_values(image_format: str, exif_dict: dict, fields: dict[st
 def analyze_metadata(image_path: str) -> dict[str, Any]:
     from PIL import Image
 
+    from .io_limits import MAX_IMAGE_FILE_BYTES, check_file_size
+
+    check_file_size(image_path, max_bytes=MAX_IMAGE_FILE_BYTES)
     with Image.open(image_path) as image:
         image_format = (image.format or "").upper()
     exif_dict = _load_exif_dict(image_path)
@@ -154,8 +162,10 @@ def analyze_metadata(image_path: str) -> dict[str, Any]:
 
 
 @lru_cache(maxsize=65536)
-def _extract_metadata_features_cached(image_path: str) -> tuple[float, ...]:
+def _extract_metadata_features_cached(image_path: str, mtime_ns: int, size: int) -> tuple[float, ...]:
     from PIL import Image
+
+    from .io_limits import MAX_IMAGE_FILE_BYTES, read_bytes_limited
 
     image_file = Path(image_path)
     with Image.open(image_path) as image:
@@ -163,7 +173,10 @@ def _extract_metadata_features_cached(image_path: str) -> tuple[float, ...]:
         image_format = (image.format or "").upper()
         rgb_image = image.convert("RGB")
 
-    image_bytes = image_file.read_bytes() if image_file.exists() else b""
+    try:
+        image_bytes = read_bytes_limited(image_file, max_bytes=MAX_IMAGE_FILE_BYTES)
+    except OSError:
+        image_bytes = b""
     exif_dict = _load_exif_dict(image_path)
     fields = _extract_fields(exif_dict)
     analysis = _analyze_metadata_values(image_format, exif_dict, fields)
@@ -234,7 +247,12 @@ def _extract_metadata_features_cached(image_path: str) -> tuple[float, ...]:
 
 
 def extract_metadata_features(image_path: str) -> list[float]:
-    return list(_extract_metadata_features_cached(image_path))
+    p = Path(image_path).resolve()
+    st = p.stat()
+    from .io_limits import MAX_IMAGE_FILE_BYTES, check_file_size
+
+    check_file_size(p, max_bytes=MAX_IMAGE_FILE_BYTES)
+    return list(_extract_metadata_features_cached(str(p), int(st.st_mtime_ns), int(st.st_size)))
 
 
 def metadata_feature_dim() -> int:
@@ -259,6 +277,9 @@ def inspect_metadata(image_path: str) -> None:
 def strip_metadata(input_path: str, output_path: str) -> None:
     from PIL import Image
 
+    from .io_limits import MAX_IMAGE_FILE_BYTES, check_file_size
+
+    check_file_size(input_path, max_bytes=MAX_IMAGE_FILE_BYTES)
     img = Image.open(input_path).convert("RGB")
     img.save(output_path, quality=95)
 
@@ -273,6 +294,9 @@ def modify_metadata(
     import piexif
     from PIL import Image
 
+    from .io_limits import MAX_IMAGE_FILE_BYTES, check_file_size
+
+    check_file_size(input_path, max_bytes=MAX_IMAGE_FILE_BYTES)
     img = Image.open(input_path).convert("RGB")
     exif_dict = _load_exif_dict(input_path)
 

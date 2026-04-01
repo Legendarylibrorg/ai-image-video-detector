@@ -12,8 +12,8 @@ def _run_entrypoint(module_name: str, attr_name: str, *, extra: str) -> int:
         if missing_name.startswith("ai_image_detector"):
             raise
         print(
-            f"missing_dependency={missing_name} install_extra={extra} "
-            f"run=pip install -e '.[{extra}]'",
+            f"missing_dependency={missing_name} hint_extra={extra} "
+            f"run=pip install -e .",
             file=sys.stderr,
         )
         raise SystemExit(2) from exc

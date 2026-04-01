@@ -16,7 +16,13 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import average_precision_score, balanced_accuracy_score, confusion_matrix, precision_recall_fscore_support, roc_auc_score
 from torchvision import datasets
 
-from .checkpoints import load_checkpoint, save_safetensors_checkpoint, save_training_checkpoint
+from .checkpoints import (
+    args_dict_for_checkpoint,
+    load_checkpoint,
+    load_training_checkpoint,
+    save_safetensors_checkpoint,
+    save_training_checkpoint,
+)
 from .data import MetadataImageFolder, build_loader_kwargs, make_eval_transform, make_loaders, unpack_image_batch
 from .metrics import find_best_threshold, fit_temperature, full_metric_report, sigmoid
 from .model import build_model, model_runtime_spec
@@ -316,6 +322,12 @@ def main():
     ap.add_argument("--no-export-release", dest="export_release", action="store_false")
     ap.add_argument("--use-metadata-features", action="store_true", help="Add metadata/file cues as a small auxiliary branch")
     ap.add_argument("--init-from", default="", help="Optional checkpoint to partially initialize from before training")
+    ap.add_argument(
+        "--max-nan-batch-fraction",
+        type=float,
+        default=0.25,
+        help="Abort epoch if fraction of training batches skipped (non-finite loss) exceeds this (0-1)",
+    )
     args = ap.parse_args()
 
     out = Path(args.out)
@@ -336,7 +348,7 @@ def main():
     print(f"class_weights_inverse_freq={class_weight_map}")
 
     run_config = {
-        "args": vars(args),
+        "args": args_dict_for_checkpoint(args),
         "git_commit": git_commit(),
         "dataset_counts": _dataset_counts(data_root),
         "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -419,7 +431,7 @@ def main():
                 "no_improve": int(no_improve),
                 "degenerate_epochs": int(degenerate_epochs),
                 "model_id": model_id,
-                "args": vars(args),
+                "args": args_dict_for_checkpoint(args),
                 "classes": classes,
                 "class_to_idx": class_to_idx,
                 "backbone": args.backbone,
@@ -431,7 +443,7 @@ def main():
 
     resume_path = Path(args.resume) if args.resume else (out / "last.pt")
     if resume_path.exists():
-        ckpt = torch.load(resume_path, map_location=device)
+        ckpt = load_training_checkpoint(resume_path, map_location=device)
         model.load_state_dict(ckpt["state_dict"])
         ema.shadow.load_state_dict(ckpt.get("ema_state_dict", ckpt["state_dict"]))
         if "optimizer" in ckpt:
@@ -497,6 +509,13 @@ def main():
                 scaler.update()
                 opt.zero_grad(set_to_none=True)
                 ema.update(model)
+
+            n_batches = len(train_loader)
+            if n_batches > 0 and (skipped_batches / float(n_batches)) > float(args.max_nan_batch_fraction):
+                raise RuntimeError(
+                    f"training_abort_non_finite_loss epoch={epoch} skipped_batches={skipped_batches} "
+                    f"total_batches={n_batches} max_nan_batch_fraction={args.max_nan_batch_fraction}"
+                )
 
             sched.step()
 

@@ -1,10 +1,5 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Quality-first 4090 profile: slower, but best practical accuracy from this repo.
-# Usage:
-#   bash scripts/max_quality_4090.sh
-#   HF_TOKEN=... bash scripts/max_quality_4090.sh
+# Sourced by scripts/full_pipeline_4090.sh when PIPELINE_PROFILE=max_quality.
+# Same defaults as the former scripts/max_quality_4090.sh wrapper.
 
 export SKIP_DATA="${SKIP_DATA:-0}"
 export SKIP_SWEEP="${SKIP_SWEEP:-0}"
@@ -113,5 +108,3 @@ export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-8}"
 export DRY_RUN="${DRY_RUN:-0}"
-
-bash scripts/full_pipeline_4090.sh

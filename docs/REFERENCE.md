@@ -22,20 +22,9 @@ This file keeps the README short and startup-focused while collecting the broade
 - `src/ai_image_detector/`: Python package code
 - `tests/`: regression coverage
 
-## Public command structure
+## Public commands
 
-The repo is structured around the public `./local.sh` commands:
-
-- `setup`: creates `./.venv` and verifies the repo
-- `collect`: builds datasets in `./data_best` and `./video_data`
-- `train`: prepares `./.local/training_data` and trains from existing data
-- `retrain`: rerun training on top of the existing dataset and gate the result
-- `finetune`: separate metadata-aware finetune on top of an existing checkpoint
-- `run`: full collect + train pipeline
-- `continuous`: repeat collection and retraining over time
-- `status` and `collect-status`: inspect the current local state
-
-Everything under `scripts/` and `src/ai_image_detector/` exists to support those public commands.
+Use [COMMANDS.md](COMMANDS.md) for the `./local.sh` command map and stage descriptions. Everything under `scripts/` and `src/ai_image_detector/` exists to support that surface.
 
 ## Current pipeline shape
 
@@ -121,19 +110,17 @@ aid-video-train
 ```
 
 Those commands exist to support the local pipeline scripts, not to turn this repo into a broad general-purpose app surface.
-They are lightweight wrappers now: a base `pip install -e .` can expose them without pulling in the full training stack, and they will print a clear missing-extra hint if you run them without the required dependency profile.
+They are thin wrappers around the Python modules in this package. After `pip install -e .`, the declared dependencies in `pyproject.toml` should satisfy imports; if not, the CLI prints `run=pip install -e .` on stderr.
 
-## Dependency profiles
+## Python dependencies
 
-The package is split into capability extras:
+Everything needed for the default training and collection workflow is listed under `[project] dependencies` in `pyproject.toml`. Install with:
 
-- base install: `pip install -e .`
-- full repo workflow: `pip install -e '.[pipeline]'`
-- image training only: `pip install -e '.[training]'`
-- Hugging Face collection only: `pip install -e '.[collection]'`
-- video only: `pip install -e '.[video]'`
+```bash
+pip install -e .
+```
 
-Normal native fallback usage should still go through `./local.sh deps` or `./local.sh setup`, which install the full `pipeline` profile into `./.venv`.
+Normal native fallback usage should still go through `./local.sh deps` or `./local.sh setup`, which install that set into `./.venv`.
 
 ## Containerized path
 
@@ -188,19 +175,16 @@ For deeper command coverage, see [COMMANDS.md](COMMANDS.md).
 
 ## Performance-oriented paths
 
-Quality-first 4090 pipeline:
+There is a single full pipeline script: `scripts/full_pipeline_4090.sh`.
+
+- Default (`PIPELINE_PROFILE` unset or `standard`): lighter defaults for direct runs and custom overrides.
+- Quality-first (`PIPELINE_PROFILE=max_quality`): the profile used by `./local.sh run` and the training helpers in `scripts/lib/training.sh`.
 
 ```bash
-bash scripts/max_quality_4090.sh
+PIPELINE_PROFILE=max_quality bash scripts/full_pipeline_4090.sh
 ```
 
-Full 4090-oriented pipeline:
-
-```bash
-bash scripts/full_pipeline_4090.sh
-```
-
-Example override:
+Example override on the standard profile:
 
 ```bash
 DATA_DIR=./data_best EPOCHS=14 SKIP_SWEEP=1 bash scripts/full_pipeline_4090.sh

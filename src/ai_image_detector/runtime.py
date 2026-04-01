@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from torch.optim import AdamW
 
+from .io_limits import configure_pil_limits
 from .utils import git_commit
 
 
@@ -30,6 +31,7 @@ def resolve_num_workers(num_workers: int = 4) -> int:
 
 
 def configure_torch_runtime(device: torch.device, deterministic: bool) -> None:
+    configure_pil_limits()
     if deterministic:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import tempfile
 import unittest
 from unittest import mock
+
+import torch
 
 from _support import ROOT  # noqa: F401
 from ai_image_detector import checkpoints
@@ -54,11 +57,12 @@ class CheckpointsTests(unittest.TestCase):
         train_text = (ROOT / "src" / "ai_image_detector" / "train.py").read_text(encoding="utf-8")
         self.assertIn("best = load_checkpoint(best_path, map_location=device)", train_text)
         self.assertIn("save_training_checkpoint(", train_text)
-        self.assertNotIn('torch.load(out / "best.pt"', train_text)
+        self.assertIn("ckpt = load_training_checkpoint(resume_path, map_location=device)", train_text)
+        self.assertNotIn("torch.load(", train_text)
 
     def test_distill_script_uses_shared_checkpoint_loader_for_resume(self) -> None:
         distill_text = (ROOT / "scripts" / "train_distill.py").read_text(encoding="utf-8")
-        self.assertIn("ckpt = torch.load(resume_path, map_location=device)", distill_text)
+        self.assertIn("ckpt = load_training_checkpoint(resume_path, map_location=device)", distill_text)
         self.assertIn("save_training_checkpoint(", distill_text)
 
     def test_distill_script_writes_safetensors_and_summary_artifacts(self) -> None:
@@ -67,3 +71,34 @@ class CheckpointsTests(unittest.TestCase):
         self.assertIn('out / "best.safetensors"', distill_text)
         self.assertIn('out / "best_checkpoint.txt"', distill_text)
         self.assertIn('out / "best_model_summary.json"', distill_text)
+
+    def test_load_training_checkpoint_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "last.pt"
+            payload = {
+                "epoch": 1,
+                "best_auc": 0.5,
+                "state_dict": {"w": torch.zeros(2, 2)},
+            }
+            checkpoints.save_training_checkpoint(path, payload)
+            loaded = checkpoints.load_training_checkpoint(path, map_location="cpu")
+        self.assertEqual(loaded["epoch"], 1)
+        self.assertEqual(loaded["best_auc"], 0.5)
+        self.assertEqual(tuple(loaded["state_dict"]["w"].shape), (2, 2))
+
+    def test_args_dict_for_checkpoint_omits_sensitive_keys(self) -> None:
+        ns = argparse.Namespace(
+            data="./data",
+            hf_token="supersecret",
+            api_key="x",
+            oauth_access_token="t",
+            tokenizer_name="gpt2",
+            normal_flag=True,
+        )
+        d = checkpoints.args_dict_for_checkpoint(ns)
+        self.assertEqual(d["data"], "./data")
+        self.assertTrue(d["normal_flag"])
+        self.assertEqual(d["tokenizer_name"], "gpt2")
+        self.assertNotIn("hf_token", d)
+        self.assertNotIn("api_key", d)
+        self.assertNotIn("oauth_access_token", d)

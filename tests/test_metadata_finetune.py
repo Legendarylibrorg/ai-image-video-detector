@@ -24,8 +24,8 @@ class MetadataFinetuneSurfaceTests(unittest.TestCase):
     def test_data_loader_supports_optional_metadata_features(self) -> None:
         text = (ROOT / "src" / "ai_image_detector" / "data.py").read_text(encoding="utf-8")
         self.assertIn("class MetadataImageFolder", text)
-        self.assertIn("def _metadata_feature_tensor(path: str) -> torch.Tensor:", text)
-        self.assertIn("metadata_features = _metadata_feature_tensor(path)", text)
+        self.assertIn("extract_metadata_features(path)", text)
+        self.assertIn("make_jailed_rgb_loader", text)
         self.assertIn("use_metadata_features: bool = False", text)
         self.assertIn("metadata_feature_dim() if use_metadata_features else 0", text)
 

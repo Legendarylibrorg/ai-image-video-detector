@@ -258,7 +258,7 @@ print_diverse_audit_args() {
 
 collect_diverse_image_data() {
   local out="${DATA_DIR:-./data_best}"
-  local query_csv="${DIVERSE_HF_QUERIES:-$DIVERSE_HF_QUERY_CSV_DEFAULT}"
+  local query_csv="${DIVERSE_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}"
   local hf_cache="${DIVERSE_HF_CACHE_FILE:-./.local/hf_diverse_sources.txt}"
   local timeout_sec="${DIVERSE_DISCOVERY_TIMEOUT_SEC:-900}"
   local -a common_args=()
