@@ -3,7 +3,7 @@ name = "ai-image-detector"
 version = "0.1.0"
 description = "Linux pipeline for local AI image and video collection and PyTorch training"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
   "torch>=2.2",
   "torchvision>=0.17",

@@ -151,6 +151,18 @@ Best security with GPU:
 
 Linux is the supported native host path.
 
+End-to-end entry points (pick one, then continue with **Bootstrap** below):
+
+| Path | Commands |
+|------|----------|
+| **Git** | `git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git` then `cd ai-image-video-detector` |
+| **Tarball (no git)** | `curl -fsSL -o repo.tar.gz https://github.com/Legendarylibrorg/ai-image-video-detector/archive/refs/heads/main.tar.gz` → `tar -xzf repo.tar.gz` → `mv ai-image-video-detector-main ai-image-video-detector` → `cd ai-image-video-detector` |
+| **One-liner** | `curl -fsSL` the repo `install.sh` from `raw.githubusercontent.com/.../main/install.sh` and pipe it to `bash` (installs apt packages when `sudo`/`apt-get` exist, clones if needed, runs `./local.sh setup`; same URL as README) |
+
+`./local.sh` and `install.sh` are tracked as executable (`100755`); if your filesystem strips execute bits, run `bash ./local.sh …` instead.
+
+**Bootstrap note:** `./local.sh setup` runs `doctor` with a **relaxed disk check** (`SETUP_DOCTOR_MIN_FREE_GB`, default `0` during setup) so first-time setup succeeds on smaller disks. A manual `./local.sh doctor` still defaults to **40GB** free space for full training; the full pipeline also enforces its own disk guard.
+
 ### Obtain the source
 
 Use **one** of the following.

@@ -1,7 +1,17 @@
 source "$ROOT_DIR/scripts/lib/env.sh"
+# shellcheck source=hf_default_queries.inc.sh
+source "$ROOT_DIR/scripts/lib/hf_default_queries.inc.sh"
 
 TRAIN_LOCK_STALE_SEC="${TRAIN_LOCK_STALE_SEC:-7200}"
 GPU_REQUIRED_CMDS="${GPU_REQUIRED_CMDS:-pipeline,smoke-real}"
+
+# Bash-only trim (avoid `echo | xargs` — xargs can fail in sandboxes via sysconf).
+trim_ws() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
 
 ensure_env() {
   if [[ "${ENV_READY:-0}" == "1" ]]; then
@@ -162,17 +172,6 @@ ensure_malware_scan_ready() {
   fi
 }
 
-print_hf_query_args() {
-  local query_csv="$1"
-  IFS=',' read -r -a _queries <<< "$query_csv"
-  local q=""
-  for q in "${_queries[@]}"; do
-    q="$(echo "$q" | xargs)"
-    [[ -z "$q" ]] && continue
-    printf "%s\n" --hf-query "$q"
-  done
-}
-
 print_cli_flag() {
   printf "%s\n" "$1"
 }
@@ -203,10 +202,21 @@ print_cli_flag_values_from_csv() {
   [[ -z "$csv" ]] && return 0
   IFS=',' read -r -a values <<< "$csv"
   for value in "${values[@]}"; do
-    value="$(echo "$value" | xargs)"
+    value="$(trim_ws "$value")"
     [[ -z "$value" ]] && continue
     print_cli_flag_value "$flag" "$value"
   done
+}
+
+# Fills AID_CSV_CLI_BUF from print_cli_flag_values_from_csv; append to your array in the caller.
+AID_CSV_CLI_BUF=()
+read_aid_csv_cli_buf() {
+  AID_CSV_CLI_BUF=()
+  local line=""
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    AID_CSV_CLI_BUF+=("$line")
+  done < <(print_cli_flag_values_from_csv "$1" "$2")
 }
 
 repo_python_bin() {

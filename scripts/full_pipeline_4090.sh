@@ -40,7 +40,7 @@ BEST_DS_HF_DISCOVERY_WORKERS="${BEST_DS_HF_DISCOVERY_WORKERS:-8}"
 BEST_DS_HF_QUERY_PAUSE_MS="${BEST_DS_HF_QUERY_PAUSE_MS:-0}"
 BEST_DS_HF_CACHE_FILE="${BEST_DS_HF_CACHE_FILE:-./.local/hf_discovered_sources.txt}"
 BEST_DS_CACHE_DIR="${BEST_DS_CACHE_DIR:-./.local/hf}"
-BEST_DS_HF_QUERIES="${BEST_DS_HF_QUERIES:-real camera photo dataset,smartphone photo dataset,dslr photo dataset,webcam image dataset,cctv frame image dataset,portrait selfie real fake,group photo real fake,indoor room photo dataset,outdoor landscape photo dataset,product photo dataset,food photo dataset,animal photo dataset,night photo dataset,macro close up photo dataset,panorama photo dataset,high resolution photo dataset,low resolution image dataset,street photo dataset,travel photo dataset,architecture photo dataset,fashion photo dataset,sports action photo dataset,vehicle road photo dataset,drone aerial photo dataset,satellite image dataset,meme image real vs ai,captioned image real ai,screenshot dataset image,chat ui screenshot,browser screenshot image,dashboard screenshot dataset,mobile app screenshot image,website screenshot dataset,screen capture ui dataset,desktop screenshot dataset,tablet screenshot image,image poster infographic,logo brand image dataset,advertisement creative image,receipt scanned document image,id card document image,invoice form document scan,passport scan image,document camera capture dataset,newspaper scan image,textbook page image,old photo scan dataset,film scan photo dataset,raw photo dataset,anime illustration real fake,digital art illustration dataset,manga artwork dataset,comic panel image dataset,3d render real fake,cgi synthetic image real,game render frame dataset,watermarked social media image,recompressed image dataset,heavily edited real photo,jpeg photo dataset,png image dataset,webp image dataset,extreme aspect ratio image,deepfake face swap image,diffusion generated image latest,midjourney generated image dataset,dalle generated image dataset,flux generated image dataset,stable diffusion image dataset,stock photo real ai,image manipulation detection,synthetic portrait dataset}"
+BEST_DS_HF_QUERIES="${BEST_DS_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}"
 BEST_DS_SOURCES_FILE="${BEST_DS_SOURCES_FILE:-}"
 BEST_DS_EXTRA_SOURCES="${BEST_DS_EXTRA_SOURCES:-}"
 BEST_DS_NO_DEFAULT_SOURCES="${BEST_DS_NO_DEFAULT_SOURCES:-1}"
@@ -138,14 +138,6 @@ run_cmd() {
   else
     "$@"
   fi
-}
-
-# Bash-only trim (avoid `xargs` / `sysconf` — fails in some sandboxes, e.g. Cursor CI).
-trim_ws() {
-  local s="$1"
-  s="${s#"${s%%[![:space:]]*}"}"
-  s="${s%"${s##*[![:space:]]}"}"
-  printf '%s' "$s"
 }
 
 require_disk_free_gb() {
@@ -492,27 +484,15 @@ if [[ "$SKIP_DATA" != "1" ]]; then
     )
   fi
 
-  if [[ -n "$BEST_DS_HF_QUERIES" ]]; then
-    IFS=',' read -r -a _queries <<< "$BEST_DS_HF_QUERIES"
-    for q in "${_queries[@]}"; do
-      q="$(trim_ws "$q")"
-      [[ -z "$q" ]] && continue
-      dataset_cmd+=(--hf-query "$q")
-    done
-  fi
+  read_aid_csv_cli_buf --hf-query "${BEST_DS_HF_QUERIES:-}"
+  dataset_cmd+=("${AID_CSV_CLI_BUF[@]}")
 
   if [[ -n "$BEST_DS_SOURCES_FILE" ]]; then
     dataset_cmd+=(--sources-file "$BEST_DS_SOURCES_FILE")
   fi
 
-  if [[ -n "$BEST_DS_EXTRA_SOURCES" ]]; then
-    IFS=',' read -r -a _extra_sources <<< "$BEST_DS_EXTRA_SOURCES"
-    for src in "${_extra_sources[@]}"; do
-      src="$(trim_ws "$src")"
-      [[ -z "$src" ]] && continue
-      dataset_cmd+=(--extra-source "$src")
-    done
-  fi
+  read_aid_csv_cli_buf --extra-source "${BEST_DS_EXTRA_SOURCES:-}"
+  dataset_cmd+=("${AID_CSV_CLI_BUF[@]}")
 
   if [[ "$BEST_DS_NO_DEFAULT_SOURCES" == "1" ]]; then
     dataset_cmd+=(--no-default-sources)

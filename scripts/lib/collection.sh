@@ -5,10 +5,8 @@ run_image_dataset_builder() {
   local query_csv="$2"
   shift 2
   local -a query_args=()
-  local line=""
-  while IFS= read -r line; do
-    query_args+=("$line")
-  done < <(print_hf_query_args "$query_csv")
+  read_aid_csv_cli_buf --hf-query "$query_csv"
+  query_args+=("${AID_CSV_CLI_BUF[@]}")
   run_repo_python scripts/build_best_dataset.py \
     --out "$out" \
     "$@" \
@@ -21,10 +19,8 @@ run_image_dataset_discovery() {
   local query_csv="$3"
   shift 3
   local -a query_args=()
-  local line=""
-  while IFS= read -r line; do
-    query_args+=("$line")
-  done < <(print_hf_query_args "$query_csv")
+  read_aid_csv_cli_buf --hf-query "$query_csv"
+  query_args+=("${AID_CSV_CLI_BUF[@]}")
   run_repo_python_with_timeout "$timeout_sec" scripts/build_best_dataset.py \
     --out "$out" \
     "$@" \
