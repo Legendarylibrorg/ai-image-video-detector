@@ -61,7 +61,7 @@ class LocalShTests(unittest.TestCase):
         out = proc.stdout
         self.assertIn("setup_stage=python_deps status=run", out)
         self.assertIn("[DRY_RUN] env UPGRADE_TOOLCHAIN=0 bash scripts/install_deps.sh", out)
-        self.assertIn("[DRY_RUN] env DOCTOR_REQUIRE_TOKEN=0 bash scripts/doctor.sh", out)
+        self.assertIn("[DRY_RUN] env DOCTOR_REQUIRE_TOKEN=0 DOCTOR_MIN_FREE_GB=0 bash scripts/doctor.sh", out)
         self.assertIn("setup_status=ready", out)
 
     def test_deps_command_runs_install_script(self) -> None:

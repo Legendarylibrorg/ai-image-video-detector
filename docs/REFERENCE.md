@@ -8,7 +8,7 @@ This file keeps the README short and startup-focused while collecting the broade
 |----------|---------|
 | [STARTUP.md](STARTUP.md) | First-time setup: secure VM + Compose, native Linux, macOS, Windows |
 | [COMMANDS.md](COMMANDS.md) | Day-to-day `./local.sh` and container commands |
-| [REFERENCE.md](REFERENCE.md) | This file: layout, env vars, artifact names, training options |
+| [REFERENCE.md](REFERENCE.md) | This file: layout, pipeline diagram, `scripts/*.py` roles, env vars, training options |
 | [../SECURITY.md](../SECURITY.md) | Reporting vulnerabilities |
 
 **Platform stance:** Linux (VM or bare metal) is the supported training path for CUDA and the full pipeline. macOS and Windows use Docker Compose (CPU `pipeline` service) or WSL2; native macOS Python is useful for **development and tests**, not for matching Linux+CUDA training.
@@ -51,6 +51,102 @@ The current pipeline is:
 8. persist resumable state, collection manifests, and stage markers under `./.local`
 
 This means the repo is no longer just “run one train script on one folder.” It is a local dataset-building and retraining workflow with resumability and incremental refresh support.
+
+## Pipeline architecture (data flow)
+
+High-level flow from collection through training to release artifacts (names match on-disk dirs):
+
+```mermaid
+flowchart TB
+  subgraph collect[Collection]
+    BD["build_best_dataset.py"]
+    BV["build_video_dataset.py"]
+    IG["ingest_model_outputs.py"]
+    AD["audit_diversity.py"]
+    RQ["review_queue_to_dataset.py"]
+  end
+  subgraph disk[Working directories]
+    DB[("data_best")]
+    VD[("video_data")]
+    DN[("data_new")]
+    PT[(".local/training_data")]
+    SW[("artifacts_sweep")]
+    ENS[("artifacts_ens")]
+    VA[("video_artifacts")]
+  end
+  subgraph train[Training and eval]
+    HS["hparam_sweep.sh → aid-train"]
+    TE["train_ensemble.sh → aid-train"]
+    FE["fit_ensemble.py"]
+    FD["fit_domain_thresholds.py"]
+    EV["eval_test_ensemble.py"]
+    HM["mine_hard_negatives.py"]
+    DS["train_distill.py"]
+  end
+  subgraph gate[Quality gates and shipping]
+    BG["benchmark_gate.py"]
+    WR["write_pipeline_report.py"]
+    EX["export_best_release.py"]
+  end
+  BD --> DB
+  BV --> VD
+  IG --> DN
+  AD --> DB
+  RQ --> DN
+  DB --> PT
+  DN --> PT
+  PT --> HS
+  PT --> TE
+  HS --> SW
+  TE --> ENS
+  ENS --> FE
+  ENS --> FD
+  ENS --> EV
+  ENS --> HM
+  HM --> PT
+  ENS --> DS
+  ENS --> BG
+  DB --> WR
+  VD --> WR
+  ENS --> WR
+  ENS --> EX
+  VD --> VA
+```
+
+Orchestration is normally **`scripts/full_pipeline_4090.sh`** (full run) or **`scripts/do.sh`** / **`./local.sh`** (operator commands). **`scripts/smoke_resume_eval.sh`** exercises a minimal path with synthetic data.
+
+Robustness evaluation is run as **`repo_python -m ai_image_detector.robust_eval`** from `full_pipeline_4090.sh` (library module, not a `scripts/*.py` file).
+
+## `scripts/*.py` inventory
+
+All of these live under `scripts/` (repo root on `PYTHONPATH` when invoked via `repo_python` / `bash scripts/...`). Nothing listed as **internal** should be treated as a stable public CLI; call it only through the supported shell entrypoints or imports from other repo scripts.
+
+| Script | Role |
+|--------|------|
+| `build_best_dataset.py` | **Operator**: image dataset build (HF discovery, streaming, splits). Used by `full_pipeline_4090.sh`, `scripts/lib/collection.sh`, `smoke_real_stack.sh`. |
+| `build_video_dataset.py` | **Operator**: video dataset pull/normalize. Used by `full_pipeline_4090.sh`, `collection.sh`. |
+| `prepare_training_data.py` | **Operator**: merge base + incremental → training-ready tree. Used by `full_pipeline_4090.sh`, `training.sh`, `smoke_resume_eval.sh`. |
+| `ingest_model_outputs.py` | **Operator**: ingest incoming model outputs → `data_new`. Used by `collection.sh`. |
+| `audit_diversity.py` | **Operator**: diversity audit after diverse collection profile. Used by `collection.sh`. |
+| `review_queue_to_dataset.py` | **Operator**: review queue → incremental train data. Used by `training.sh`. |
+| `fit_ensemble.py` | **Operator**: stack calibrator / ensemble weights. Used by `full_pipeline_4090.sh`, `smoke_resume_eval.sh`. |
+| `fit_domain_thresholds.py` | **Operator**: per-domain thresholds. Used by `full_pipeline_4090.sh`, `smoke_resume_eval.sh`. |
+| `eval_test_ensemble.py` | **Operator**: test-set metrics for ensemble. Used by `full_pipeline_4090.sh`, `smoke_resume_eval.sh`. |
+| `mine_hard_negatives.py` | **Operator**: hard-negative mining. Used by `full_pipeline_4090.sh`. |
+| `train_distill.py` | **Operator**: student distillation. Used by `full_pipeline_4090.sh`. |
+| `write_pipeline_report.py` | **Operator**: dataset QA / final / failure reports. Used by `full_pipeline_4090.sh`, `smoke_resume_eval.sh`. |
+| `export_best_release.py` | **Operator**: release bundle under `artifacts_ens/release`. Used by `full_pipeline_4090.sh`, `smoke_resume_eval.sh`. |
+| `benchmark_gate.py` | **Operator**: threshold gate on metrics. Used by `training.sh`, `smoke_resume_eval.sh`. |
+| `hf_data.py` | **Internal**: HF downloads, cache helpers, manifests. Imported by dataset builders. |
+| `dataset_builder_common.py` | **Internal**: shared HF env and target counting. Imported by image/video builders. |
+| `build_best_dataset_policy.py` | **Internal**: policy knobs for `build_best_dataset`. |
+| `build_best_dataset_support.py` | **Internal**: acceptance loop and summaries for `build_best_dataset`. |
+| `build_best_dataset_sources.py` | **Internal**: source lists and HF discovery. Imported by `build_best_dataset.py`. |
+| `image_materialize.py` | **Internal**: image materialization / dedup helpers. Imported by `build_best_dataset.py`. |
+| `script_support.py` | **Internal**: JSON, git, checkpoint paths for scripts. Imported by reporting/export/benchmark scripts. |
+| `release_selection.py` | **Internal**: model selection and manifest pieces. Imported by `export_best_release.py`, `write_pipeline_report.py`, `benchmark_gate.py`. |
+
+Image member training uses **`aid-train`** from `scripts/train_ensemble.sh` and `scripts/hparam_sweep.sh` (package CLI, not a `scripts/*.py` driver). Video training uses **`aid-video-train`** from `full_pipeline_4090.sh`.
 
 ## Dataset and artifact basics
 
@@ -124,6 +220,8 @@ Those commands exist to support the local pipeline scripts, not to turn this rep
 They are thin wrappers around the Python modules in this package. After `pip install -e .`, the declared dependencies in `pyproject.toml` should satisfy imports; if not, the CLI prints `run=pip install -e .` on stderr.
 
 ## Python dependencies
+
+The codebase uses **Python 3.10+** syntax (for example `str | None` unions). `requires-python` in `pyproject.toml` matches that.
 
 Everything needed for the default training and collection workflow is listed under `[project] dependencies` in `pyproject.toml`. Install with:
 
@@ -200,6 +298,13 @@ Example override on the standard profile:
 ```bash
 DATA_DIR=./data_best EPOCHS=14 SKIP_SWEEP=1 bash scripts/full_pipeline_4090.sh
 ```
+
+## Setup and `doctor` (native Linux)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SETUP_DOCTOR_MIN_FREE_GB` | `0` | During `./local.sh setup`, forwarded as `DOCTOR_MIN_FREE_GB` so bootstrap succeeds on smaller disks. Set higher if you want setup-time disk enforcement. |
+| `DOCTOR_MIN_FREE_GB` | `40` | `scripts/doctor.sh` requires at least this many GiB free under the repo root (unless lowered by setup as above). |
 
 ## Environment variables (`AID_*`)
 

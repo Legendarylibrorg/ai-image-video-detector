@@ -96,7 +96,8 @@ run_doctor() {
     echo "setup_stage=doctor status=skip_opt_out"
     return
   fi
-  run_setup_command doctor env DOCTOR_REQUIRE_TOKEN=0 bash scripts/doctor.sh
+  # Default doctor wants ~40GB free for full training; relax during bootstrap so clone→setup works on smaller disks.
+  run_setup_command doctor env DOCTOR_REQUIRE_TOKEN=0 DOCTOR_MIN_FREE_GB="${SETUP_DOCTOR_MIN_FREE_GB:-0}" bash scripts/doctor.sh
 }
 
 main() {

@@ -128,11 +128,11 @@ print_next_steps() {
   if [ "$display_root" != "." ]; then
     printf '  cd %q\n' "$display_root"
   fi
-  printf '  source .venv/bin/activate\n'
   printf "  printf \"HF_TOKEN='your_token_here'\\\\n\" >> .env\n"
   printf '  ./local.sh smoke\n'
   printf '  ./local.sh run\n'
   printf '  ./local.sh status\n'
+  printf '  (optional) source .venv/bin/activate   # ad-hoc python/pip; ./local.sh already uses .venv\n'
 }
 
 ensure_linux

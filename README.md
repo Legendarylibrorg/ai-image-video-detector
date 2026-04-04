@@ -20,7 +20,7 @@ It is not a production serving repo in the current mode.
 |-----|----------|
 | [docs/STARTUP.md](docs/STARTUP.md) | Full walkthrough: Linux VM + Docker, native Linux (`apt`), **macOS** (Docker Desktop + optional Python dev), Windows / WSL2 |
 | [docs/COMMANDS.md](docs/COMMANDS.md) | `./local.sh` subcommands and Compose one-liners |
-| [docs/REFERENCE.md](docs/REFERENCE.md) | Repo layout, artifacts, **`AID_*` environment variables**, `aid-train` dataset/manifest flags |
+| [docs/REFERENCE.md](docs/REFERENCE.md) | Pipeline diagram, **`scripts/*.py` roles**, repo layout, artifacts, **`AID_*`**, `aid-train` flags |
 
 ## Secure Linux VM + Docker Compose
 
@@ -97,6 +97,8 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh run
 ./local.sh status
 ```
+
+Setup runs a lenient disk check so clone-to-smoke works on typical dev disks; `./local.sh doctor` alone still defaults to **40GB** free for full training. One-liner install: `curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash` (see [docs/STARTUP.md](docs/STARTUP.md)).
 
 If you want to split the full flow:
 
