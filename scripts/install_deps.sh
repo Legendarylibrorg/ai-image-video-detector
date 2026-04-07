@@ -167,16 +167,20 @@ verify_python_deps() {
   python "$ROOT_DIR/scripts/deps_profile.py" --extras "$DEPS_EXTRA" --check-imports
 }
 
+venv_command_path() {
+  printf '%s/bin/%s\n' "$VENV_DIR" "$1"
+}
+
 verify_required_commands() {
-  if deps_extra_enabled collection "$DEPS_EXTRA" && ! command -v hf >/dev/null 2>&1; then
+  if deps_extra_enabled collection "$DEPS_EXTRA" && [[ ! -x "$(venv_command_path hf)" ]]; then
     echo "deps_fail=huggingface_cli_missing extra=$DEPS_EXTRA run=$(repair_install_command)" >&2
     return 1
   fi
-  if deps_extra_enabled training "$DEPS_EXTRA" && ! command -v aid-train >/dev/null 2>&1; then
+  if deps_extra_enabled training "$DEPS_EXTRA" && [[ ! -x "$(venv_command_path aid-train)" ]]; then
     echo "deps_fail=repo_cli_missing cli=aid-train extra=$DEPS_EXTRA run=$(repair_install_command)" >&2
     return 1
   fi
-  if deps_extra_enabled training "$DEPS_EXTRA" && deps_extra_enabled video "$DEPS_EXTRA" && ! command -v aid-video-train >/dev/null 2>&1; then
+  if deps_extra_enabled training "$DEPS_EXTRA" && deps_extra_enabled video "$DEPS_EXTRA" && [[ ! -x "$(venv_command_path aid-video-train)" ]]; then
     echo "deps_fail=repo_cli_missing cli=aid-video-train extra=$DEPS_EXTRA run=$(repair_install_command)" >&2
     return 1
   fi
@@ -258,7 +262,7 @@ else
     install_local_package
   else
     echo "deps_lock=missing file=$LOCK_FILE fallback=pyproject_resolve"
-    pip_cmd install --upgrade --upgrade-strategy eager -e "$(project_install_target)"
+    pip_cmd install --upgrade --upgrade-strategy eager -e "$(deps_extra_install_target "$DEPS_EXTRA")"
   fi
 fi
 

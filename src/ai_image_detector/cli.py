@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from importlib import import_module
 from pathlib import Path
+import shlex
 import sys
 
 
@@ -26,7 +27,10 @@ def _run_entrypoint(module_name: str, attr_name: str, *, extra: str) -> int:
             raise
         repo_root = _repo_root()
         if repo_root is not None:
-            hint = f'run=(cd {repo_root} && env DEPS_EXTRA="{extra}" ./local.sh deps)'
+            hint = (
+                f"run=(cd {shlex.quote(str(repo_root))} && "
+                f"env DEPS_EXTRA={shlex.quote(extra)} ./local.sh deps)"
+            )
         else:
             hint = f'run={_pip_extra_install_command(extra)}'
         print(

@@ -21,6 +21,8 @@ It is not a production serving repo in the current mode.
 | [docs/STARTUP.md](docs/STARTUP.md) | Full walkthrough: Linux VM + Docker, native Linux (`apt`), **macOS** (Docker Desktop + optional Python dev), Windows / WSL2 |
 | [docs/COMMANDS.md](docs/COMMANDS.md) | `./local.sh` subcommands and Compose one-liners |
 | [docs/REFERENCE.md](docs/REFERENCE.md) | Pipeline diagram, **`scripts/*.py` roles**, repo layout, artifacts, **`AID_*`**, `aid-train` flags |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contributor workflow, checks, and PR expectations |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community behavior expectations |
 
 ## Linux First Start
 
@@ -158,6 +160,7 @@ pip install -e '.[pipeline]'
 For native local Linux use, prefer `./local.sh deps` or `./local.sh setup`; those install the repo-managed environment into `./.venv` using `scripts/install_deps.sh`.
 When you only need part of the stack, use a profile-aware repo install such as `DEPS_EXTRA=collection ./local.sh deps` or `DEPS_EXTRA=training,video ./local.sh deps`.
 The repo bootstrap installs the `aid-*` wrappers into `./.venv/bin`; if imports fail, they print an absolute repo-root `./local.sh deps` recovery command on stderr.
+The pinned direct dependency set lives in `requirements.lock`, and `requirements.lock.json` stores the official PyPI SHA256 digest chosen for each pinned release. `.github/workflows/security.yml` verifies those hashes, and `.github/workflows/deps-update.yml` refreshes both files on a schedule.
 
 ## Repo Layout
 
@@ -216,7 +219,8 @@ The public commands line up to the project structure like this:
 ## Open Source Notes
 
 - License: MIT (see `LICENSE`).
-- Contributing: branch from `main`, keep changes focused, run `python -m unittest discover -s tests -p 'test_*.py'` before opening a PR.
+- Contributing: see [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, and PR expectations.
+- Community standards: see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 - Security reporting: see `SECURITY.md`.
 - Do not commit secrets (tokens, keys) or private datasets.
 - Dataset and model licenses vary by source; verify each source license before commercial or production use.
