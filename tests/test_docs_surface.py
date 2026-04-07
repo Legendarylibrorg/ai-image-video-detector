@@ -37,6 +37,13 @@ class DocsSurfaceTests(unittest.TestCase):
         for rel_path in linked_docs:
             self.assertTrue((ROOT / rel_path).exists(), rel_path)
 
+    def test_open_source_docs_exist_and_are_linked(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        for rel_path in ["CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "SECURITY.md"]:
+            with self.subTest(path=rel_path):
+                self.assertTrue((ROOT / rel_path).exists(), rel_path)
+                self.assertIn(rel_path, readme)
+
     def test_commands_doc_mentions_core_local_commands(self) -> None:
         text = (ROOT / "docs" / "COMMANDS.md").read_text(encoding="utf-8")
         for command in [

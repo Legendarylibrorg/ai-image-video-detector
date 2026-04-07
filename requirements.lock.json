@@ -1,0 +1,126 @@
+{
+  "generated_from": "scripts/update_deps_lock.py",
+  "packages": [
+    {
+      "artifact": {
+        "filename": "torch-2.11.0-cp310-cp310-manylinux_2_28_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "sha256": "1b32ceda909818a03b112006709b02be1877240c31750a8d9c6b7bf5f2d8a6e5",
+        "url": "https://files.pythonhosted.org/packages/f9/1e/18a9b10b4bd34f12d4e561c52b0ae7158707b8193c6cfc0aad2b48167090/torch-2.11.0-cp310-cp310-manylinux_2_28_x86_64.whl"
+      },
+      "name": "torch",
+      "project": "torch",
+      "requires_python": ">=3.10",
+      "version": "2.11.0"
+    },
+    {
+      "artifact": {
+        "filename": "torchvision-0.26.0-cp310-cp310-manylinux_2_28_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "sha256": "b6f9ad1ecc0eab52647298b379ee9426845f8903703e6127973f8f3d049a798b",
+        "url": "https://files.pythonhosted.org/packages/5e/00/24d8c7845c3f270153fb81395a5135b2778e2538e81d14c6aea5106c689c/torchvision-0.26.0-cp310-cp310-manylinux_2_28_x86_64.whl"
+      },
+      "name": "torchvision",
+      "project": "torchvision",
+      "requires_python": "!=3.14.1,>=3.10",
+      "version": "0.26.0"
+    },
+    {
+      "artifact": {
+        "filename": "numpy-2.2.6.tar.gz",
+        "packagetype": "sdist",
+        "sha256": "e29554e2bef54a90aa5cc07da6ce955accb83f21ab5de01a62c8478897b264fd",
+        "url": "https://files.pythonhosted.org/packages/76/21/7d2a95e4bba9dc13d043ee156a356c0a8f0c6309dff6b21b4d71a073b8a8/numpy-2.2.6.tar.gz"
+      },
+      "name": "numpy",
+      "project": "numpy",
+      "requires_python": ">=3.10",
+      "version": "2.2.6"
+    },
+    {
+      "artifact": {
+        "filename": "scikit_learn-1.7.2.tar.gz",
+        "packagetype": "sdist",
+        "sha256": "20e9e49ecd130598f1ca38a1d85090e1a600147b9c02fa6f15d69cb53d968fda",
+        "url": "https://files.pythonhosted.org/packages/98/c2/a7855e41c9d285dfe86dc50b250978105dce513d6e459ea66a6aeb0e1e0c/scikit_learn-1.7.2.tar.gz"
+      },
+      "name": "scikit-learn",
+      "project": "scikit-learn",
+      "requires_python": ">=3.10",
+      "version": "1.7.2"
+    },
+    {
+      "artifact": {
+        "filename": "pillow-12.2.0.tar.gz",
+        "packagetype": "sdist",
+        "sha256": "a830b1a40919539d07806aa58e1b114df53ddd43213d9c8b75847eee6c0182b5",
+        "url": "https://files.pythonhosted.org/packages/8c/21/c2bcdd5906101a30244eaffc1b6e6ce71a31bd0742a01eb89e660ebfac2d/pillow-12.2.0.tar.gz"
+      },
+      "name": "pillow",
+      "project": "pillow",
+      "requires_python": ">=3.10",
+      "version": "12.2.0"
+    },
+    {
+      "artifact": {
+        "filename": "piexif-1.1.3.zip",
+        "packagetype": "sdist",
+        "sha256": "83cb35c606bf3a1ea1a8f0a25cb42cf17e24353fd82e87ae3884e74a302a5f1b",
+        "url": "https://files.pythonhosted.org/packages/fa/84/a3f25cec7d0922bf60be8000c9739d28d24b6896717f44cc4cfb843b1487/piexif-1.1.3.zip"
+      },
+      "name": "piexif",
+      "project": "piexif",
+      "requires_python": ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*",
+      "version": "1.1.3"
+    },
+    {
+      "artifact": {
+        "filename": "opencv_python_headless-4.13.0.92-cp37-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "packagetype": "bdist_wheel",
+        "sha256": "0525a3d2c0b46c611e2130b5fdebc94cf404845d8fa64d2f3a3b679572a5bd22",
+        "url": "https://files.pythonhosted.org/packages/92/ce/bd17ff5772938267fd49716e94ca24f616ff4cb1ff4c6be13085108037be/opencv_python_headless-4.13.0.92-cp37-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+      },
+      "name": "opencv-python-headless",
+      "project": "opencv-python-headless",
+      "requires_python": ">=3.6",
+      "version": "4.13.0.92"
+    },
+    {
+      "artifact": {
+        "filename": "datasets-4.8.4.tar.gz",
+        "packagetype": "sdist",
+        "sha256": "a1429ed853275ce7943a01c6d2e25475b4501eb758934362106a280470df3a52",
+        "url": "https://files.pythonhosted.org/packages/22/22/73e46ac7a8c25e7ef0b3bd6f10da3465021d90219a32eb0b4d2afea4c56e/datasets-4.8.4.tar.gz"
+      },
+      "name": "datasets",
+      "project": "datasets",
+      "requires_python": ">=3.10.0",
+      "version": "4.8.4"
+    },
+    {
+      "artifact": {
+        "filename": "huggingface_hub-1.9.1.tar.gz",
+        "packagetype": "sdist",
+        "sha256": "442af372207cc24dcb089caf507fcd7dbc1217c11d6059a06f6b90afe64e8bd2",
+        "url": "https://files.pythonhosted.org/packages/44/40/68d9b286b125d9318ae95c8f8b206e8672e7244b0eea61ebb4a88037638c/huggingface_hub-1.9.1.tar.gz"
+      },
+      "name": "huggingface_hub",
+      "project": "huggingface-hub",
+      "requires_python": ">=3.10.0",
+      "version": "1.9.1"
+    },
+    {
+      "artifact": {
+        "filename": "safetensors-0.7.0.tar.gz",
+        "packagetype": "sdist",
+        "sha256": "07663963b67e8bd9f0b8ad15bb9163606cd27cc5a1b96235a50d8369803b96b0",
+        "url": "https://files.pythonhosted.org/packages/29/9c/6e74567782559a63bd040a236edca26fd71bc7ba88de2ef35d75df3bca5e/safetensors-0.7.0.tar.gz"
+      },
+      "name": "safetensors",
+      "project": "safetensors",
+      "requires_python": ">=3.9",
+      "version": "0.7.0"
+    }
+  ],
+  "python_requires": ">=3.10"
+}

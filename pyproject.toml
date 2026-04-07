@@ -3,8 +3,31 @@ name = "ai-image-detector"
 version = "0.1.0"
 description = "Linux pipeline for local AI image and video collection and PyTorch training"
 readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.10"
+authors = [
+  {name = "Legendarylibrorg"},
+]
+keywords = ["ai", "image-detection", "video-detection", "hugging-face", "pytorch", "training-pipeline"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Legendarylibrorg/ai-image-video-detector"
+Repository = "https://github.com/Legendarylibrorg/ai-image-video-detector"
+Issues = "https://github.com/Legendarylibrorg/ai-image-video-detector/issues"
+Documentation = "https://github.com/Legendarylibrorg/ai-image-video-detector/blob/main/README.md"
 
 [project.optional-dependencies]
 inference = [
@@ -50,6 +73,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+license-files = ["LICENSE"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

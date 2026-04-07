@@ -39,7 +39,7 @@ Need the source first on Linux?
 
 Typical Compose path (repo root after clone):
   ./local.sh docker-doctor && docker compose build
-  then CPU/GPU steps in docs/STARTUP.md (container venv: /opt/aid-venv, caches under ./.local/hf)
+  then CPU/GPU steps in docs/STARTUP.md (container venv: /opt/aid-venv, active HF/pip caches in named volumes under /workspace/.local)
 
 One-line Linux install from upstream:
   curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash

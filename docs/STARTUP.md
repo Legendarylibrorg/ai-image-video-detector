@@ -113,7 +113,7 @@ Path map:
 - repo env file: `./.env` on the host, auto-read by Docker Compose for `HF_TOKEN`
 - general source tree: writable inside the container
 - writable host/container path pairs:
-  - `./.local` <-> `/workspace/.local`
+  - `./.local` <-> `/workspace/.local` for general repo-local state
   - `./data_best` <-> `/workspace/data_best`
   - `./data_new` <-> `/workspace/data_new`
   - `./video_data` <-> `/workspace/video_data`
@@ -123,10 +123,13 @@ Path map:
   - `./video_artifacts` <-> `/workspace/video_artifacts`
   - `./incoming_model_outputs` <-> `/workspace/incoming_model_outputs`
   - `./incoming_review_queue` <-> `/workspace/incoming_review_queue`
+- named volume/container path pairs:
+  - `aid_hf_cache` <-> `/workspace/.local/hf` for the active Hugging Face cache
+  - `aid_pip_cache` <-> `/workspace/.local/pip` for the active pip cache
 
 Notes:
 - the Compose services mount the source checkout at `/workspace` so normal editing, setup, and patching still work in-container
-- datasets, artifacts, and caches still live in the checkout you started from
+- datasets and artifacts still live in the checkout you started from; the active Hugging Face and pip caches live in the named volumes mounted at `/workspace/.local/hf` and `/workspace/.local/pip`
 - `pipeline` uses the CPU-only `Dockerfile`, while `pipeline-gpu` uses `Dockerfile.gpu` with the CUDA runtime
 - the container entrypoint creates or reuses an isolated venv volume at `/opt/aid-venv` and runs `bash scripts/install_deps.sh`
 - the Compose services drop all Linux capabilities, enable `no-new-privileges`, and keep scratch space in `tmpfs`
@@ -370,7 +373,7 @@ Fallback step summary:
 - `./local.sh deps`
   Installs the pinned Python dependency set into `./.venv`.
   It also installs the repo CLI commands and the `hf` CLI into that venv.
-  Under the hood this installs the full dependency set from `pyproject.toml` into `./.venv`.
+  By default this installs the full `pipeline` profile from `pyproject.toml`; set `DEPS_EXTRA=...` for a narrower profile.
 - `./local.sh doctor`
   Verifies disk space, cache dirs, venv health, core Python deps, and token state.
 - `./local.sh smoke`
@@ -378,7 +381,7 @@ Fallback step summary:
 
 `./local.sh run` uses the canonical quality pipeline wrapper:
 - collects from Hugging Face before training
-- reuses the shared Hugging Face cache under `./.local/hf`
+- reuses the shared Hugging Face cache mounted at `/workspace/.local/hf` in Compose or the repo-local cache paths on native Linux
 - waits on active training locks instead of colliding with another run
 - keeps the collection defaults tuned for authenticated Hugging Face limits and cache-first reuse
 
