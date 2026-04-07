@@ -296,7 +296,8 @@ show_status() {
 }
 
 show_collection_status() {
-  run_repo_python -m ai_image_detector.dataset_tools collection-status \
+  # Keep status/reporting commands read-only so they stay usable offline and in fresh checkouts.
+  repo_python -m ai_image_detector.dataset_tools collection-status \
     --data "${DATA_DIR:-./data_best}" \
     --incremental "$(resolve_incremental_image_root)" \
     --prepared "${TRAIN_READY_DATA_DIR:-./.local/training_data}" \
