@@ -22,6 +22,45 @@ It is not a production serving repo in the current mode.
 | [docs/COMMANDS.md](docs/COMMANDS.md) | `./local.sh` subcommands and Compose one-liners |
 | [docs/REFERENCE.md](docs/REFERENCE.md) | Pipeline diagram, **`scripts/*.py` roles**, repo layout, artifacts, **`AID_*`**, `aid-train` flags |
 
+## Linux First Start
+
+Choose one source path, then run the same repo-local bootstrap:
+
+1. Git clone (recommended)
+
+```bash
+git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
+cd ai-image-video-detector
+```
+
+2. `curl` + `tar` source archive
+
+```bash
+curl -fsSL -o ai-image-video-detector.tar.gz \
+  https://github.com/Legendarylibrorg/ai-image-video-detector/archive/refs/heads/main.tar.gz
+tar -xzf ai-image-video-detector.tar.gz
+mv ai-image-video-detector-main ai-image-video-detector
+cd ai-image-video-detector
+```
+
+3. One-line installer
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
+```
+
+After the source tree is present:
+
+```bash
+./local.sh setup
+printf "HF_TOKEN='your_token_here'\n" >> .env
+./local.sh smoke
+./local.sh run
+./local.sh status
+```
+
+Use a Hugging Face `read` token unless you truly need write access. On native Linux, `hf auth login` also works; `./.env` is the simplest path for this repo and for Docker Compose.
+
 ## Secure Linux VM + Docker Compose
 
 Use this as the default runtime path when possible.
@@ -58,7 +97,7 @@ Secure path map:
 - host repo root: your current working directory
 - container repo root: `/workspace`
 - container virtualenv: `/opt/aid-venv`
-- repo env file: `./.env` on the host, auto-read by Docker Compose for `HF_TOKEN` and `HUGGINGFACE_HUB_TOKEN`
+- repo env file: `./.env` on the host, auto-read by Docker Compose for `HF_TOKEN`
 - general source tree under `/workspace`: writable
 - writable data and artifact paths: `./.local`, `./data_best`, `./data_new`, `./video_data`, `./artifacts_ens`, `./artifacts_sweep`, `./artifacts_finetune_metadata`, `./video_artifacts`, `./incoming_model_outputs`, `./incoming_review_queue`
 
@@ -184,7 +223,7 @@ The public commands line up to the project structure like this:
 
 ## Native Linux Startup
 
-For obtain-the-source options (`git clone` vs `curl` + `tar`), system packages, and native Linux startup, use [docs/STARTUP.md](docs/STARTUP.md).
+For obtain-the-source options (`git clone` vs `curl` + `tar`), system packages, and native Linux startup, use [docs/STARTUP.md](docs/STARTUP.md). The short Linux-first commands also live above under **Linux First Start**.
 
 Shortest native Linux fallback after you are already in the repo root:
 
@@ -198,14 +237,10 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 
 Run `bash ./install.sh` only from inside the repo root after a `git clone` or after extracting a **`.tar.gz`** source archive (`curl` + `tar`; see [docs/STARTUP.md](docs/STARTUP.md)). The installer reuses that directory and does not create a nested checkout. To fetch and bootstrap in one step, use the curl installer below.
 
-Shortcuts:
+Fastest installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
-```
-
-```bash
-./local.sh setup
 ```
 
 Important notes:

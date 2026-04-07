@@ -96,7 +96,7 @@ What each step does:
 4. `docker compose run --rm pipeline ./local.sh doctor`
    Verifies the secure container path before GPU work.
 5. `printf "HF_TOKEN='your_token_here'\n" >> .env`
-   Stores the Hugging Face token in the repo root for Compose to load.
+   Stores a Hugging Face `read` token in the repo root for Compose to load.
 6. `docker compose run --rm pipeline-gpu ./local.sh doctor`
    Verifies GPU access inside the secure path.
 7. `docker compose run --rm pipeline-gpu ./local.sh smoke`
@@ -110,7 +110,7 @@ Path map:
 - host repo root: your current working directory
 - container repo root: `/workspace`
 - container venv: `/opt/aid-venv`
-- repo env file: `./.env` on the host, auto-read by Docker Compose for `HF_TOKEN` and `HUGGINGFACE_HUB_TOKEN`
+- repo env file: `./.env` on the host, auto-read by Docker Compose for `HF_TOKEN`
 - general source tree: writable inside the container
 - writable host/container path pairs:
   - `./.local` <-> `/workspace/.local`
@@ -150,14 +150,6 @@ Best security with GPU:
 ## Native Linux fallback
 
 Linux is the supported native host path.
-
-End-to-end entry points (pick one, then continue with **Bootstrap** below):
-
-| Path | Commands |
-|------|----------|
-| **Git** | `git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git` then `cd ai-image-video-detector` |
-| **Tarball (no git)** | `curl -fsSL -o repo.tar.gz https://github.com/Legendarylibrorg/ai-image-video-detector/archive/refs/heads/main.tar.gz` → `tar -xzf repo.tar.gz` → `mv ai-image-video-detector-main ai-image-video-detector` → `cd ai-image-video-detector` |
-| **One-liner** | `curl -fsSL` the repo `install.sh` from `raw.githubusercontent.com/.../main/install.sh` and pipe it to `bash` (installs apt packages when `sudo`/`apt-get` exist, clones if needed, runs `./local.sh setup`; same URL as README) |
 
 `./local.sh` and `install.sh` are tracked as executable (`100755`); if your filesystem strips execute bits, run `bash ./local.sh …` instead.
 
@@ -205,6 +197,8 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh run
 ./local.sh status
 ```
+
+Use a Hugging Face `read` token unless you need write access. On native Linux, `hf auth login` is also supported; this repo keeps showing the `./.env` flow because it is easiest to automate and matches Docker Compose.
 
 ### Combined: clone + packages + bootstrap
 

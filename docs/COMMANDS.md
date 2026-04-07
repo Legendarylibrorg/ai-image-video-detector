@@ -27,6 +27,8 @@ docker compose run --rm pipeline-gpu ./local.sh run
 docker compose run --rm pipeline-gpu ./local.sh status
 ```
 
+Use a Hugging Face `read` token for normal collection workflows. On native runs, `hf auth login` also works; the command blocks here keep showing `HF_TOKEN` in `./.env` because that same flow works for Docker Compose too.
+
 - `pipeline`
   CPU-oriented Compose service.
 - `pipeline-gpu`

@@ -242,15 +242,18 @@ PY
 }
 
 check_hf_token() {
-  local token="${HF_TOKEN:-${HUGGINGFACE_HUB_TOKEN:-}}"
+  local token=""
+  resolve_current_hf_token
+  token="$CURRENT_HF_TOKEN"
   if [[ -z "$token" ]]; then
     if [[ "$DOCTOR_REQUIRE_TOKEN" == "1" ]]; then
-      emit_fail "hf_token_missing set HF_TOKEN in environment or .env"
+      emit_fail "hf_token_missing set HF_TOKEN, add it to .env, or run hf auth login"
     else
-      emit_warn "hf_token_missing add HF_TOKEN before collection or training"
+      emit_warn "hf_token_missing add HF_TOKEN before collection or training, or run hf auth login"
     fi
     return
   fi
+  set_hf_token_vars "$token"
   emit_ok "hf_token_present=1"
   if [[ ! -x "$VENV_DIR/bin/python" ]]; then
     emit_warn "hf_token_validation_skipped reason=venv_missing"
@@ -259,19 +262,19 @@ check_hf_token() {
 
   local rc=0
   if command -v timeout >/dev/null 2>&1; then
-    timeout "${TOKEN_CHECK_TIMEOUT_SEC}s" "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1 || rc=$?
+    HF_TOKEN="$token" timeout "${TOKEN_CHECK_TIMEOUT_SEC}s" "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1 || rc=$?
 import os
 from huggingface_hub import HfApi
 
-token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+token = os.environ.get("HF_TOKEN")
 HfApi().whoami(token=token)
 PY
   else
-    "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1 || rc=$?
+    HF_TOKEN="$token" "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1 || rc=$?
 import os
 from huggingface_hub import HfApi
 
-token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+token = os.environ.get("HF_TOKEN")
 HfApi().whoami(token=token)
 PY
   fi

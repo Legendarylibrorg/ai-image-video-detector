@@ -243,7 +243,7 @@ docker compose run --rm pipeline-gpu ./local.sh run
 
 The Compose services:
 - bind-mount the repo at `/workspace`
-- auto-read `HF_TOKEN` and `HUGGINGFACE_HUB_TOKEN` from the repo `.env`
+- auto-read `HF_TOKEN` from the repo `.env`
 - keep Hugging Face and pip caches under `./.local` and in named Docker volumes
 - drop Linux capabilities and enable `no-new-privileges`
 - keep the repo checkout writable and use `tmpfs` scratch space
