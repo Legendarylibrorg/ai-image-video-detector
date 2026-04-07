@@ -1,7 +1,20 @@
 from __future__ import annotations
 
 from importlib import import_module
+from pathlib import Path
 import sys
+
+
+def _repo_root() -> Path | None:
+    current = Path(__file__).resolve()
+    for parent in current.parents:
+        if (parent / "local.sh").is_file() and (parent / "pyproject.toml").is_file():
+            return parent
+    return None
+
+
+def _pip_extra_install_command(extra: str) -> str:
+    return f'python -m pip install --upgrade "ai-image-detector[{extra}]"'
 
 
 def _run_entrypoint(module_name: str, attr_name: str, *, extra: str) -> int:
@@ -11,9 +24,13 @@ def _run_entrypoint(module_name: str, attr_name: str, *, extra: str) -> int:
         missing_name = getattr(exc, "name", "") or "unknown"
         if missing_name.startswith("ai_image_detector"):
             raise
+        repo_root = _repo_root()
+        if repo_root is not None:
+            hint = f'run=(cd {repo_root} && env DEPS_EXTRA="{extra}" ./local.sh deps)'
+        else:
+            hint = f'run={_pip_extra_install_command(extra)}'
         print(
-            f"missing_dependency={missing_name} hint_extra={extra} "
-            f"run=pip install -e .",
+            f"missing_dependency={missing_name} hint_extra={extra} {hint}",
             file=sys.stderr,
         )
         raise SystemExit(2) from exc

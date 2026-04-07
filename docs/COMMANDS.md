@@ -48,14 +48,15 @@ For the full secure startup walkthrough, use [STARTUP.md](STARTUP.md). GPU hosts
 
 ## Python dependencies
 
-Required packages are listed in `pyproject.toml` under `[project] dependencies` (training, collection, and video stacks together). Install with:
+Required packages are grouped in `pyproject.toml` extras. For direct Python imports and test runs, install the full pipeline stack with:
 
 ```bash
-pip install -e .
+pip install -e '.[pipeline]'
 ```
 
-For the native fallback workflow, use `./local.sh deps` or `./local.sh setup`; both install that set into `./.venv`.
-The packaged `aid-*` commands are thin wrappers; if a dependency is missing, they suggest `pip install -e .`.
+For the native fallback workflow, use `./local.sh deps` or `./local.sh setup`; both install the repo-managed environment and wrapper commands into `./.venv`.
+For smaller local installs, use a repo-managed profile such as `DEPS_EXTRA=collection ./local.sh deps` or `DEPS_EXTRA=training ./local.sh deps`.
+The repo bootstrap installs the `aid-*` wrappers into `./.venv/bin`; if a dependency is missing, they suggest an absolute repo-root `./local.sh deps` command.
 
 ## Pipeline at a glance
 
@@ -143,7 +144,7 @@ If you need lower-level scripts or environment controls, use [docs/REFERENCE.md]
 
 ## macOS and Windows (short)
 
-- **macOS:** Prefer [Docker Desktop](https://www.docker.com/products/docker-desktop/) and `docker compose run --rm pipeline ./local.sh …` (CPU). Copy-paste blocks live under **macOS startup** in [STARTUP.md](STARTUP.md). For native development, `python3 -m venv .venv`, `pip install -e .`, and `python -m unittest discover -s tests` are supported; full CUDA training does not match Linux.
+- **macOS:** Prefer [Docker Desktop](https://www.docker.com/products/docker-desktop/) and `docker compose run --rm pipeline ./local.sh …` (CPU). Copy-paste blocks live under **macOS startup** in [STARTUP.md](STARTUP.md). For native development, `python3 -m venv .venv`, `pip install -e '.[pipeline]'`, and `python -m unittest discover -s tests` are supported; full CUDA training does not match Linux.
 - **Windows:** Use **WSL2 Ubuntu** and run the Linux snippets from this file inside WSL, or use Docker Desktop with the same Compose commands as macOS (CPU `pipeline`).
 
 ## Sudo guidance

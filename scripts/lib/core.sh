@@ -31,16 +31,18 @@ ensure_env() {
     return
   fi
   local venv_dir="${VENV_DIR:-$ROOT_DIR/.venv}"
+  local install_cmd=""
+  install_cmd="$(deps_install_command)"
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
-    echo "[DRY_RUN] bash scripts/install_deps.sh"
+    echo "[DRY_RUN] $install_cmd"
     echo "[DRY_RUN] source $venv_dir/bin/activate"
     ENV_READY=1
     return 0
   fi
   # Keep dependency bootstrap chatter off stdout so status commands can stay machine-readable.
-  bash scripts/install_deps.sh >&2
+  run_deps_install >&2
   if [[ ! -f "$venv_dir/bin/activate" ]]; then
-    echo "missing_virtualenv_activate=$venv_dir/bin/activate run=bash scripts/install_deps.sh" >&2
+    echo "missing_virtualenv_activate=$venv_dir/bin/activate run=$install_cmd" >&2
     return 1
   fi
   # shellcheck disable=SC1091
