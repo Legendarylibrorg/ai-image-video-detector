@@ -40,5 +40,22 @@ class SmokeWorkflowTests(unittest.TestCase):
         self.assertNotIn("clone_smoke_member", text)
 
 
+class SecurityWorkflowTests(unittest.TestCase):
+    def test_security_workflow_has_manual_and_scheduled_entrypoints(self) -> None:
+        text = (ROOT / ".github" / "workflows" / "security.yml").read_text(encoding="utf-8")
+        self.assertIn("schedule:", text)
+        self.assertIn('cron: "0 14 * * 1"', text)
+        self.assertIn("workflow_dispatch:", text)
+        self.assertIn("timeout-minutes: 15", text)
+
+    def test_security_workflow_fails_on_vulnerability_audit(self) -> None:
+        text = (ROOT / ".github" / "workflows" / "security.yml").read_text(encoding="utf-8")
+        self.assertIn('cache: "pip"', text)
+        self.assertIn("cache-dependency-path: requirements.lock", text)
+        self.assertIn("pip-audit -r requirements.lock", text)
+        self.assertIn("pip-audit", text)
+        self.assertNotIn("|| true", text)
+
+
 if __name__ == "__main__":
     unittest.main()
