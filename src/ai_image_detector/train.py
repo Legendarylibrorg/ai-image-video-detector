@@ -32,7 +32,8 @@ from .dataset_integrity import (
 from .metrics import find_best_threshold, fit_temperature, full_metric_report, sigmoid
 from .model import build_model, model_runtime_spec
 from .release_tools import write_timestamped_release
-from .runtime import build_adamw, configure_torch_runtime, git_commit, seed_all, training_device
+from .runtime import build_adamw, configure_torch_runtime, maybe_compile_model, seed_all, training_device
+from .utils import git_commit
 from .utils.jsonio import write_json_atomic
 
 
@@ -450,11 +451,8 @@ def main():
     ).to(device)
     if device.type == "cuda":
         model = model.to(memory_format=torch.channels_last)
-    if args.compile:
-        try:
-            model = torch.compile(model, mode="reduce-overhead")
-        except Exception as exc:
-            print(f"compile_disabled reason={exc}")
+    # Keep a plain module for checkpoint I/O; use the compiled wrapper only for forward passes.
+    train_model = maybe_compile_model(model, enabled=bool(args.compile))
     opt = build_adamw(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, device=device)
     sched = _build_lr_scheduler(opt, epochs=args.epochs, base_lr=args.lr, warmup_epochs=args.warmup_epochs)
     loss_fn: nn.Module = BinaryClassificationLoss(
@@ -541,7 +539,7 @@ def main():
 
     try:
         for epoch in range(start_epoch, args.epochs + 1):
-            model.train()
+            train_model.train()
             opt.zero_grad(set_to_none=True)
             step_idx = 0
             skipped_batches = 0
@@ -562,7 +560,7 @@ def main():
                 )
                 y_bin = _apply_label_smoothing(y_bin, args.label_smoothing)
                 with torch.amp.autocast("cuda", enabled=use_amp):
-                    logits = model(x, metadata_features=metadata_features)
+                    logits = train_model(x, metadata_features=metadata_features)
                     loss = loss_fn(logits, y_bin) / grad_accum
                 if not torch.isfinite(loss):
                     skipped_batches += 1

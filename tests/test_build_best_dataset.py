@@ -52,7 +52,7 @@ class BuildBestDatasetTests(unittest.TestCase):
             (out / "train" / "ai" / "source=foo__train_ai_0000001.jpg").touch()
             (out / "train" / "ai" / "hardneg=blur__foo__hn0000000.jpg").touch()
 
-            raw_counts = build_best_dataset.count_existing(out)
+            raw_counts = build_best_dataset.count_output_files(out, include_hardneg=False)
             total_counts = build_best_dataset.count_output_files(out, include_hardneg=True)
 
             self.assertEqual(raw_counts["train"]["ai"], 1)
@@ -66,10 +66,14 @@ class BuildBestDatasetTests(unittest.TestCase):
             write_rgb_image(base)
             write_rgb_image(hardneg)
 
-            seen_exact, seen_dhash = build_best_dataset.build_existing_dedupe_state(out)
+            deduper = build_best_dataset.ImageDeduper.from_output(
+                out,
+                splits=build_best_dataset.SPLITS,
+                classes=build_best_dataset.CLASSES,
+            )
 
-            self.assertEqual(len(seen_exact), 1)
-            self.assertEqual(len(seen_dhash["ai"]), 1)
+            self.assertEqual(len(deduper.seen_exact), 1)
+            self.assertEqual(len(deduper.seen_dhash_by_cls["ai"]), 1)
 
     def test_generate_hard_negatives_is_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

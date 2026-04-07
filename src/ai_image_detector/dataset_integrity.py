@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 from pathlib import Path
 from typing import Any, Iterable
@@ -11,12 +10,6 @@ from typing import Any, Iterable
 from .dataset_layout import IMAGE_EXTS
 from .io_limits import MAX_IMAGE_FILE_BYTES, check_file_size
 from .utils.jsonio import write_json_atomic
-
-IMAGE_SUFFIXES = IMAGE_EXTS
-
-
-def _is_image_path(path: Path) -> bool:
-    return path.suffix.lower() in IMAGE_SUFFIXES
 
 
 def preflight_dataset_tree(data_root: Path, *, splits: tuple[str, ...] = ("train", "val")) -> None:
@@ -36,7 +29,7 @@ def preflight_dataset_tree(data_root: Path, *, splits: tuple[str, ...] = ("train
             if cls_dir.is_symlink():
                 raise ValueError(f"dataset_class_symlink_not_allowed path={cls_dir}")
             for p in cls_dir.rglob("*"):
-                if not p.is_file() or not _is_image_path(p):
+                if not p.is_file() or p.suffix.lower() not in IMAGE_EXTS:
                     continue
                 if p.is_symlink():
                     raise ValueError(f"dataset_image_symlink_not_allowed path={p}")

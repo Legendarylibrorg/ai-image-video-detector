@@ -8,7 +8,6 @@ import torch
 from torch.optim import AdamW
 
 from .io_limits import configure_pil_limits
-from .utils import git_commit
 
 
 def seed_all(seed: int) -> None:
@@ -73,3 +72,18 @@ def build_adamw(
         except Exception:
             pass
     return AdamW(params, **kwargs)
+
+
+def maybe_compile_model(
+    model: torch.nn.Module,
+    *,
+    enabled: bool,
+    mode: str = "reduce-overhead",
+) -> torch.nn.Module:
+    if not enabled:
+        return model
+    try:
+        return torch.compile(model, mode=mode)
+    except Exception as exc:
+        print(f"compile_disabled reason={exc}")
+        return model

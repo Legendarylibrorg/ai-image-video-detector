@@ -22,13 +22,12 @@ from .checkpoints import (
     save_training_checkpoint,
 )
 from .data import build_loader_kwargs
+from .dataset_layout import VIDEO_EXTS
 from .io_limits import MAX_VIDEO_DECODE_FRAMES, prepare_video_path
 from .release_tools import write_timestamped_release
-from .runtime import build_adamw, configure_torch_runtime, git_commit, seed_all, training_device
+from .runtime import build_adamw, configure_torch_runtime, maybe_compile_model, seed_all, training_device
+from .utils import git_commit
 from .utils.jsonio import write_json_atomic
-
-
-VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
 
 
 def _collect_videos(root: Path) -> List[Tuple[str, int]]:
@@ -232,11 +231,8 @@ def train_main() -> None:
     model = TemporalVideoDetector(pretrained_backbone=args.pretrained_backbone).to(device)
     if device.type == "cuda":
         model = model.to(memory_format=torch.channels_last)
-    if args.compile:
-        try:
-            model = torch.compile(model, mode="reduce-overhead")
-        except Exception as exc:
-            print(f"compile_disabled reason={exc}")
+    # Keep a plain module for checkpoint I/O; use the compiled wrapper only for forward passes.
+    train_model = maybe_compile_model(model, enabled=bool(args.compile))
     opt = build_adamw(model.parameters(), lr=args.lr, weight_decay=1e-4, device=device)
     sched = CosineAnnealingLR(opt, T_max=max(args.epochs, 1), eta_min=args.lr * 0.1)
     loss_fn = nn.BCEWithLogitsLoss()
@@ -282,7 +278,7 @@ def train_main() -> None:
 
     try:
         for epoch in range(start_epoch, args.epochs + 1):
-            model.train()
+            train_model.train()
             opt.zero_grad(set_to_none=True)
             step_idx = 0
             skipped_batches = 0
@@ -290,7 +286,7 @@ def train_main() -> None:
                 x = x.to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
                 with torch.amp.autocast("cuda", enabled=use_amp):
-                    logit = model(x)
+                    logit = train_model(x)
                     loss = loss_fn(logit, y) / grad_accum
                 if not torch.isfinite(loss):
                     skipped_batches += 1
@@ -314,7 +310,7 @@ def train_main() -> None:
                 opt.zero_grad(set_to_none=True)
 
             sched.step()
-            val_loss, val_acc = _evaluate(model, val_loader, device)
+            val_loss, val_acc = _evaluate(train_model, val_loader, device)
             print(f"epoch={epoch} val_loss={val_loss:.5f} val_acc={val_acc:.4f}")
             with (out / "training_log.jsonl").open("a", encoding="utf-8") as f:
                 f.write(json.dumps({"epoch": epoch, "val_loss": val_loss, "val_acc": val_acc, "skipped_batches": skipped_batches, "lr": float(opt.param_groups[0]["lr"])}) + "\n")

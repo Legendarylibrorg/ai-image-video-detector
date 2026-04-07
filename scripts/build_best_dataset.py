@@ -175,16 +175,6 @@ def count_output_files(out: Path, include_hardneg: bool = True) -> Dict[str, Dic
             counts[split][cls] = total
     return counts
 
-
-def count_existing(out: Path) -> Dict[str, Dict[str, int]]:
-    return count_output_files(out, include_hardneg=False)
-
-
-def build_existing_dedupe_state(out: Path) -> tuple[set[str], Dict[str, List[str]]]:
-    deduper = ImageDeduper.from_output(out, splits=SPLITS, classes=CLASSES)
-    return deduper.seen_exact, deduper.seen_dhash_by_cls
-
-
 def counts_snapshot(counts: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, int]]:
     return {split: dict(bucket) for split, bucket in counts.items()}
 
@@ -340,7 +330,7 @@ def main():
         "val": {"ai": args.val_per_class, "real": args.val_per_class},
         "test": {"ai": args.test_per_class, "real": args.test_per_class},
     }
-    counts: Dict[str, Dict[str, int]] = count_existing(out)
+    counts: Dict[str, Dict[str, int]] = count_output_files(out, include_hardneg=False)
     max_per_source_split_class = int(args.max_per_source_split_class)
     if max_per_source_split_class <= 0:
         max_per_source_split_class = max(1, int(math.ceil(float(args.max_per_source_class) / float(len(SPLITS)))))

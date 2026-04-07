@@ -3,8 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import unittest
 
-
-ROOT = Path(__file__).resolve().parents[1]
+from _support import ROOT
 
 
 class SmokeRealSurfaceTests(unittest.TestCase):
