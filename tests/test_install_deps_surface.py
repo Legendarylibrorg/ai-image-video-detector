@@ -136,6 +136,77 @@ class InstallDepsSurfaceTests(unittest.TestCase):
         self.assertNotIn("warning_toolchain_upgrade_failed", proc.stdout)
         self.assertNotIn("unexpected_install", proc.stderr)
 
+    def test_fast_path_requires_collection_cli_inside_repo_venv(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            venv = tmp / "venv"
+            bin_dir = venv / "bin"
+            tools_dir = tmp / "tools"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            tools_dir.mkdir(parents=True, exist_ok=True)
+
+            self._write_fake_activate(bin_dir, venv)
+            self._write_fake_python(bin_dir)
+            global_hf = tools_dir / "hf"
+            global_hf.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            global_hf.chmod(0o755)
+
+            digest = hashlib.sha256()
+            digest.update(b"deps_extra=collection\n")
+            digest.update((ROOT / "requirements.lock").read_bytes())
+            digest.update((ROOT / "pyproject.toml").read_bytes())
+            (venv / ".deps_stamp.collection").write_text(digest.hexdigest() + "\n", encoding="utf-8")
+
+            proc = subprocess.run(
+                ["bash", "scripts/install_deps.sh"],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "PATH": f"{tools_dir}:{os.environ['PATH']}",
+                    "VENV_DIR": str(venv),
+                    "DEPS_EXTRA": "collection",
+                    "UPGRADE_TOOLCHAIN": "0",
+                },
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("deps_fail=huggingface_cli_missing", proc.stderr)
+
+    def test_missing_lock_file_falls_back_to_profiled_pyproject_install(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            venv = tmp / "venv"
+            bin_dir = venv / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            log_path = tmp / "pip.log"
+            self._write_fake_activate(bin_dir, venv)
+            self._write_fake_python(bin_dir)
+
+            proc = subprocess.run(
+                ["bash", "scripts/install_deps.sh"],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "FAKE_PYTHON_LOG": str(log_path),
+                    "LOCK_FILE": str(tmp / "missing.lock"),
+                    "VENV_DIR": str(venv),
+                    "DEPS_EXTRA": "training",
+                    "UPGRADE_TOOLCHAIN": "0",
+                },
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            pip_log = log_path.read_text(encoding="utf-8")
+            train_exists = (bin_dir / "aid-train").exists()
+
+        self.assertIn("deps_lock=missing", proc.stdout)
+        self.assertIn("-m pip install --progress-bar off --upgrade --upgrade-strategy eager -e .[training]", pip_log)
+        self.assertTrue(train_exists)
+
     def _write_fake_activate(self, bin_dir: Path, venv: Path) -> None:
         (bin_dir / "activate").write_text(
             f'export VIRTUAL_ENV="{venv}"\nexport PATH="{bin_dir}:$PATH"\n',

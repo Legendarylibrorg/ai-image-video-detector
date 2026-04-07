@@ -31,6 +31,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install detect-secrets pip-audit
 
+      - name: Verify Locked Dependency Hashes
+        run: |
+          python scripts/update_deps_lock.py verify --require-current
+
       - name: Secret Scan
         run: |
           if [ -f .secrets.baseline ]; then

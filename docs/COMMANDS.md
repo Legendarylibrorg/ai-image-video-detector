@@ -114,7 +114,7 @@ Main surface:
 - `./local.sh deps`
   Install the pinned Python dependencies into `./.venv` without running the full setup wrapper.
   This also installs the repo CLI commands and the `hf` CLI in that venv.
-  This installs the full dependency set from `pyproject.toml`.
+  This installs the default `pipeline` profile from `pyproject.toml`; use `DEPS_EXTRA=...` for a narrower profile.
 - `./local.sh doctor`
   Run the health check directly.
 - `./local.sh run`
