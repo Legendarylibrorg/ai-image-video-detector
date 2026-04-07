@@ -64,7 +64,21 @@ ensure_python3() {
 }
 
 prepare_local_dirs() {
-  mkdir -p "$ROOT_DIR/.local" "$ROOT_DIR/.local/hf"
+  mkdir -p \
+    "$ROOT_DIR/.local" \
+    "$ROOT_DIR/.local/hf" \
+    "$ROOT_DIR/.local/reports" \
+    "$ROOT_DIR/.local/stages" \
+    "$ROOT_DIR/.local/training_data" \
+    "$ROOT_DIR/data_best" \
+    "$ROOT_DIR/data_new" \
+    "$ROOT_DIR/video_data" \
+    "$ROOT_DIR/artifacts_ens" \
+    "$ROOT_DIR/artifacts_sweep" \
+    "$ROOT_DIR/artifacts_finetune_metadata" \
+    "$ROOT_DIR/video_artifacts" \
+    "$ROOT_DIR/incoming_model_outputs" \
+    "$ROOT_DIR/incoming_review_queue"
   echo "setup_stage=local_dirs status=done"
 }
 
@@ -74,11 +88,15 @@ persist_env_hf_token_if_present() {
   fi
   local env_file="${ENV_FILE:-${SETUP_ENV_FILE:-}}"
   local token=""
-  token="$(current_hf_token)"
+  resolve_current_hf_token
+  token="$CURRENT_HF_TOKEN"
   if [[ -z "$token" ]]; then
     return
   fi
   set_hf_token_vars "$token"
+  if [[ "${CURRENT_HF_TOKEN_SOURCE:-}" == "hf_token_file" ]]; then
+    return
+  fi
   save_hf_token_env "$token" "$env_file"
   echo "setup_stage=env_token status=done file=$env_file"
 }
@@ -86,7 +104,8 @@ persist_env_hf_token_if_present() {
 prompt_for_hf_token_if_missing() {
   local env_file="${ENV_FILE:-${SETUP_ENV_FILE:-}}"
   local token=""
-  token="$(current_hf_token)"
+  resolve_current_hf_token
+  token="$CURRENT_HF_TOKEN"
   if [[ -n "$token" ]]; then
     return
   fi
@@ -144,7 +163,8 @@ ensure_hf_token_ready() {
   load_env_file
   local token=""
   local env_file="${ENV_FILE:-${SETUP_ENV_FILE:-}}"
-  token="$(current_hf_token)"
+  resolve_current_hf_token
+  token="$CURRENT_HF_TOKEN"
   if [[ -n "$token" ]]; then
     set_hf_token_vars "$token"
     persist_env_hf_token_if_present
@@ -157,7 +177,7 @@ ensure_hf_token_ready() {
       echo "hf_token_status=optional_missing"
       return 0
     fi
-    echo "hf_token_status=missing_noninteractive set HF_TOKEN or add it to $env_file"
+    echo "hf_token_status=missing_noninteractive set HF_TOKEN, add it to $env_file, or run hf auth login"
     return 1
   fi
 
@@ -175,10 +195,11 @@ print_next_step() {
     return
   fi
   local token=""
-  token="$(current_hf_token)"
+  resolve_current_hf_token
+  token="$CURRENT_HF_TOKEN"
   if [[ -n "$token" ]]; then
     echo "setup_next=run ./local.sh smoke, then ./local.sh run"
   else
-    echo "setup_next=add HF_TOKEN in .env if needed, then run ./local.sh smoke and ./local.sh run"
+    echo "setup_next=add HF_TOKEN in .env if needed, or run hf auth login, then run ./local.sh smoke and ./local.sh run"
   fi
 }

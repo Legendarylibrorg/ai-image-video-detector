@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 import json
 import math
-import os
 import re
 import sys
 import time
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from hf_data import normalize_hf_token, read_noncomment_lines, unique_preserve, write_noncomment_lines
+from hf_data import normalize_hf_token, read_noncomment_lines, resolve_hf_token_value, unique_preserve, write_noncomment_lines
 
 try:
     from huggingface_hub import HfApi
@@ -149,6 +149,34 @@ DEFAULT_ALLOWED_LICENSE_TAGS = (
     "etalab-2.0",
 )
 
+DEFAULT_DOMAIN_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "photo": ("photo", "camera", "dslr", "smartphone", "portrait", "selfie", "landscape", "wildlife"),
+    "screen": ("screenshot", "screen", "browser", "chat ui", "desktop", "mobile app", "ui", "dashboard"),
+    "document": ("document", "invoice", "receipt", "scan", "scanned", "id card", "form", "ocr"),
+    "illustration": ("illustration", "anime", "manga", "artwork", "drawing", "digital art"),
+    "render": ("render", "cgi", "3d", "synthetic", "game screenshot"),
+    "web": ("social media", "meme", "watermarked", "recompressed", "edited", "web"),
+}
+
+
+@dataclass(frozen=True)
+class AuditedSource:
+    source_id: str
+    score: float
+    downloads: int
+    likes: int
+    license_markers: tuple[str, ...]
+    matched_groups: tuple[str, ...]
+    domain_tags: tuple[str, ...]
+    image_field: str
+    label_field: str
+    label_map: dict[str, str]
+    split_names: tuple[str, ...]
+    total_rows: int | None
+    approved: bool
+    rejection_reasons: tuple[str, ...]
+    config_name: str
+
 
 def _flatten_license_values(value: object) -> Iterable[str]:
     if isinstance(value, str):
@@ -206,6 +234,118 @@ def matched_useful_keyword_groups(text: str) -> set[str]:
     }
 
 
+def infer_domain_tags(text: str) -> set[str]:
+    lowered = text.lower()
+    return {
+        name
+        for name, keywords in DEFAULT_DOMAIN_KEYWORDS.items()
+        if any(keyword in lowered for keyword in keywords)
+    }
+
+
+def infer_image_and_label_fields(columns: Sequence[str]) -> tuple[str, str]:
+    image_field = "image" if "image" in columns else next((c for c in columns if "image" in c.lower() or c.lower() == "img"), "")
+    label_field = "label" if "label" in columns else next((c for c in columns if c.lower() in {"class", "target", "labels"}), "")
+    return image_field, label_field
+
+
+def normalize_label_text(value: object) -> str:
+    text = str(value or "").strip().lower()
+    if any(token in text for token in ("ai", "fake", "generated", "synthetic", "deepfake")):
+        return "ai"
+    if any(token in text for token in ("real", "human", "natural", "authentic", "photo")):
+        return "real"
+    return ""
+
+
+def infer_label_map(feature: object) -> dict[str, str]:
+    names = getattr(feature, "names", None)
+    if names is None and isinstance(feature, dict):
+        names = feature.get("names")
+    if not isinstance(names, (list, tuple)):
+        return {}
+    out: dict[str, str] = {}
+    for idx, name in enumerate(names):
+        normalized = normalize_label_text(name)
+        if normalized:
+            out[str(idx)] = normalized
+    return out
+
+
+def _dataset_info_value(dataset_info: object, key: str, default: object = None) -> object:
+    if isinstance(dataset_info, dict):
+        return dataset_info.get(key, default)
+    return getattr(dataset_info, key, default)
+
+
+def _extract_dataset_info_payload(info: object) -> object:
+    direct_candidates = [
+        getattr(info, "dataset_info", None),
+        getattr(info, "datasetInfo", None),
+        getattr(info, "features", None),
+    ]
+    card_data = getattr(info, "cardData", None) or getattr(info, "card_data", None)
+    if isinstance(card_data, dict):
+        direct_candidates.extend([
+            card_data.get("dataset_info"),
+            card_data.get("datasetInfo"),
+        ])
+    for candidate in direct_candidates:
+        if candidate not in (None, "", [], {}):
+            return candidate
+    return {}
+
+
+def _iter_feature_entries(features: object) -> list[tuple[str, object]]:
+    entries: list[tuple[str, object]] = []
+    if features is None:
+        return entries
+
+    if isinstance(features, dict):
+        if "name" in features and any(key in features for key in ("type", "dtype", "_type", "feature")):
+            name = str(features.get("name", "")).strip()
+            if name:
+                return [(name, features.get("type", features.get("feature", features)))]
+        for name, feature in features.items():
+            clean_name = str(name).strip()
+            if not clean_name:
+                continue
+            entries.append((clean_name, feature))
+        return entries
+
+    if hasattr(features, "items"):
+        try:
+            for name, feature in features.items():
+                clean_name = str(name).strip()
+                if not clean_name:
+                    continue
+                entries.append((clean_name, feature))
+            if entries:
+                return entries
+        except Exception:
+            pass
+
+    if isinstance(features, (list, tuple)):
+        for feature in features:
+            if isinstance(feature, dict):
+                name = str(feature.get("name", "")).strip()
+                if name:
+                    entries.append((name, feature.get("type", feature.get("feature", feature))))
+                    continue
+                if len(feature) == 1:
+                    only_name, only_feature = next(iter(feature.items()))
+                    clean_name = str(only_name).strip()
+                    if clean_name:
+                        entries.append((clean_name, only_feature))
+                continue
+            name = str(getattr(feature, "name", "")).strip()
+            if name:
+                entries.append((name, getattr(feature, "type", feature)))
+        return entries
+
+    return entries
+
+
 def cache_policy_path(cache_path: Path) -> Path:
     return cache_path.with_name(cache_path.name + ".policy.json")
 
@@ -255,6 +395,172 @@ def read_sources_file(path: Path) -> list[str]:
     return read_noncomment_lines(path)
 
 
+def write_audit_manifest(path: Path, entries: Sequence[AuditedSource]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        json.dumps(
+            {
+                "source_id": entry.source_id,
+                "score": round(float(entry.score), 6),
+                "downloads": int(entry.downloads),
+                "likes": int(entry.likes),
+                "license_markers": list(entry.license_markers),
+                "matched_groups": list(entry.matched_groups),
+                "domain_tags": list(entry.domain_tags),
+                "image_field": entry.image_field,
+                "label_field": entry.label_field,
+                "label_map": dict(entry.label_map),
+                "split_names": list(entry.split_names),
+                "total_rows": entry.total_rows,
+                "config_name": entry.config_name,
+                "approved": bool(entry.approved),
+                "rejection_reasons": list(entry.rejection_reasons),
+            },
+            sort_keys=True,
+        )
+        for entry in entries
+    ]
+    path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+
+
+def _dataset_split_rows(split: object) -> int | None:
+    num_rows = getattr(split, "num_rows", None)
+    if num_rows is None:
+        return None
+    try:
+        return int(num_rows)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fetch_dataset_info(api, source_id: str):
+    info_fn = getattr(api, "dataset_info", None)
+    if callable(info_fn):
+        return info_fn(source_id)
+    return None
+
+
+def audit_hf_sources(
+    source_ids: Sequence[str],
+    *,
+    token: str | None = None,
+    min_rows: int = 100,
+    require_image_field: bool = True,
+    require_label_field: bool = True,
+) -> list[AuditedSource]:
+    if HfApi is None:
+        print("warning_hf_audit_unavailable reason=huggingface_hub_missing")
+        return []
+    token_value = normalize_hf_token(token)
+    api = HfApi(token=token_value)
+    audited: list[AuditedSource] = []
+    for source_id in unique_preserve(source_ids):
+        rejection_reasons: list[str] = []
+        score = 0.0
+        downloads = 0
+        likes = 0
+        license_markers: set[str] = set()
+        matched_groups: set[str] = set()
+        domain_tags: set[str] = set()
+        image_field = ""
+        label_field = ""
+        label_map: dict[str, str] = {}
+        split_names: list[str] = []
+        total_rows: int | None = None
+        config_name = "default"
+        try:
+            info = _fetch_dataset_info(api, source_id)
+            if info is None:
+                rejection_reasons.append("dataset_info_unavailable")
+            else:
+                downloads = int(getattr(info, "downloads", 0) or 0)
+                likes = int(getattr(info, "likes", 0) or 0)
+                license_markers = extract_license_markers(info)
+                text_fields = [
+                    source_id,
+                    str(getattr(info, "description", "") or ""),
+                    " ".join(str(tag) for tag in (getattr(info, "tags", None) or [])),
+                ]
+                useful_text = " ".join(text_fields).lower()
+                matched_groups = matched_useful_keyword_groups(useful_text)
+                domain_tags = infer_domain_tags(useful_text)
+                score = min(3.0, math.log10(max(1, downloads) + 1.0)) + min(2.0, math.log10(max(1, likes) + 1.0))
+                score += min(1.5, 0.22 * float(len(matched_groups)))
+                score += min(1.0, 0.35 * float(len(domain_tags)))
+                siblings = getattr(info, "siblings", None) or []
+                split_names = sorted(
+                    {
+                        str(getattr(split, "split", "")).strip()
+                        for split in (getattr(info, "splits", None) or [])
+                        if str(getattr(split, "split", "")).strip()
+                    }
+                )
+                if not split_names:
+                    split_names = sorted(
+                        {
+                            path.parts[0]
+                            for sibling in siblings
+                            for path in [Path(str(getattr(sibling, "rfilename", "") or ""))]
+                            if len(path.parts) >= 2 and path.parts[0] in {"train", "test", "validation", "val"}
+                        }
+                    )
+                if len(split_names) >= 2:
+                    score += 0.35
+                dataset_info = _extract_dataset_info_payload(info)
+                config_name = str(
+                    getattr(info, "config", "")
+                    or _dataset_info_value(dataset_info, "config_name", "")
+                    or "default"
+                )
+                features = _dataset_info_value(dataset_info, "features", dataset_info)
+                feature_entries = _iter_feature_entries(features)
+                columns = [name for name, _ in feature_entries]
+                image_field, label_field = infer_image_and_label_fields(columns)
+                if require_image_field and not image_field:
+                    rejection_reasons.append("missing_image_field")
+                if require_label_field and not label_field:
+                    rejection_reasons.append("missing_label_field")
+                if label_field:
+                    for feature_name, feature_type in feature_entries:
+                        if str(feature_name).strip() == label_field:
+                            label_map = infer_label_map(feature_type)
+                            break
+                total_rows = sum(
+                    rows
+                    for rows in (
+                        _dataset_split_rows(split)
+                        for split in (getattr(info, "splits", None) or [])
+                    )
+                    if rows is not None
+                ) or None
+                if total_rows is not None and total_rows < int(min_rows):
+                    rejection_reasons.append("too_few_rows")
+                if not domain_tags:
+                    rejection_reasons.append("missing_domain_tags")
+        except Exception as exc:
+            rejection_reasons.append(f"audit_failed:{exc}")
+        audited.append(
+            AuditedSource(
+                source_id=source_id,
+                score=score,
+                downloads=downloads,
+                likes=likes,
+                license_markers=tuple(sorted(license_markers)),
+                matched_groups=tuple(sorted(matched_groups)),
+                domain_tags=tuple(sorted(domain_tags)),
+                image_field=image_field,
+                label_field=label_field,
+                label_map=label_map,
+                split_names=tuple(split_names),
+                total_rows=total_rows,
+                approved=not rejection_reasons,
+                rejection_reasons=tuple(rejection_reasons),
+                config_name=config_name,
+            )
+        )
+    return audited
+
+
 def is_probable_hf_dataset_id(src: str) -> bool:
     return bool(HF_DATASET_ID_RE.match(src.strip()))
 
@@ -283,7 +589,10 @@ def discover_hf_sources(
         token_value = normalize_hf_token(token)
         try:
             api = HfApi(token=token_value)
-            matches = api.list_datasets(search=query, limit=per_query_limit, sort="downloads")
+            try:
+                matches = api.list_datasets(search=query, limit=per_query_limit, sort="downloads", full=True)
+            except TypeError:
+                matches = api.list_datasets(search=query, limit=per_query_limit, sort="downloads")
             query_found: list[tuple[str, float, int, int]] = []
             for ds in matches:
                 ds_id = str(getattr(ds, "id", "") or "").strip()
@@ -306,6 +615,16 @@ def discover_hf_sources(
                 if downloads < min_downloads or likes < min_likes:
                     continue
                 license_markers = extract_license_markers(ds)
+                if not license_markers or not tags:
+                    try:
+                        info = api.dataset_info(ds_id)
+                    except Exception:
+                        info = None
+                    if info is not None:
+                        if not tags:
+                            tags = [str(t).lower() for t in (getattr(info, "tags", None) or [])]
+                        if not license_markers:
+                            license_markers = extract_license_markers(info)
                 if require_open_license and not (license_markers & allowed_licenses):
                     continue
                 score = min(3.0, math.log10(max(1, downloads) + 1.0)) + min(2.0, math.log10(max(1, likes) + 1.0))
@@ -368,6 +687,7 @@ def build_source_list(args) -> list[str]:
         sources.extend(args.extra_source)
     if args.discover_hf:
         discovered: list[str] = []
+        audit_entries: list[AuditedSource] = []
         current_policy = discovery_policy(args)
         cache_path = Path(args.hf_cache_file) if args.hf_cache_file else None
         if cache_path and cache_path.exists():
@@ -379,9 +699,6 @@ def build_source_list(args) -> list[str]:
                 discovered = []
             if discovered and args.hf_cache_only_if_present:
                 print("hf_discovery_mode=cache_only_if_present")
-                print(f"discovered_hf_sources={len(discovered)}")
-                sources.extend(discovered)
-                return finalize_sources(sources)
             if args.hf_cache_only_if_present and not discovered:
                 print("hf_discovery_cache_empty=1 fallback=live_discovery")
         if not discovered:
@@ -395,7 +712,7 @@ def build_source_list(args) -> list[str]:
                 print_top_n=args.hf_print_top,
                 query_workers=getattr(args, "hf_discovery_workers", 1),
                 query_pause_ms=args.hf_query_pause_ms,
-                token=normalize_hf_token(os.environ.get(args.token_env)),
+                token=resolve_hf_token_value(args.token_env)[0],
                 require_open_license=bool(getattr(args, "hf_require_open_license", True)),
                 allowed_license_tags=getattr(args, "hf_license_allow", []) or list(DEFAULT_ALLOWED_LICENSE_TAGS),
             )
@@ -403,6 +720,23 @@ def build_source_list(args) -> list[str]:
                 write_noncomment_lines(cache_path, discovered)
                 save_cache_policy(cache_path, current_policy)
                 print(f"saved_hf_discovery_cache={cache_path} count={len(discovered)}")
+        audit_path = Path(args.hf_audit_file) if getattr(args, "hf_audit_file", "") else None
+        if discovered and getattr(args, "hf_audit_sources", True):
+            audit_entries = audit_hf_sources(
+                discovered,
+                token=resolve_hf_token_value(args.token_env)[0],
+                min_rows=getattr(args, "hf_audit_min_rows", 100),
+                require_image_field=bool(getattr(args, "hf_audit_require_image_field", True)),
+                require_label_field=bool(getattr(args, "hf_audit_require_label_field", True)),
+            )
+            approved = [entry.source_id for entry in audit_entries if entry.approved]
+            rejected = len(audit_entries) - len(approved)
+            print(f"audited_hf_sources={len(audit_entries)} approved={len(approved)} rejected={rejected}")
+            if audit_path is not None:
+                write_audit_manifest(audit_path, audit_entries)
+                print(f"saved_hf_audit_manifest={audit_path} count={len(audit_entries)}")
+            if audit_entries and getattr(args, "hf_audit_filter_to_approved", True):
+                discovered = approved if approved else []
         print(f"discovered_hf_sources={len(discovered)}")
         sources.extend(discovered)
     return finalize_sources(sources)
