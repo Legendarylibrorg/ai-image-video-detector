@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest import mock
 
 import update_deps_lock
 
@@ -29,7 +28,7 @@ class UpdateDepsLockTests(unittest.TestCase):
                 "2.2.6": [{"filename": "numpy-2.2.6.tar.gz", "packagetype": "sdist", "yanked": False, "requires_python": ">=3.10", "digests": {"sha256": "old"}}],
             }
         }
-        with mock.patch("update_deps_lock.fetch_json", return_value=payload):
+        with unittest.mock.patch("update_deps_lock.fetch_json", return_value=payload):
             version, _ = update_deps_lock.latest_compatible_release("numpy", update_deps_lock.Version("3.10"))
 
         self.assertEqual(version, "2.2.6")
@@ -68,7 +67,7 @@ class UpdateDepsLockTests(unittest.TestCase):
             lock_file.write_text("datasets==4.8.4\n", encoding="utf-8")
             manifest_file.write_text(json.dumps(manifest), encoding="utf-8")
 
-            with mock.patch("update_deps_lock.fetch_json", return_value=release_payload):
+            with unittest.mock.patch("update_deps_lock.fetch_json", return_value=release_payload):
                 update_deps_lock.verify_manifest(lock_file, manifest_file, require_current=False)
 
 
