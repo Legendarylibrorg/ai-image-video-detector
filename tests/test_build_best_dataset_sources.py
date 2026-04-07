@@ -3,13 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
-import sys
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / "scripts"
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
+from _support import ROOT, SCRIPTS
 
 import build_best_dataset_sources
 

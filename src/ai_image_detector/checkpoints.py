@@ -87,17 +87,6 @@ def _json_default(value: Any) -> Any:
             pass
     return str(value)
 
-
-def resolve_checkpoint_path(preferred_pt_path: str | Path) -> Path:
-    preferred = Path(preferred_pt_path)
-    sft = preferred.with_suffix(".safetensors")
-    if sft.exists():
-        return sft
-    if preferred.exists():
-        return preferred
-    return preferred
-
-
 def save_safetensors_checkpoint(path: str | Path, checkpoint: Mapping[str, Any]) -> None:
     from safetensors.torch import save_file
     torch = _torch()

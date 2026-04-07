@@ -3,14 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
-import sys
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / "scripts"
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
+from _support import ROOT, SCRIPTS
 
 IMPORT_ERROR: Exception | None = None
 try:

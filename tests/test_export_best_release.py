@@ -6,8 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-
-ROOT = Path(__file__).resolve().parents[1]
+from _support import ROOT
 
 
 class ExportBestReleaseTests(unittest.TestCase):
@@ -153,8 +152,8 @@ class ExportBestReleaseTests(unittest.TestCase):
         self.assertEqual(public_manifest["selection_reason"], "best_promotable_metadata_aware_model")
         self.assertEqual(public_manifest["test_metrics"]["auc"], 0.98)
         self.assertEqual(public_profile["schema"], "ai-image-detector-inference-profile-v1")
-        self.assertEqual(public_profile["recommended_output"]["label"], "ai|real|unknown")
-        self.assertEqual(public_profile["example_output"]["label"], "ai")
+        self.assertEqual(public_profile["recommended_output"]["label"], "AI-generated|Real|Unknown")
+        self.assertEqual(public_profile["example_output"]["label"], "AI-generated")
         self.assertTrue(latest_public.endswith("public_model/best.safetensors"))
         self.assertEqual(latest, release_path)
 
