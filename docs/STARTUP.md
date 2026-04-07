@@ -271,8 +271,7 @@ Use this when you want to edit code and run the test suite without building GPU 
 cd ai-image-video-detector
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
-export PYTHONPATH="$(pwd)/src"
+pip install -e '.[pipeline]'
 python -m unittest discover -s tests -v
 ```
 
@@ -303,14 +302,15 @@ Notes:
 
 ## Python dependencies
 
-The project declares its runtime stack in `pyproject.toml` (`torch`, `datasets`, `opencv-python-headless`, and related packages). Install everything with:
+The project groups its runtime stack in `pyproject.toml` extras (`pipeline`, `training`, `collection`, `video`, `inference`). For direct Python imports and test runs, install with:
 
 ```bash
-pip install -e .
+pip install -e '.[pipeline]'
 ```
 
-For normal use inside this repo, prefer `./local.sh deps` or `./local.sh setup`; they install the same set into `./.venv`.
-The packaged `aid-*` commands are thin wrappers; if imports fail, they print `run=pip install -e .` on stderr.
+For normal use inside this repo, prefer `./local.sh deps` or `./local.sh setup`; they install the repo-managed environment and wrapper commands into `./.venv`.
+For narrower installs, use a repo-managed profile such as `DEPS_EXTRA=collection ./local.sh deps` or `DEPS_EXTRA=training,video ./local.sh deps`.
+The repo bootstrap installs the `aid-*` wrappers into `./.venv/bin`; if imports fail, they print an absolute repo-root `./local.sh deps` recovery command on stderr.
 
 ## What the pipeline does
 

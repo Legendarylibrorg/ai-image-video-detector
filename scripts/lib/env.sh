@@ -76,6 +76,125 @@ normalize_hf_token_env_aliases() {
   fi
 }
 
+trim_env_value() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf "%s\n" "$value"
+}
+
+read_deps_profile_file() {
+  local profile_file="${1:-}"
+  [[ -n "$profile_file" && -f "$profile_file" ]] || return 1
+  local profile=""
+  profile="$(tr -d '\r' < "$profile_file" | head -n 1)"
+  profile="$(trim_env_value "$profile")"
+  [[ -n "$profile" ]] || return 1
+  printf "%s\n" "$profile"
+}
+
+resolve_deps_extra() {
+  local explicit="${1:-}"
+  local profile_file="${2:-}"
+  if [[ -n "$explicit" ]]; then
+    normalized_deps_extra "$explicit"
+    return 0
+  fi
+  local stored=""
+  stored="$(read_deps_profile_file "$profile_file" || true)"
+  if [[ -n "$stored" ]]; then
+    normalized_deps_extra "$stored"
+    return 0
+  fi
+  printf "pipeline\n"
+}
+
+normalized_deps_extra() {
+  local extras_csv="${1:-pipeline}"
+  local extra=""
+  local trimmed=""
+  local -a extras=()
+  local -a normalized=()
+  IFS=',' read -r -a extras <<< "$extras_csv"
+  for extra in "${extras[@]}"; do
+    trimmed="$(trim_env_value "$extra")"
+    [[ -n "$trimmed" ]] || continue
+    if [[ "$trimmed" == "pipeline" ]]; then
+      printf "pipeline\n"
+      return 0
+    fi
+    normalized+=("$trimmed")
+  done
+  if [[ ${#normalized[@]} -eq 0 ]]; then
+    printf "pipeline\n"
+    return 0
+  fi
+  printf '%s\n' "${normalized[@]}" | awk 'NF && !seen[$0]++' | paste -sd, -
+}
+
+deps_extra_enabled() {
+  local wanted="$1"
+  local extras_csv=""
+  extras_csv="$(normalized_deps_extra "${2:-pipeline}")"
+  local extra=""
+  local trimmed=""
+  local -a extras=()
+  IFS=',' read -r -a extras <<< "$extras_csv"
+  for extra in "${extras[@]}"; do
+    trimmed="$(trim_env_value "$extra")"
+    if [[ "$trimmed" == "pipeline" || "$trimmed" == "$wanted" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+deps_extra_env_prefix() {
+  local deps_extra=""
+  deps_extra="$(normalized_deps_extra "${1:-pipeline}")"
+  if [[ "$deps_extra" == "pipeline" ]]; then
+    printf "%s" ""
+    return 0
+  fi
+  printf "env DEPS_EXTRA=%q " "$deps_extra"
+}
+
+deps_extra_profile_tag() {
+  local deps_extra=""
+  deps_extra="$(normalized_deps_extra "${1:-pipeline}")"
+  printf '%s\n' "$(printf '%s' "$deps_extra" | tr ',/' '__')"
+}
+
+deps_extra_install_target() {
+  local deps_extra=""
+  deps_extra="$(normalized_deps_extra "${1:-pipeline}")"
+  printf '.[%s]\n' "$deps_extra"
+}
+
+deps_profile_file() {
+  printf '%s\n' "${DEPS_PROFILE_FILE:-${VENV_DIR:-$ROOT_DIR/.venv}/.deps_profile}"
+}
+
+resolved_deps_extra() {
+  resolve_deps_extra "${DEPS_EXTRA:-}" "$(deps_profile_file)"
+}
+
+deps_install_command() {
+  local deps_extra=""
+  deps_extra="$(normalized_deps_extra "${1:-$(resolved_deps_extra)}")"
+  printf '%sbash scripts/install_deps.sh\n' "$(deps_extra_env_prefix "$deps_extra")"
+}
+
+run_deps_install() {
+  local deps_extra=""
+  deps_extra="$(normalized_deps_extra "${1:-$(resolved_deps_extra)}")"
+  if [[ "$deps_extra" == "pipeline" ]]; then
+    bash scripts/install_deps.sh
+    return 0
+  fi
+  DEPS_EXTRA="$deps_extra" bash scripts/install_deps.sh
+}
+
 load_env_file() {
   local env_file="${1:-${ENV_FILE:-}}"
   if [[ -n "$env_file" && -f "$env_file" ]]; then

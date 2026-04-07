@@ -132,6 +132,47 @@ class SetupLinuxSurfaceTests(unittest.TestCase):
 
         self.assertIn("setup_next=run ./local.sh smoke, then ./local.sh run", proc.stdout)
 
+    def test_print_next_step_for_collection_profile_prefers_collect_flow(self) -> None:
+        proc = self.run_bash(
+            "source scripts/setup_linux.sh; "
+            "DEPS_EXTRA='collection'; "
+            "HF_TOKEN='from_env'; "
+            "HUGGINGFACE_HUB_TOKEN='from_env'; "
+            "print_next_step"
+        )
+
+        self.assertIn("setup_next=run ./local.sh collect, then ./local.sh collect-status", proc.stdout)
+        self.assertNotIn("./local.sh smoke", proc.stdout)
+        self.assertNotIn("./local.sh run", proc.stdout)
+
+    def test_print_next_step_for_training_profile_requires_persistent_data(self) -> None:
+        proc = self.run_bash(
+            "source scripts/setup_linux.sh; "
+            "DEPS_EXTRA='training'; "
+            "print_next_step"
+        )
+
+        self.assertIn(
+            "setup_next=prepare ./data_best and optional ./data_new/train (plus ./video_data if you want video training), then run ./local.sh train",
+            proc.stdout,
+        )
+        self.assertNotIn("./local.sh smoke", proc.stdout)
+
+    def test_install_python_deps_reuses_stored_profile_when_env_is_unset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            venv_dir = Path(tmpdir) / "venv"
+            venv_dir.mkdir()
+            (venv_dir / ".deps_profile").write_text("collection\n", encoding="utf-8")
+            proc = self.run_bash(
+                "source scripts/setup_linux.sh; "
+                f"VENV_DIR='{venv_dir}'; "
+                "DEPS_EXTRA=''; "
+                "run_setup_step_with_retry(){ printf 'cmd=%s\\n' \"$*\"; }; "
+                "install_python_deps"
+            )
+
+        self.assertIn("cmd=python_deps env DEPS_EXTRA=collection UPGRADE_TOOLCHAIN=0 bash scripts/install_deps.sh", proc.stdout)
+
     def test_install_python_deps_skips_toolchain_upgrade_by_default(self) -> None:
         proc = self.run_bash(
             "source scripts/setup_linux.sh; "

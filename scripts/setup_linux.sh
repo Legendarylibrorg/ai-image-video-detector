@@ -88,7 +88,14 @@ install_system_deps() {
 }
 
 install_python_deps() {
-  run_setup_command python_deps env UPGRADE_TOOLCHAIN="${UPGRADE_TOOLCHAIN:-0}" bash scripts/install_deps.sh
+  local deps_extra=""
+  deps_extra="$(resolved_deps_extra)"
+  local -a cmd=(env)
+  if [[ "$deps_extra" != "pipeline" ]]; then
+    cmd+=("DEPS_EXTRA=$deps_extra")
+  fi
+  cmd+=("UPGRADE_TOOLCHAIN=${UPGRADE_TOOLCHAIN:-0}" bash scripts/install_deps.sh)
+  run_setup_command python_deps "${cmd[@]}"
 }
 
 run_doctor() {
