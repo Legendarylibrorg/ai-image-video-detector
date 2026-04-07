@@ -5,7 +5,6 @@ import argparse
 import json
 from pathlib import Path
 import re
-import sys
 from urllib.request import urlopen
 
 try:
