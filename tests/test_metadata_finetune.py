@@ -3,13 +3,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 
+from _support import source_tree_env, write_rgb_image
+
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO_PYTHON = ROOT / ".venv" / "bin" / "python"
 
 
 class MetadataFinetuneSurfaceTests(unittest.TestCase):
@@ -49,26 +49,11 @@ class MetadataFinetuneSurfaceTests(unittest.TestCase):
             tmp_path = Path(tmpdir)
             input_path = tmp_path / "input.jpg"
             output_path = tmp_path / "output.jpg"
-            python_exec = str(REPO_PYTHON if REPO_PYTHON.exists() else Path(sys.executable))
-            subprocess.run(
-                [
-                    python_exec,
-                    "-c",
-                    (
-                        "from PIL import Image; "
-                        "Image.new('RGB', (8, 8), color='white').save(r'"
-                        + str(input_path)
-                        + "', quality=90)"
-                    ),
-                ],
-                cwd=ROOT,
-                check=True,
-                env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
-            )
+            write_rgb_image(input_path, color=(255, 255, 255), size=(8, 8))
 
             proc = subprocess.run(
                 [
-                    python_exec,
+                    os.environ.get("PYTHON", "") or os.sys.executable,
                     "-m",
                     "ai_image_detector.metadata",
                     "strip",
@@ -81,7 +66,7 @@ class MetadataFinetuneSurfaceTests(unittest.TestCase):
                 check=True,
                 capture_output=True,
                 text=True,
-                env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
+                env=source_tree_env(),
             )
 
             self.assertIn("saved stripped image", proc.stdout)

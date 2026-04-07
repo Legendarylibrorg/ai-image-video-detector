@@ -5,18 +5,24 @@ import sys
 import tempfile
 import unittest
 
-from datasets import Dataset
-
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import build_best_dataset
-import hf_data
+IMPORT_ERROR: Exception | None = None
+try:
+    from datasets import Dataset
+    import build_best_dataset
+    import hf_data
+except Exception as exc:  # pragma: no cover - optional dependency path
+    Dataset = None  # type: ignore[assignment]
+    build_best_dataset = None  # type: ignore[assignment]
+    hf_data = None  # type: ignore[assignment]
+    IMPORT_ERROR = exc
 
 
+@unittest.skipUnless(Dataset is not None and build_best_dataset is not None and hf_data is not None, f"optional deps unavailable: {IMPORT_ERROR}")
 class HFDataTests(unittest.TestCase):
     def test_download_dataset_file_passes_cache_dir(self) -> None:
         calls: list[dict[str, object]] = []

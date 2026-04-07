@@ -108,6 +108,27 @@ class DatasetToolsTests(unittest.TestCase):
             self.assertFalse(out["resume"]["resume_needed"])
             self.assertEqual(out["resume"]["recommended_command"], "./local.sh train")
 
+    def test_collection_status_counts_train_root_incremental_layouts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "data_best"
+            incremental = Path(tmp) / "data_new" / "train"
+            write_stub(root / "train" / "ai" / "a.jpg")
+            write_stub(root / "train" / "real" / "b.jpg")
+            write_stub(root / "val" / "ai" / "c.jpg")
+            write_stub(root / "val" / "real" / "d.jpg")
+            write_stub(root / "test" / "ai" / "e.jpg")
+            write_stub(root / "test" / "real" / "f.jpg")
+            write_stub(incremental / "ai" / "g.jpg")
+            write_stub(incremental / "real" / "h.jpg")
+
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                dataset_tools.cmd_collection_status(str(root), incremental_root=str(incremental))
+            out = json.loads(buf.getvalue())
+
+            self.assertEqual(out["incremental_root"]["counts"]["train"]["ai"], 1)
+            self.assertEqual(out["incremental_root"]["counts"]["train"]["real"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

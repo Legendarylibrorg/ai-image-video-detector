@@ -6,13 +6,14 @@ import hashlib
 import json
 from pathlib import Path
 
+from .dataset_layout import IMAGE_EXTS, image_counts, video_counts
 from .io_limits import MAX_IMAGE_FILE_BYTES, check_file_size, configure_pil_limits
 from .utils import read_json_dict
 
 
 def _walk_images(root: Path):
     for p in root.rglob("*"):
-        if p.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}:
+        if p.suffix.lower() not in IMAGE_EXTS:
             continue
         if not p.is_file() or p.is_symlink():
             continue
@@ -153,32 +154,11 @@ def _read_json(path: Path) -> dict:
 
 
 def _count_image_files(root: Path) -> dict[str, dict[str, int]]:
-    counts: dict[str, dict[str, int]] = {
-        split: {cls: 0 for cls in ("ai", "real")}
-        for split in ("train", "val", "test")
-    }
-    for split in ("train", "val", "test"):
-        for cls in ("ai", "real"):
-            bucket = root / split / cls
-            if not bucket.exists():
-                continue
-            counts[split][cls] = sum(1 for p in bucket.iterdir() if p.is_file() and p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"})
-    return counts
+    return image_counts(root, allow_train_root_alias=True)
 
 
 def _count_video_files(root: Path) -> dict[str, dict[str, int]]:
-    exts = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
-    counts: dict[str, dict[str, int]] = {
-        split: {cls: 0 for cls in ("ai", "real")}
-        for split in ("train", "val")
-    }
-    for split in ("train", "val"):
-        for cls in ("ai", "real"):
-            bucket = root / split / cls
-            if not bucket.exists():
-                continue
-            counts[split][cls] = sum(1 for p in bucket.iterdir() if p.is_file() and p.suffix.lower() in exts)
-    return counts
+    return video_counts(root)
 
 
 def _load_manifest_entries(path: Path) -> list[dict]:

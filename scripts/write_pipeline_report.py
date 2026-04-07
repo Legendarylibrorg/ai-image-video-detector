@@ -8,34 +8,15 @@ import shutil
 from typing import Any
 
 from release_selection import build_public_model_manifest, select_public_model
-from script_support import git_commit, iter_member_dirs, read_json_dict, read_nonempty_lines, resolve_preferred_checkpoint, write_json_dict
+from script_support import ensure_src_path, git_commit, iter_member_dirs, read_json_dict, read_nonempty_lines, resolve_preferred_checkpoint, write_json_dict
 
+ensure_src_path()
 
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
-VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
-SPLITS = ("train", "val", "test")
-VIDEO_SPLITS = ("train", "val")
-CLASSES = ("ai", "real")
+from ai_image_detector.dataset_layout import CLASSES, IMAGE_SPLITS, VIDEO_SPLITS, complete_split_class_counts, image_counts, video_counts
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-def _count_files(root: Path, splits: tuple[str, ...], exts: set[str]) -> dict[str, dict[str, int]]:
-    counts: dict[str, dict[str, int]] = {}
-    for split in splits:
-        counts[split] = {}
-        for cls in CLASSES:
-            bucket = root / split / cls
-            if not bucket.exists():
-                counts[split][cls] = 0
-                continue
-            counts[split][cls] = sum(1 for p in bucket.iterdir() if p.is_file() and p.suffix.lower() in exts)
-    return counts
-
-
-def _complete_split_class_counts(counts: dict[str, dict[str, int]], splits: tuple[str, ...]) -> bool:
-    return all(int(counts.get(split, {}).get(cls, 0)) > 0 for split in splits for cls in CLASSES)
 
 
 def _disk_free_gb(root: Path) -> float:
@@ -81,9 +62,9 @@ def write_dataset_report(args: argparse.Namespace) -> int:
     training_data_report = read_json_dict(training_data_report_path)
     hf_sources = read_nonempty_lines(cache_file)
 
-    data_counts = _count_files(data_root, SPLITS, IMAGE_EXTS)
-    prepared_counts = _count_files(prepared_root, SPLITS, IMAGE_EXTS)
-    video_counts = _count_files(video_root, VIDEO_SPLITS, VIDEO_EXTS)
+    data_counts = image_counts(data_root)
+    prepared_counts = image_counts(prepared_root)
+    video_dataset_counts = video_counts(video_root)
 
     qa_summary = {
         "generated_at": _now(),
@@ -100,11 +81,11 @@ def write_dataset_report(args: argparse.Namespace) -> int:
             "collected": data_counts,
             "prepared": prepared_counts,
         },
-        "video_counts": video_counts,
+        "video_counts": video_dataset_counts,
         "qa_checks": {
-            "collected_complete": bool(dataset_build_report.get("full_targets_ok", _complete_split_class_counts(data_counts, SPLITS))),
-            "prepared_complete": bool(training_data_report.get("complete_image_dataset", _complete_split_class_counts(prepared_counts, SPLITS))),
-            "video_complete": _complete_split_class_counts(video_counts, VIDEO_SPLITS),
+            "collected_complete": bool(dataset_build_report.get("full_targets_ok", complete_split_class_counts(data_counts, splits=IMAGE_SPLITS, classes=CLASSES))),
+            "prepared_complete": bool(training_data_report.get("complete_image_dataset", complete_split_class_counts(prepared_counts, splits=IMAGE_SPLITS, classes=CLASSES))),
+            "video_complete": complete_split_class_counts(video_dataset_counts, splits=VIDEO_SPLITS, classes=CLASSES),
         },
         "report_paths": {
             "dataset_build_report": str(dataset_build_report_path.resolve()) if dataset_build_report_path.exists() else None,

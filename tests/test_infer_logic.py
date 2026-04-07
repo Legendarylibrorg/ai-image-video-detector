@@ -4,8 +4,6 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from PIL import Image, ImageDraw
-
 from _support import write_rgb_image  # noqa: F401
 from ai_image_detector.decision import combined_risk, decide_label
 from ai_image_detector.metadata import METADATA_FEATURE_NAMES, analyze_metadata, extract_metadata_features, metadata_feature_dim
@@ -76,6 +74,11 @@ class InferLogicTests(unittest.TestCase):
         )
 
     def test_web_export_formats_get_lighter_missing_metadata_penalties(self) -> None:
+        try:
+            import piexif  # noqa: F401
+            from PIL import Image
+        except ModuleNotFoundError as exc:
+            self.skipTest(f"requires optional image deps: {exc}")
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             png_path = tmp_path / "sample.png"
@@ -91,6 +94,11 @@ class InferLogicTests(unittest.TestCase):
         self.assertIn("missing_exif", png_analysis["metadata_flags"])
 
     def test_auxiliary_feature_vector_includes_provenance_and_text_signals(self) -> None:
+        try:
+            import piexif  # noqa: F401
+            from PIL import Image, ImageDraw
+        except ModuleNotFoundError as exc:
+            self.skipTest(f"requires optional image deps: {exc}")
         with tempfile.TemporaryDirectory() as tmp:
             img_path = Path(tmp) / "overlay.png"
             image = Image.new("RGB", (192, 96), (248, 248, 248))

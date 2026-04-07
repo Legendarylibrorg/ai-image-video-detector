@@ -8,8 +8,12 @@ from pathlib import Path
 import re
 from typing import Any, Iterable
 
+from script_support import ensure_src_path
 
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+ensure_src_path()
+
+from ai_image_detector.dataset_layout import IMAGE_EXTS
+
 SCHEMA_TEMPLATE = {
     "target_name": "",
     "target_description": "",

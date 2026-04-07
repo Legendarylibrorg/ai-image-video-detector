@@ -4,13 +4,21 @@ from pathlib import Path
 import tempfile
 import unittest
 
-import torch
-
 from _support import ROOT, write_rgb_image  # noqa: F401
-from ai_image_detector.data import unpack_image_batch
-from ai_image_detector.ensemble import metadata_features_from_paths
+
+IMPORT_ERROR: Exception | None = None
+try:
+    import torch
+    from ai_image_detector.data import unpack_image_batch
+    from ai_image_detector.ensemble import metadata_features_from_paths
+except Exception as exc:  # pragma: no cover - optional dependency path
+    torch = None  # type: ignore[assignment]
+    unpack_image_batch = None  # type: ignore[assignment]
+    metadata_features_from_paths = None  # type: ignore[assignment]
+    IMPORT_ERROR = exc
 
 
+@unittest.skipUnless(torch is not None, f"optional deps unavailable: {IMPORT_ERROR}")
 class MetadataEvalSurfaceTests(unittest.TestCase):
     def test_metadata_helper_builds_batch_tensor_from_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 
 
@@ -35,7 +37,11 @@ class InstallDepsSurfaceTests(unittest.TestCase):
     def test_install_deps_uses_lock_only_for_full_pipeline_profile(self) -> None:
         text = (ROOT / "scripts" / "install_deps.sh").read_text(encoding="utf-8")
         self.assertIn('if [[ -s "$LOCK_FILE" && "$DEPS_EXTRA" == "pipeline" ]]; then', text)
-        self.assertIn('echo "deps_lock=skip extra=$DEPS_EXTRA fallback=pyproject_resolve"', text)
+        self.assertIn("selected_lock_package_names()", text)
+        self.assertIn("install_selected_locked_packages()", text)
+        self.assertIn('echo "deps_lock=subset extra=$DEPS_EXTRA packages=${names[*]}"', text)
+        self.assertIn('echo "deps_lock=missing file=$LOCK_FILE fallback=pyproject_resolve"', text)
+        self.assertIn("pip_cmd install -e . --no-deps --no-build-isolation", text)
         self.assertIn("pip_cmd install --upgrade --upgrade-strategy eager -e .", text)
 
     def test_update_deps_lock_emits_direct_dependency_lock(self) -> None:
@@ -88,26 +94,49 @@ class InstallDepsSurfaceTests(unittest.TestCase):
         self.assertNotIn("uvicorn", text.lower())
 
     def test_install_deps_fast_path_skips_work_when_current_by_default(self) -> None:
-        subprocess.run(
-            ["bash", "scripts/install_deps.sh"],
-            cwd=ROOT,
-            env={**os.environ, "UPGRADE_TOOLCHAIN": "0"},
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            venv = Path(tmpdir) / "venv"
+            bin_dir = venv / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
 
-        proc = subprocess.run(
-            ["bash", "scripts/install_deps.sh"],
-            cwd=ROOT,
-            env={**os.environ, "UPGRADE_TOOLCHAIN": "0"},
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+            (bin_dir / "activate").write_text(
+                f'export VIRTUAL_ENV="{venv}"\nexport PATH="{bin_dir}:$PATH"\n',
+                encoding="utf-8",
+            )
+            fake_python = bin_dir / "python"
+            fake_python.write_text(
+                "#!/usr/bin/env bash\n"
+                'if [[ "$1" == "-m" && "$2" == "pip" && "$3" == "install" ]]; then\n'
+                '  echo "unexpected_install" >&2\n'
+                "  exit 91\n"
+                "fi\n"
+                "exit 0\n",
+                encoding="utf-8",
+            )
+            fake_python.chmod(0o755)
+            for name in ("hf", "aid-train", "aid-video-train"):
+                stub = bin_dir / name
+                stub.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+                stub.chmod(0o755)
+
+            digest = hashlib.sha256()
+            digest.update(b"deps_extra=pipeline\n")
+            digest.update((ROOT / "requirements.lock").read_bytes())
+            digest.update((ROOT / "pyproject.toml").read_bytes())
+            (venv / ".deps_stamp.pipeline").write_text(digest.hexdigest() + "\n", encoding="utf-8")
+
+            proc = subprocess.run(
+                ["bash", "scripts/install_deps.sh"],
+                cwd=ROOT,
+                env={**os.environ, "VENV_DIR": str(venv), "UPGRADE_TOOLCHAIN": "0"},
+                check=True,
+                capture_output=True,
+                text=True,
+            )
 
         self.assertIn("deps_status=up_to_date", proc.stdout)
         self.assertNotIn("warning_toolchain_upgrade_failed", proc.stdout)
+        self.assertNotIn("unexpected_install", proc.stderr)
 
 
 if __name__ == "__main__":
