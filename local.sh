@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")"
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT_DIR"
+
+source "$ROOT_DIR/scripts/lib/env.sh"
 
 cmd="${1:-help}"
 shift || true
@@ -49,10 +52,10 @@ case "$cmd" in
     ;;
   deps)
     if [[ "${DRY_RUN:-0}" == "1" ]]; then
-      echo "[DRY_RUN] bash scripts/install_deps.sh"
+      echo "[DRY_RUN] $(deps_install_command)"
       echo "deps_status=dry_run"
     else
-      bash scripts/install_deps.sh
+      run_deps_install
     fi
     ;;
   collect)
