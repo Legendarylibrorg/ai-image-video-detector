@@ -16,6 +16,11 @@ from build_best_dataset_sources import DEFAULT_ALLOWED_LICENSE_TAGS, build_sourc
 from dataset_builder_common import HF_CACHE_DIR_DEFAULT
 from hf_data import LoadedDatasetSource, load_hf_dataset_source, resolve_hf_token_value
 from image_materialize import ImageDeduper, ImageQualityPolicy, open_example_image, passes_quality_filters, save_img
+from script_support import ensure_src_path
+
+ensure_src_path()
+
+from ai_image_detector.dataset_layout import IMAGE_EXTS, count_split_class_files
 
 
 SPLITS = ("train", "val", "test")
@@ -448,15 +453,12 @@ def build_match_result(example: dict[str, Any], *, source_id: str, row_index: in
 
 
 def _count_output_files(root: Path, *, positive_dir: str, negative_dir: str) -> dict[str, dict[str, int]]:
-    classes = (positive_dir, negative_dir)
-    counts = {split: {cls: 0 for cls in classes} for split in SPLITS}
-    for split in SPLITS:
-        for cls in classes:
-            bucket = root / split / cls
-            if not bucket.exists():
-                continue
-            counts[split][cls] = sum(1 for path in bucket.iterdir() if path.is_file() and path.suffix.lower() == ".jpg")
-    return counts
+    return count_split_class_files(
+        root,
+        splits=SPLITS,
+        classes=(positive_dir, negative_dir),
+        exts=IMAGE_EXTS,
+    )
 
 
 def _done(counts: dict[str, dict[str, int]], targets: dict[str, dict[str, int]], classes: Sequence[str]) -> bool:

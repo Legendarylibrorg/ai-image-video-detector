@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -44,9 +45,12 @@ class PipelineWrapperTests(unittest.TestCase):
         self.assertNotIn("activate_repo_venv()", full_text)
         self.assertIn("\nensure_env\n", full_text)
         self.assertIn('source "$ROOT_DIR/scripts/lib/core.sh"', smoke_text)
+        self.assertIn('source "$ROOT_DIR/scripts/lib/training.sh"', smoke_text)
         self.assertIn("\nensure_env\n", smoke_text)
-        self.assertIn("repo_python scripts/benchmark_gate.py", smoke_text)
-        self.assertIn("repo_python -m ai_image_detector.robust_eval", smoke_text)
+        self.assertIn("prepare_training_image_data", smoke_text)
+        self.assertIn("run_prepared_max_quality_pipeline", smoke_text)
+        self.assertIn("run_benchmark_gate", smoke_text)
+        self.assertNotIn("scripts/fit_ensemble.py", smoke_text)
         self.assertNotIn("repo_python() {", smoke_text)
 
     def test_core_trims_csv_without_xargs(self) -> None:
@@ -91,6 +95,35 @@ class PipelineWrapperTests(unittest.TestCase):
         self.assertIn("[DRY_RUN] bash scripts/install_deps.sh", proc.stdout)
         self.assertIn(f"[DRY_RUN] source {missing_venv / 'bin' / 'activate'}", proc.stdout)
         self.assertIn("Pipeline complete.", proc.stdout)
+
+    def test_local_collect_status_executes_without_bootstrapping_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            data_root = tmp / "data_best"
+            prepared_root = tmp / "prepared"
+            video_root = tmp / "video_data"
+            (data_root / "train" / "ai").mkdir(parents=True, exist_ok=True)
+
+            proc = subprocess.run(
+                ["bash", "./local.sh", "collect-status"],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "DATA_DIR": str(data_root),
+                    "TRAIN_READY_DATA_DIR": str(prepared_root),
+                    "VIDEO_OUT": str(video_root),
+                    "VENV_DIR": str(tmp / "missing-venv"),
+                },
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        payload = json.loads(proc.stdout)
+        self.assertEqual(payload["data_root"], str(data_root.resolve()))
+        self.assertEqual(payload["prepared_training_root"]["path"], str(prepared_root.resolve()))
+        self.assertEqual(payload["video_root"]["path"], str(video_root.resolve()))
+        self.assertNotIn("install_deps.sh", proc.stdout + proc.stderr)
 
 if __name__ == "__main__":
     unittest.main()

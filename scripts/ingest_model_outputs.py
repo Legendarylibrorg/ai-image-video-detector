@@ -9,9 +9,7 @@ from typing import Iterable
 from PIL import Image
 
 from ai_image_detector.io_limits import MAX_IMAGE_FILE_BYTES, check_file_size, configure_pil_limits
-
-
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+from ai_image_detector.dataset_layout import IMAGE_EXTS
 
 
 def iter_images(root: Path) -> Iterable[Path]:

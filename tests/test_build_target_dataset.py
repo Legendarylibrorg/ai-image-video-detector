@@ -119,6 +119,19 @@ class BuildTargetDatasetTests(unittest.TestCase):
         build_target_dataset.validate_output_class_dirs("ai", "real", allow_nonstandard=False)
         build_target_dataset.validate_output_class_dirs("target", "background", allow_nonstandard=True)
 
+    def test_count_output_files_uses_shared_image_extension_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "train" / "ai").mkdir(parents=True, exist_ok=True)
+            (root / "train" / "real").mkdir(parents=True, exist_ok=True)
+            (root / "train" / "ai" / "positive.png").write_bytes(b"png")
+            (root / "train" / "real" / "negative.webp").write_bytes(b"webp")
+
+            counts = build_target_dataset._count_output_files(root, positive_dir="ai", negative_dir="real")
+
+            self.assertEqual(counts["train"]["ai"], 1)
+            self.assertEqual(counts["train"]["real"], 1)
+
     def test_build_target_dataset_from_sources_is_balanced_and_deterministic(self) -> None:
         spec = build_target_dataset.build_default_target_spec(
             target_name="smoke detector",

@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from _support import source_tree_env
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,6 +29,7 @@ class UtilsSurfaceTests(unittest.TestCase):
                 ),
             ],
             cwd=ROOT,
+            env=source_tree_env(),
             check=True,
             capture_output=True,
             text=True,

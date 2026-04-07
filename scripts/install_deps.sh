@@ -58,6 +58,71 @@ extra_enabled() {
   return 1
 }
 
+needs_torch_stack() {
+  extra_enabled inference || extra_enabled training
+}
+
+selected_lock_package_names() {
+  local -a names=()
+  if needs_torch_stack; then
+    names+=(numpy pillow safetensors)
+  fi
+  if extra_enabled training; then
+    names+=(piexif scikit-learn)
+  fi
+  if extra_enabled collection; then
+    names+=(datasets huggingface_hub pillow)
+  fi
+  if extra_enabled video; then
+    names+=(opencv-python-headless)
+  fi
+  printf '%s\n' "${names[@]}" | awk 'NF && !seen[$0]++'
+}
+
+install_selected_locked_packages() {
+  local -a names=()
+  local name=""
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    names+=("$name")
+  done < <(selected_lock_package_names)
+
+  if [[ ${#names[@]} -eq 0 ]]; then
+    echo "deps_lock=subset extra=$DEPS_EXTRA packages=none"
+    return 0
+  fi
+
+  local regex=""
+  local tmp_lock=""
+  local IFS='|'
+  regex="^(${names[*]})=="
+  tmp_lock="$(mktemp)"
+  grep -E "$regex" "$LOCK_FILE" > "$tmp_lock" || true
+  if [[ -s "$tmp_lock" ]]; then
+    echo "deps_lock=subset extra=$DEPS_EXTRA packages=${names[*]}"
+    pip_cmd install -r "$tmp_lock"
+  else
+    echo "deps_lock=subset_empty extra=$DEPS_EXTRA packages=${names[*]}"
+  fi
+  rm -f "$tmp_lock"
+}
+
+install_locked_torch_stack() {
+  needs_torch_stack || return 0
+  local torch_ver=""
+  local tv_ver=""
+  torch_ver="$(grep -E '^torch==' "$LOCK_FILE" | head -n1 | cut -d= -f3 || true)"
+  tv_ver="$(grep -E '^torchvision==' "$LOCK_FILE" | head -n1 | cut -d= -f3 || true)"
+  if [[ -z "$torch_ver" || -z "$tv_ver" ]]; then
+    return 0
+  fi
+  if [[ "$(uname -s)" == "Linux" ]] && command -v nvidia-smi >/dev/null 2>&1; then
+    pip_cmd install "torch==$torch_ver" "torchvision==$tv_ver" --index-url "$TORCH_CUDA_INDEX_URL"
+  else
+    pip_cmd install "torch==$torch_ver" "torchvision==$tv_ver"
+  fi
+}
+
 verify_python_deps() {
   python - "$DEPS_EXTRA" <<'PY'
 import importlib
@@ -124,25 +189,19 @@ if [[ -s "$LOCK_FILE" && "$DEPS_EXTRA" == "pipeline" ]]; then
   pip_cmd install -r "$tmp_lock_no_torch"
   rm -f "$tmp_lock_no_torch"
 
-  torch_ver="$(grep -E '^torch==' "$LOCK_FILE" | head -n1 | cut -d= -f3 || true)"
-  tv_ver="$(grep -E '^torchvision==' "$LOCK_FILE" | head -n1 | cut -d= -f3 || true)"
-  if [[ -n "$torch_ver" && -n "$tv_ver" ]]; then
-    if [[ "$(uname -s)" == "Linux" ]] && command -v nvidia-smi >/dev/null 2>&1; then
-      pip_cmd install "torch==$torch_ver" "torchvision==$tv_ver" --index-url "$TORCH_CUDA_INDEX_URL"
-    else
-      pip_cmd install "torch==$torch_ver" "torchvision==$tv_ver"
-    fi
-  fi
+  install_locked_torch_stack
 
   # Install the local package without re-resolving dependencies from pyproject.
   pip_cmd install -e . --no-deps --no-build-isolation
 else
   if [[ -s "$LOCK_FILE" ]]; then
-    echo "deps_lock=skip extra=$DEPS_EXTRA fallback=pyproject_resolve"
+    install_selected_locked_packages
+    install_locked_torch_stack
+    pip_cmd install -e . --no-deps --no-build-isolation
   else
     echo "deps_lock=missing file=$LOCK_FILE fallback=pyproject_resolve"
+    pip_cmd install --upgrade --upgrade-strategy eager -e .
   fi
-  pip_cmd install --upgrade --upgrade-strategy eager -e .
 fi
 
 if ! verify_python_deps >/dev/null 2>&1; then

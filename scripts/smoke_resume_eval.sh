@@ -6,6 +6,7 @@ cd "$ROOT_DIR"
 TMP="$(mktemp -d)"
 VENV_DIR="${VENV_DIR:-./.venv}"
 source "$ROOT_DIR/scripts/lib/core.sh"
+source "$ROOT_DIR/scripts/lib/training.sh"
 BASE_DATA="$TMP/data_best"
 NEW_DATA="$TMP/data_new"
 READY_DATA="$TMP/training_ready"
@@ -14,6 +15,15 @@ REPORTS="$TMP/reports"
 ENS_OUT="$TMP/artifacts_ens"
 VIDEO_ARTIFACTS="$TMP/video_artifacts"
 mkdir -p "$BASE_DATA"/{train,val,test}/{ai,real} "$NEW_DATA"/train/{ai,real} "$VIDEO_DATA"/{train,val}/{ai,real}
+export DATA_DIR="$BASE_DATA"
+export TRAIN_INCREMENTAL_DATA_DIR="$NEW_DATA"
+export TRAIN_READY_DATA_DIR="$READY_DATA"
+export TRAIN_DATA_COPY_ONLY=1
+export VIDEO_OUT="$VIDEO_DATA"
+export PIPELINE_REPORT_DIR="$REPORTS"
+export ENS_OUT="$ENS_OUT"
+export VIDEO_ARTIFACTS_OUT="$VIDEO_ARTIFACTS"
+export BEST_DS_HF_CACHE_FILE="$TMP/hf_sources.txt"
 ensure_env
 
 repo_python - <<'PY' "$BASE_DATA" "$NEW_DATA"
@@ -124,108 +134,35 @@ export MALWARE_SCAN=0
 export RUN_METADATA_MEMBER=0
 export TRAIN_ENSEMBLE_PROFILE=smoke
 
-ENSEMBLE_MODELS=()
-
-collect_ensemble_model_paths() {
-  ENSEMBLE_MODELS=()
-  local model_dir=""
-  for model_dir in "$ENS_OUT"/m*; do
-    [[ -d "$model_dir" ]] || continue
-    if [[ -f "$model_dir/best.safetensors" ]]; then
-      ENSEMBLE_MODELS+=("$model_dir/best.safetensors")
-    fi
-  done
-}
-
-repo_python scripts/prepare_training_data.py \
-  --base "$BASE_DATA" \
-  --incremental "$NEW_DATA" \
-  --out "$READY_DATA" \
-  --copy
+prepare_training_image_data
 
 TRAIN_PATIENCE="${TRAIN_PATIENCE:-2}" \
 TRAIN_MIN_DELTA="${TRAIN_MIN_DELTA:-0.0}" \
 TRAIN_DEGENERATE_PATIENCE="${TRAIN_DEGENERATE_PATIENCE:-2}" \
 METADATA_MEMBER_EPOCHS="${METADATA_MEMBER_EPOCHS:-2}" \
-bash scripts/train_ensemble.sh "$READY_DATA" "$ENS_OUT" 2
+SKIP_SWEEP=1 \
+RUN_HARD_MINING=0 \
+RUN_HARD_RETRAIN=0 \
+RUN_DISTILL=0 \
+RUN_METADATA_MEMBER=0 \
+EPOCHS=2 \
+ENS_FIT_STEPS=10 \
+EVAL_TTA_VIEWS=1 \
+DOMAIN_THRESHOLD_MIN_SAMPLES=1 \
+ROBUST_EVAL_MAX_IMAGES=4 \
+run_prepared_max_quality_pipeline "$BASE_DATA" 1
 
-collect_ensemble_model_paths
-
-repo_python scripts/fit_ensemble.py \
-  --data "$READY_DATA" \
-  --model "${ENSEMBLE_MODELS[@]}" \
-  --out "$ENS_OUT/ensemble_config.json" \
-  --steps 10 \
-  --lr 0.05 \
-  --l2 0.001 \
-  --batch-size 2 \
-  --num-workers 0
-
-repo_python scripts/eval_test_ensemble.py \
-  --data "$READY_DATA" \
-  --model "${ENSEMBLE_MODELS[@]}" \
-  --ensemble-config "$ENS_OUT/ensemble_config.json" \
-  --tta 1 \
-  --out "$ENS_OUT/test_metrics.json"
-
-repo_python scripts/fit_domain_thresholds.py \
-  --data "$READY_DATA" \
-  --model "${ENSEMBLE_MODELS[@]}" \
-  --ensemble-config "$ENS_OUT/ensemble_config.json" \
-  --out "$ENS_OUT/domain_config.json" \
-  --objective balanced \
-  --min-samples-per-domain 1
-
-repo_python -m ai_image_detector.robust_eval \
-  --data "$READY_DATA" \
-  --model "${ENSEMBLE_MODELS[@]}" \
-  --ensemble-config "$ENS_OUT/ensemble_config.json" \
-  --max-images 4 \
-  --out "$ENS_OUT/robust_eval.json"
-
-repo_python scripts/write_pipeline_report.py dataset \
-  --data "$BASE_DATA" \
-  --prepared "$READY_DATA" \
-  --incremental "$NEW_DATA" \
-  --video "$VIDEO_DATA" \
-  --cache-file "$TMP/hf_sources.txt" \
-  --out "$REPORTS/dataset_qa_summary.json" \
-  --provenance-out "$REPORTS/dataset_provenance.json"
-
-repo_python scripts/write_pipeline_report.py final \
-  --data "$BASE_DATA" \
-  --prepared "$READY_DATA" \
-  --video "$VIDEO_DATA" \
-  --ens-out "$ENS_OUT" \
-  --ensemble-config "$ENS_OUT/ensemble_config.json" \
-  --domain-config "$ENS_OUT/domain_config.json" \
-  --video-artifacts "$VIDEO_ARTIFACTS" \
-  --dataset-qa "$REPORTS/dataset_qa_summary.json" \
-  --robust-eval "$ENS_OUT/robust_eval.json" \
-  --prod-manifest "$ENS_OUT/prod_manifest.json" \
-  --summary-out "$ENS_OUT/final_run_summary.json" \
-  --manifest-out "$ENS_OUT/run_manifest.json" \
-  --thresholds-out "$ENS_OUT/final_thresholds.json" \
-  --release-bundle "$ENS_OUT/release"
-
-repo_python scripts/export_best_release.py \
-  --ens-out "$ENS_OUT" \
-  --video-artifacts "$VIDEO_ARTIFACTS" \
-  --out "$ENS_OUT/release"
-
-repo_python scripts/benchmark_gate.py \
-  --ens-out "$ENS_OUT" \
-  --video-out "$VIDEO_ARTIFACTS" \
-  --min-image-auc 0.0 \
-  --min-image-f1 0.0 \
-  --min-image-precision 0.0 \
-  --min-image-recall 0.0 \
-  --max-image-ece 1.0 \
-  --max-image-brier 1.0 \
-  --min-robust-worst-auc 0.0 \
-  --min-robust-worst-f1 0.0 \
-  --max-robust-auc-drop 1.0 \
-  --skip-video
+GATE_ALLOW_MISSING_VIDEO=1 \
+GATE_MIN_IMAGE_AUC=0.0 \
+GATE_MIN_IMAGE_F1=0.0 \
+GATE_MIN_IMAGE_PRECISION=0.0 \
+GATE_MIN_IMAGE_RECALL=0.0 \
+GATE_MAX_IMAGE_ECE=1.0 \
+GATE_MAX_IMAGE_BRIER=1.0 \
+GATE_MIN_ROBUST_WORST_AUC=0.0 \
+GATE_MIN_ROBUST_WORST_F1=0.0 \
+GATE_MAX_ROBUST_AUC_DROP=1.0 \
+run_benchmark_gate
 
 for f in \
   "$READY_DATA/training_data_report.json" \
