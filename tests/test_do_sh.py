@@ -251,7 +251,7 @@ class DoShTests(unittest.TestCase):
     def test_load_env_file_normalizes_official_deprecated_token_alias(self) -> None:
         out = self.run_bash(
             "tmpenv=$(mktemp); "
-            "printf 'HUGGING_FACE_HUB_TOKEN=from_deprecated\\n' > \"$tmpenv\"; "
+            "printf 'HUGGING_FACE_HUB_TOKEN=from_deprecated\\n' > \"$tmpenv\"; "  # pragma: allowlist secret
             "ENV_FILE=\"$tmpenv\"; "
             "HF_TOKEN=''; "
             "source scripts/do.sh; "
