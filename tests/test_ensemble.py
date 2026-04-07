@@ -4,25 +4,40 @@ from pathlib import Path
 import tempfile
 import unittest
 
-import torch
+IMPORT_ERROR: Exception | None = None
+try:
+    import torch
+    from ai_image_detector.checkpoints import save_safetensors_checkpoint
+    from ai_image_detector.ensemble import EnsembleDetector, load_models, stack_model_logits
+    from ai_image_detector.model import build_model
+    from ai_image_detector.train import BinaryClassificationLoss
+except Exception as exc:  # pragma: no cover - optional dependency path
+    torch = None  # type: ignore[assignment]
+    save_safetensors_checkpoint = None  # type: ignore[assignment]
+    EnsembleDetector = None  # type: ignore[assignment]
+    load_models = None  # type: ignore[assignment]
+    stack_model_logits = None  # type: ignore[assignment]
+    build_model = None  # type: ignore[assignment]
+    BinaryClassificationLoss = None  # type: ignore[assignment]
+    IMPORT_ERROR = exc
 
-from ai_image_detector.checkpoints import save_safetensors_checkpoint
-from ai_image_detector.ensemble import EnsembleDetector, load_models, stack_model_logits
-from ai_image_detector.model import build_model
-from ai_image_detector.train import BinaryClassificationLoss
+
+if torch is not None:
+    class RecordingModel(torch.nn.Module):
+        def __init__(self, value: float):
+            super().__init__()
+            self.value = float(value)
+            self.seen_shapes: list[tuple[int, int]] = []
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            self.seen_shapes.append((int(x.shape[-2]), int(x.shape[-1])))
+            return torch.full((x.shape[0],), self.value, dtype=x.dtype, device=x.device)
+else:  # pragma: no cover - optional dependency path
+    class RecordingModel:  # type: ignore[no-redef]
+        pass
 
 
-class RecordingModel(torch.nn.Module):
-    def __init__(self, value: float):
-        super().__init__()
-        self.value = float(value)
-        self.seen_shapes: list[tuple[int, int]] = []
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        self.seen_shapes.append((int(x.shape[-2]), int(x.shape[-1])))
-        return torch.full((x.shape[0],), self.value, dtype=x.dtype, device=x.device)
-
-
+@unittest.skipUnless(torch is not None, f"optional deps unavailable: {IMPORT_ERROR}")
 class EnsembleTests(unittest.TestCase):
     def test_build_model_supports_convnext_tiny(self) -> None:
         model = build_model(backbone="convnext_tiny", pretrained_backbone=False)

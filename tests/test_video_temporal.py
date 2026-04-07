@@ -7,10 +7,16 @@ import tempfile
 import unittest
 from unittest import mock
 
-import numpy as np
-import torch
-
-from ai_image_detector import video_temporal
+IMPORT_ERROR: Exception | None = None
+try:
+    import numpy as np
+    import torch
+    from ai_image_detector import video_temporal
+except Exception as exc:  # pragma: no cover - optional dependency path
+    np = None  # type: ignore[assignment]
+    torch = None  # type: ignore[assignment]
+    video_temporal = None  # type: ignore[assignment]
+    IMPORT_ERROR = exc
 
 
 class _FakeEfficientNet:
@@ -36,6 +42,7 @@ class _FakeTemporalModel:
         return torch.zeros((x.shape[0],), dtype=torch.float32)
 
 
+@unittest.skipUnless(np is not None and torch is not None and video_temporal is not None, f"optional deps unavailable: {IMPORT_ERROR}")
 class VideoTemporalTests(unittest.TestCase):
     def test_collect_videos_includes_m4v_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

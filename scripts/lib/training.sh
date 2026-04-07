@@ -11,47 +11,8 @@ resolve_incremental_image_root() {
   echo "$new_data_dst"
 }
 
-bucket_has_files() {
-  local dir="$1"
-  shift
-  [[ -d "$dir" ]] || return 1
-  local -a expr=()
-  local pattern=""
-  for pattern in "$@"; do
-    if [[ "${#expr[@]}" -gt 0 ]]; then
-      expr+=(-o)
-    fi
-    expr+=(-iname "$pattern")
-  done
-  local first_match=""
-  first_match="$(find "$dir" -maxdepth 1 -type f \( "${expr[@]}" \) -print -quit)"
-  [[ -n "$first_match" ]]
-}
-
-image_bucket_has_files() {
-  bucket_has_files "$1" "*.jpg" "*.jpeg" "*.png" "*.webp" "*.bmp" "*.tif" "*.tiff"
-}
-
-video_bucket_has_files() {
-  bucket_has_files "$1" "*.mp4" "*.mov" "*.avi" "*.mkv" "*.webm" "*.m4v"
-}
-
-count_bucket_files() {
-  local dir="$1"
-  shift
-  if [[ ! -d "$dir" ]]; then
-    echo 0
-    return
-  fi
-  local -a expr=()
-  local pattern=""
-  for pattern in "$@"; do
-    if [[ "${#expr[@]}" -gt 0 ]]; then
-      expr+=(-o)
-    fi
-    expr+=(-iname "$pattern")
-  done
-  find "$dir" -maxdepth 1 -type f \( "${expr[@]}" \) | wc -l | tr -d ' '
+run_dataset_layout() {
+  repo_python -m ai_image_detector.dataset_layout "$@"
 }
 
 require_min_image_counts() {
@@ -59,56 +20,16 @@ require_min_image_counts() {
   local train_min="${2:-0}"
   local val_min="${3:-0}"
   local test_min="${4:-0}"
-  local failed=0
-  local split=""
-  local cls=""
-  local min_required=0
-  local count=0
-
-  for split in train val test; do
-    case "$split" in
-      train) min_required="$train_min" ;;
-      val) min_required="$val_min" ;;
-      test) min_required="$test_min" ;;
-    esac
-    [[ "$min_required" =~ ^[0-9]+$ ]] || min_required=0
-    if (( min_required <= 0 )); then
-      continue
-    fi
-    for cls in ai real; do
-      count="$(count_bucket_files "$data_root/$split/$cls" "*.jpg" "*.jpeg" "*.png" "*.webp" "*.bmp" "*.tif" "*.tiff")"
-      if (( count < min_required )); then
-        echo "insufficient_image_bucket=$data_root/$split/$cls have=$count need=$min_required"
-        failed=1
-      fi
-    done
-  done
-
-  if [[ "$failed" == "1" ]]; then
-    echo "image_collection_counts=invalid root=$data_root train_min=$train_min val_min=$val_min test_min=$test_min"
-    return 1
-  fi
-  echo "image_collection_counts=ok root=$data_root train_min=$train_min val_min=$val_min test_min=$test_min"
+  run_dataset_layout check-image-minimums \
+    --root "$data_root" \
+    --train-min "$train_min" \
+    --val-min "$val_min" \
+    --test-min "$test_min"
 }
 
 require_image_training_data() {
   local data_root="$1"
-  local missing=0
-  local split=""
-  local cls=""
-  for split in train val test; do
-    for cls in ai real; do
-      if ! image_bucket_has_files "$data_root/$split/$cls"; then
-        echo "missing_image_bucket=$data_root/$split/$cls"
-        missing=1
-      fi
-    done
-  done
-  if [[ "$missing" == "1" ]]; then
-    echo "image_training_data=invalid root=$data_root"
-    return 1
-  fi
-  echo "image_training_data=ok root=$data_root"
+  run_dataset_layout check-image-complete --root "$data_root"
 }
 
 require_pipeline_collection_data() {
@@ -153,26 +74,12 @@ PY
 
 have_complete_video_training_data() {
   local video_root="${1:-${VIDEO_OUT:-./video_data}}"
-  local split=""
-  local cls=""
-  for split in train val; do
-    for cls in ai real; do
-      if ! video_bucket_has_files "$video_root/$split/$cls"; then
-        return 1
-      fi
-    done
-  done
-  return 0
+  run_dataset_layout check-video-complete --root "$video_root" --quiet >/dev/null 2>&1
 }
 
 require_video_training_data() {
   local video_root="${1:-${VIDEO_OUT:-./video_data}}"
-  if have_complete_video_training_data "$video_root"; then
-    echo "video_training_data=ok root=$video_root"
-    return 0
-  fi
-  echo "video_training_data=invalid root=$video_root"
-  return 1
+  run_dataset_layout check-video-complete --root "$video_root"
 }
 
 prepare_training_image_data() {
@@ -296,7 +203,8 @@ show_status() {
 }
 
 show_collection_status() {
-  run_repo_python -m ai_image_detector.dataset_tools collection-status \
+  # Keep status/reporting commands read-only so they stay usable offline and in fresh checkouts.
+  repo_python -m ai_image_detector.dataset_tools collection-status \
     --data "${DATA_DIR:-./data_best}" \
     --incremental "$(resolve_incremental_image_root)" \
     --prepared "${TRAIN_READY_DATA_DIR:-./.local/training_data}" \

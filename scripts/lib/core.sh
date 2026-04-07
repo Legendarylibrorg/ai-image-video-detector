@@ -13,6 +13,19 @@ trim_ws() {
   printf '%s' "$s"
 }
 
+repo_pythonpath() {
+  local joined=""
+  local candidate=""
+  for candidate in "$ROOT_DIR/src" "$ROOT_DIR/scripts"; do
+    [[ -d "$candidate" ]] || continue
+    joined="${joined:+$joined:}$candidate"
+  done
+  if [[ -n "${PYTHONPATH:-}" ]]; then
+    joined="${joined:+$joined:}${PYTHONPATH}"
+  fi
+  printf '%s\n' "$joined"
+}
+
 ensure_env() {
   if [[ "${ENV_READY:-0}" == "1" ]]; then
     return
@@ -225,13 +238,17 @@ repo_python_bin() {
     printf "%s\n" "$python_bin"
     return
   fi
+  if command -v python3 >/dev/null 2>&1; then
+    command -v python3
+    return
+  fi
   command -v python
 }
 
 repo_python() {
   local python_bin=""
   python_bin="$(repo_python_bin)"
-  "$python_bin" "$@"
+  env PYTHONPATH="$(repo_pythonpath)" "$python_bin" "$@"
 }
 
 run_repo_python() {

@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-
+from _support import write_rgb_image
 from ai_image_detector.io_limits import (
     MAX_JSON_CONFIG_BYTES,
     open_image_rgb,
@@ -66,13 +66,11 @@ class IoLimitsTests(unittest.TestCase):
                 prepare_video_path(link)
 
     def test_open_image_rgb_writes_small_png(self) -> None:
-        from PIL import Image
-
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "jail"
             root.mkdir()
             img_path = root / "a.png"
-            Image.new("RGB", (8, 8), color=(1, 2, 3)).save(img_path)
+            write_rgb_image(img_path, color=(1, 2, 3), size=(8, 8))
             out = open_image_rgb(img_path, root=root.resolve())
             self.assertEqual(out.size, (8, 8))
             out.close()

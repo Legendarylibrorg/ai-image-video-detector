@@ -8,40 +8,15 @@ from pathlib import Path
 import shutil
 import sys
 
+from script_support import ensure_src_path
 
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
-SPLITS = ("train", "val", "test")
-CLASSES = ("ai", "real")
+ensure_src_path()
 
-
-def _resolve_split_root(root: Path, split: str) -> Path | None:
-    if (root / split).is_dir():
-        return root / split
-    if split == "train" and any((root / cls).is_dir() for cls in CLASSES):
-        return root
-    return None
-
-
-def _iter_bucket_files(root: Path, split: str, cls: str) -> list[Path]:
-    split_root = _resolve_split_root(root, split)
-    if split_root is None:
-        return []
-    bucket = split_root / cls
-    if not bucket.exists():
-        return []
-    return sorted(
-        p
-        for p in bucket.iterdir()
-        if p.is_file() and not p.is_symlink() and p.suffix.lower() in IMAGE_EXTS
-    )
+from ai_image_detector.dataset_layout import CLASSES, IMAGE_EXTS, IMAGE_SPLITS, image_counts, iter_bucket_files
 
 
 def _count_output_files(root: Path) -> dict[str, dict[str, int]]:
-    counts: dict[str, dict[str, int]] = {split: {cls: 0 for cls in CLASSES} for split in SPLITS}
-    for split in SPLITS:
-        for cls in CLASSES:
-            counts[split][cls] = len(_iter_bucket_files(root, split, cls))
-    return counts
+    return image_counts(root, allow_train_root_alias=True, include_symlinks=False)
 
 
 def _sha256(path: Path) -> str:
@@ -137,13 +112,20 @@ def main() -> int:
         "incremental": str(incremental.resolve()),
         "out": str(out.resolve()),
         "copy_only": bool(args.copy),
-        "bucket_stats": {split: {cls: {} for cls in CLASSES} for split in SPLITS},
+        "bucket_stats": {split: {cls: {} for cls in CLASSES} for split in IMAGE_SPLITS},
     }
 
-    for split in SPLITS:
+    for split in IMAGE_SPLITS:
         for cls in CLASSES:
-            base_files = _iter_bucket_files(base, split, cls)
-            incremental_files = _iter_bucket_files(incremental, split, cls)
+            base_files = iter_bucket_files(base, split, cls, exts=IMAGE_EXTS, allow_train_root_alias=True, include_symlinks=False)
+            incremental_files = iter_bucket_files(
+                incremental,
+                split,
+                cls,
+                exts=IMAGE_EXTS,
+                allow_train_root_alias=True,
+                include_symlinks=False,
+            )
             bucket_files = [*base_files, *incremental_files]
             stats = _materialize_bucket(bucket_files, out / split / cls, copy_only=bool(args.copy))
             stats["base_candidates"] = len(base_files)
@@ -154,7 +136,7 @@ def main() -> int:
     summary["final_counts"] = final_counts
 
     missing_buckets: list[str] = []
-    for split in SPLITS:
+    for split in IMAGE_SPLITS:
         for cls in CLASSES:
             if final_counts[split][cls] <= 0:
                 missing_buckets.append(f"{split}/{cls}")

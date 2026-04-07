@@ -48,7 +48,12 @@ case "$cmd" in
     SETUP_RUN_PIPELINE=0 bash scripts/setup_linux.sh
     ;;
   deps)
-    bash scripts/install_deps.sh
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+      echo "[DRY_RUN] bash scripts/install_deps.sh"
+      echo "deps_status=dry_run"
+    else
+      bash scripts/install_deps.sh
+    fi
     ;;
   collect)
     run_do collect
