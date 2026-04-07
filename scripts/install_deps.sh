@@ -4,12 +4,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+source "$ROOT_DIR/scripts/lib/env.sh"
+
 LOCK_FILE="${LOCK_FILE:-$ROOT_DIR/requirements.lock}"
 VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 UPGRADE_TOOLCHAIN="${UPGRADE_TOOLCHAIN:-0}"
 TORCH_CUDA_INDEX_URL="${TORCH_CUDA_INDEX_URL:-https://download.pytorch.org/whl/cu128}"
-DEPS_EXTRA="${DEPS_EXTRA:-pipeline}"
-DEPS_PROFILE_TAG="$(printf '%s' "$DEPS_EXTRA" | tr ',/' '__')"
+DEPS_PROFILE_FILE="${DEPS_PROFILE_FILE:-$VENV_DIR/.deps_profile}"
+DEPS_EXTRA="$(normalized_deps_extra "${DEPS_EXTRA:-pipeline}")"
+DEPS_PROFILE_TAG="$(deps_extra_profile_tag "$DEPS_EXTRA")"
 DEPS_STAMP_FILE="${DEPS_STAMP_FILE:-$VENV_DIR/.deps_stamp.${DEPS_PROFILE_TAG}}"
 
 hash_cmd() {
@@ -42,24 +45,61 @@ deps_fingerprint() {
   } | hash_cmd | awk '{print $1}'
 }
 
-extra_enabled() {
-  local wanted="$1"
-  local extra=""
-  local trimmed=""
-  local -a extras=()
-  IFS=',' read -r -a extras <<< "$DEPS_EXTRA"
-  for extra in "${extras[@]}"; do
-    trimmed="${extra#"${extra%%[![:space:]]*}"}"
-    trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
-    if [[ "$trimmed" == "pipeline" || "$trimmed" == "$wanted" ]]; then
-      return 0
-    fi
-  done
-  return 1
+needs_torch_stack() {
+  deps_extra_enabled inference "$DEPS_EXTRA" || deps_extra_enabled training "$DEPS_EXTRA"
 }
 
-needs_torch_stack() {
-  extra_enabled inference || extra_enabled training
+toolchain_supports_editable_install() {
+  python - <<'PY'
+from importlib.metadata import PackageNotFoundError, version
+import sys
+
+
+def parse_version(value: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for chunk in value.replace("-", ".").split("."):
+        digits = ""
+        for ch in chunk:
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple(parts)
+
+
+def at_least(distribution: str, minimum: str) -> bool:
+    try:
+        current = version(distribution)
+    except PackageNotFoundError:
+        return False
+    current_parts = parse_version(current)
+    minimum_parts = parse_version(minimum)
+    if len(current_parts) < len(minimum_parts):
+        current_parts = current_parts + (0,) * (len(minimum_parts) - len(current_parts))
+    return current_parts >= minimum_parts
+
+
+sys.exit(0 if at_least("pip", "21.3") and at_least("setuptools", "68") else 1)
+PY
+}
+
+ensure_packaging_toolchain() {
+  if [[ "$UPGRADE_TOOLCHAIN" == "1" ]] || ! toolchain_supports_editable_install; then
+    if ! pip_cmd install --quiet --retries 1 --timeout 15 --upgrade "pip>=21.3" "setuptools>=68" wheel; then
+      echo "warning_toolchain_upgrade_failed using_existing_versions=1"
+    fi
+  fi
+  if ! toolchain_supports_editable_install; then
+    echo "deps_fail=packaging_toolchain_too_old run=$(repair_install_command)" >&2
+    exit 1
+  fi
+}
+
+repair_install_command() {
+  printf '%sbash scripts/install_deps.sh' "$(deps_extra_env_prefix "$DEPS_EXTRA")"
 }
 
 selected_lock_package_names() {
@@ -67,13 +107,13 @@ selected_lock_package_names() {
   if needs_torch_stack; then
     names+=(numpy pillow safetensors)
   fi
-  if extra_enabled training; then
+  if deps_extra_enabled training "$DEPS_EXTRA"; then
     names+=(piexif scikit-learn)
   fi
-  if extra_enabled collection; then
+  if deps_extra_enabled collection "$DEPS_EXTRA"; then
     names+=(datasets huggingface_hub pillow)
   fi
-  if extra_enabled video; then
+  if deps_extra_enabled video "$DEPS_EXTRA"; then
     names+=(opencv-python-headless)
   fi
   printf '%s\n' "${names[@]}" | awk 'NF && !seen[$0]++'
@@ -124,64 +164,82 @@ install_locked_torch_stack() {
 }
 
 verify_python_deps() {
-  python - "$DEPS_EXTRA" <<'PY'
-import importlib
-import sys
-
-raw_extra = sys.argv[1]
-extras = {item.strip() for item in raw_extra.split(",") if item.strip()}
-if "pipeline" in extras:
-    extras.update({"inference", "training", "collection", "video"})
-
-modules = {"ai_image_detector"}
-if "inference" in extras or "training" in extras:
-    modules.update({"numpy", "PIL", "safetensors", "torch", "torchvision"})
-if "training" in extras:
-    modules.update({"piexif", "sklearn"})
-if "collection" in extras:
-    modules.update({"datasets", "huggingface_hub", "PIL"})
-if "video" in extras:
-    modules.add("cv2")
-
-for name in sorted(modules):
-    importlib.import_module(name)
-PY
+  python "$ROOT_DIR/scripts/deps_profile.py" --extras "$DEPS_EXTRA" --check-imports
 }
 
 verify_required_commands() {
-  if extra_enabled collection && ! command -v hf >/dev/null 2>&1; then
-    echo "deps_fail=huggingface_cli_missing extra=$DEPS_EXTRA run=bash scripts/install_deps.sh" >&2
+  if deps_extra_enabled collection "$DEPS_EXTRA" && ! command -v hf >/dev/null 2>&1; then
+    echo "deps_fail=huggingface_cli_missing extra=$DEPS_EXTRA run=$(repair_install_command)" >&2
     return 1
   fi
-  if extra_enabled training && ! command -v aid-train >/dev/null 2>&1; then
-    echo "deps_fail=repo_cli_missing cli=aid-train extra=$DEPS_EXTRA run=bash scripts/install_deps.sh" >&2
+  if deps_extra_enabled training "$DEPS_EXTRA" && ! command -v aid-train >/dev/null 2>&1; then
+    echo "deps_fail=repo_cli_missing cli=aid-train extra=$DEPS_EXTRA run=$(repair_install_command)" >&2
     return 1
   fi
-  if extra_enabled training && extra_enabled video && ! command -v aid-video-train >/dev/null 2>&1; then
-    echo "deps_fail=repo_cli_missing cli=aid-video-train extra=$DEPS_EXTRA run=bash scripts/install_deps.sh" >&2
+  if deps_extra_enabled training "$DEPS_EXTRA" && deps_extra_enabled video "$DEPS_EXTRA" && ! command -v aid-video-train >/dev/null 2>&1; then
+    echo "deps_fail=repo_cli_missing cli=aid-video-train extra=$DEPS_EXTRA run=$(repair_install_command)" >&2
     return 1
   fi
 }
 
-if [[ ! -d "$VENV_DIR" ]]; then
+install_local_package() {
+  pip_cmd install -e "$(deps_extra_install_target "$DEPS_EXTRA")" --no-deps --no-build-isolation
+}
+
+install_repo_cli_wrappers() {
+  local train_wrapper="$VENV_DIR/bin/aid-train"
+  local video_wrapper="$VENV_DIR/bin/aid-video-train"
+  mkdir -p "$VENV_DIR/bin"
+  if deps_extra_enabled training "$DEPS_EXTRA"; then
+    cat > "$train_wrapper" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/python" -c 'from ai_image_detector.cli import train_main; raise SystemExit(train_main())' "$@"
+EOF
+    chmod +x "$train_wrapper"
+  else
+    rm -f "$train_wrapper"
+  fi
+  if deps_extra_enabled training "$DEPS_EXTRA" && deps_extra_enabled video "$DEPS_EXTRA"; then
+    cat > "$video_wrapper" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/python" -c 'from ai_image_detector.cli import video_train_main; raise SystemExit(video_train_main())' "$@"
+EOF
+    chmod +x "$video_wrapper"
+  else
+    rm -f "$video_wrapper"
+  fi
+}
+
+write_deps_profile_file() {
+  printf "%s\n" "$DEPS_EXTRA" > "$DEPS_PROFILE_FILE"
+}
+
+ensure_virtualenv_ready() {
+  if [[ -x "$VENV_DIR/bin/python" && -f "$VENV_DIR/bin/activate" ]]; then
+    return 0
+  fi
   python3 -m venv "$VENV_DIR"
-fi
+}
+
+ensure_virtualenv_ready
 
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 deps_fp="$(deps_fingerprint)"
 if [[ "$UPGRADE_TOOLCHAIN" != "1" && -f "$DEPS_STAMP_FILE" && "$(cat "$DEPS_STAMP_FILE")" == "$deps_fp" ]]; then
   if verify_python_deps >/dev/null 2>&1 && verify_required_commands >/dev/null 2>&1; then
+    install_repo_cli_wrappers
+    write_deps_profile_file
     echo "deps_status=up_to_date"
     exit 0
   fi
 fi
 
-if [[ "$UPGRADE_TOOLCHAIN" == "1" ]]; then
-  if ! pip_cmd install --quiet --retries 1 --timeout 15 --upgrade pip setuptools wheel; then
-    echo "warning_toolchain_upgrade_failed using_existing_versions=1"
-  fi
-fi
+ensure_packaging_toolchain
 
 if [[ -s "$LOCK_FILE" && "$DEPS_EXTRA" == "pipeline" ]]; then
   tmp_lock_no_torch="$(mktemp)"
@@ -192,20 +250,22 @@ if [[ -s "$LOCK_FILE" && "$DEPS_EXTRA" == "pipeline" ]]; then
   install_locked_torch_stack
 
   # Install the local package without re-resolving dependencies from pyproject.
-  pip_cmd install -e . --no-deps --no-build-isolation
+  install_local_package
 else
   if [[ -s "$LOCK_FILE" ]]; then
     install_selected_locked_packages
     install_locked_torch_stack
-    pip_cmd install -e . --no-deps --no-build-isolation
+    install_local_package
   else
     echo "deps_lock=missing file=$LOCK_FILE fallback=pyproject_resolve"
-    pip_cmd install --upgrade --upgrade-strategy eager -e .
+    pip_cmd install --upgrade --upgrade-strategy eager -e "$(project_install_target)"
   fi
 fi
 
+install_repo_cli_wrappers
+
 if ! verify_python_deps >/dev/null 2>&1; then
-  echo "deps_fail=core_python_deps_missing extra=$DEPS_EXTRA run=bash scripts/install_deps.sh" >&2
+  echo "deps_fail=core_python_deps_missing extra=$DEPS_EXTRA run=$(repair_install_command)" >&2
   exit 1
 fi
 
@@ -214,4 +274,5 @@ if ! verify_required_commands; then
 fi
 
 pip_cmd check
+write_deps_profile_file
 printf "%s\n" "$deps_fp" > "$DEPS_STAMP_FILE"

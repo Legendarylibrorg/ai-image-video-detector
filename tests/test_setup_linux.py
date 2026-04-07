@@ -139,6 +139,70 @@ class SetupLinuxTests(unittest.TestCase):
         self.assertIn("[DRY_RUN] bash scripts/do.sh pipeline", proc.stdout)
         self.assertIn("setup_status=complete", proc.stdout)
 
+    def test_setup_linux_collection_profile_guides_collect_flow(self) -> None:
+        proc = self.run_setup_linux(
+            extra_env={
+                "DEPS_EXTRA": "collection",
+                "HF_SETUP_REQUIRE_TOKEN": "0",
+                "SETUP_INSTALL_SYSTEM_DEPS": "0",
+                "SETUP_PROMPT_FOR_HF_TOKEN": "0",
+            }
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn(
+            "setup_next=add HF_TOKEN in .env if needed, or run hf auth login, then run ./local.sh collect and ./local.sh collect-status",
+            proc.stdout,
+        )
+        self.assertNotIn("./local.sh smoke", proc.stdout)
+        self.assertNotIn("./local.sh run", proc.stdout)
+
+    def test_setup_linux_reuses_stored_profile_for_python_deps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            stage_dir = Path(tmpdir)
+            venv_dir = stage_dir / "venv"
+            venv_dir.mkdir()
+            (venv_dir / ".deps_profile").write_text("collection\n", encoding="utf-8")
+            env = os.environ.copy()
+            env.update(
+                {
+                    "DRY_RUN": "1",
+                    "SETUP_ENV_FILE": str(stage_dir / ".env"),
+                    "SETUP_STAGE_DIR": str(stage_dir),
+                    "VENV_DIR": str(venv_dir),
+                    "HF_SETUP_REQUIRE_TOKEN": "0",
+                    "SETUP_INSTALL_SYSTEM_DEPS": "0",
+                    "SETUP_PROMPT_FOR_HF_TOKEN": "0",
+                    "HF_TOKEN": "",
+                    "HUGGINGFACE_HUB_TOKEN": "",
+                }
+            )
+            proc = subprocess.run(
+                ["bash", "scripts/setup_linux.sh"],
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("[DRY_RUN] env DEPS_EXTRA=collection UPGRADE_TOOLCHAIN=0 bash scripts/install_deps.sh", proc.stdout)
+
+    def test_setup_linux_training_profile_guides_persistent_training_data_flow(self) -> None:
+        proc = self.run_setup_linux(
+            extra_env={
+                "DEPS_EXTRA": "training",
+                "HF_SETUP_REQUIRE_TOKEN": "0",
+                "SETUP_INSTALL_SYSTEM_DEPS": "0",
+                "SETUP_PROMPT_FOR_HF_TOKEN": "0",
+            }
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn(
+            "setup_next=prepare ./data_best and optional ./data_new/train (plus ./video_data if you want video training), then run ./local.sh train",
+            proc.stdout,
+        )
+        self.assertNotIn("./local.sh smoke", proc.stdout)
+
     def test_setup_linux_dry_run_uses_noninteractive_apt_install(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             bin_dir = Path(tmpdir)

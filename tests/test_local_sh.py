@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 
 
@@ -75,6 +76,36 @@ class LocalShTests(unittest.TestCase):
         )
 
         self.assertIn("[DRY_RUN] bash scripts/install_deps.sh", proc.stdout)
+        self.assertIn("deps_status=dry_run", proc.stdout)
+
+    def test_deps_command_dry_run_preserves_explicit_profile(self) -> None:
+        proc = subprocess.run(
+            ["bash", "./local.sh", "deps"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "DRY_RUN": "1", "DEPS_EXTRA": "collection"},
+        )
+
+        self.assertIn("[DRY_RUN] env DEPS_EXTRA=collection bash scripts/install_deps.sh", proc.stdout)
+        self.assertIn("deps_status=dry_run", proc.stdout)
+
+    def test_deps_command_dry_run_reuses_stored_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            venv_dir = Path(tmpdir) / "venv"
+            venv_dir.mkdir(parents=True, exist_ok=True)
+            (venv_dir / ".deps_profile").write_text("collection\n", encoding="utf-8")
+            proc = subprocess.run(
+                ["bash", "./local.sh", "deps"],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "DRY_RUN": "1", "VENV_DIR": str(venv_dir), "DEPS_EXTRA": ""},
+            )
+
+        self.assertIn("[DRY_RUN] env DEPS_EXTRA=collection bash scripts/install_deps.sh", proc.stdout)
         self.assertIn("deps_status=dry_run", proc.stdout)
 
     def test_collect_status_stdout_is_valid_json(self) -> None:

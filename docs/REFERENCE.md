@@ -146,7 +146,7 @@ All of these live under `scripts/` (repo root on `PYTHONPATH` when invoked via `
 | `script_support.py` | **Internal**: JSON, git, checkpoint paths for scripts. Imported by reporting/export/benchmark scripts. |
 | `release_selection.py` | **Internal**: model selection and manifest pieces. Imported by `export_best_release.py`, `write_pipeline_report.py`, `benchmark_gate.py`. |
 
-Image member training uses **`aid-train`** from `scripts/train_ensemble.sh` and `scripts/hparam_sweep.sh` (package CLI, not a `scripts/*.py` driver). Video training uses **`aid-video-train`** from `full_pipeline_4090.sh`.
+Image member training uses **`aid-train`** from `scripts/train_ensemble.sh` and `scripts/hparam_sweep.sh` (repo venv wrapper, not a `scripts/*.py` driver). Video training uses **`aid-video-train`** from `full_pipeline_4090.sh`.
 
 ## Dataset and artifact basics
 
@@ -217,19 +217,19 @@ aid-video-train
 ```
 
 Those commands exist to support the local pipeline scripts, not to turn this repo into a broad general-purpose app surface.
-They are thin wrappers around the Python modules in this package. After `pip install -e .`, the declared dependencies in `pyproject.toml` should satisfy imports; if not, the CLI prints `run=pip install -e .` on stderr.
+The repo bootstrap installs them as lightweight wrappers in `./.venv/bin` around the Python modules in this package. After `./local.sh deps`, the matching runtime extras in `pyproject.toml` should satisfy imports; if not, the CLI prints an absolute repo-root `./local.sh deps` recovery command on stderr.
 
 ## Python dependencies
 
 The codebase uses **Python 3.10+** syntax (for example `str | None` unions). `requires-python` in `pyproject.toml` matches that.
 
-Everything needed for the default training and collection workflow is listed under `[project] dependencies` in `pyproject.toml`. Install with:
+Everything needed for the default training and collection workflow is listed under the `pipeline` extra in `pyproject.toml`. For direct Python imports and test runs, install with:
 
 ```bash
-pip install -e .
+pip install -e '.[pipeline]'
 ```
 
-Normal native fallback usage should still go through `./local.sh deps` or `./local.sh setup`, which install that set into `./.venv`.
+Normal native fallback usage should still go through `./local.sh deps` or `./local.sh setup`, which install the repo-managed environment and wrapper commands into `./.venv`.
 
 ## Containerized path
 

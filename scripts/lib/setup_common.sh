@@ -194,12 +194,42 @@ print_next_step() {
     echo "setup_next=pipeline complete"
     return
   fi
+  local deps_extra=""
+  deps_extra="$(resolved_deps_extra)"
   local token=""
   resolve_current_hf_token
   token="$CURRENT_HF_TOKEN"
+  if deps_extra_enabled collection "$deps_extra" && deps_extra_enabled training "$deps_extra" && deps_extra_enabled video "$deps_extra"; then
+    if [[ -n "$token" ]]; then
+      echo "setup_next=run ./local.sh smoke, then ./local.sh run"
+    else
+      echo "setup_next=add HF_TOKEN in .env if needed, or run hf auth login, then run ./local.sh smoke and ./local.sh run"
+    fi
+    return
+  fi
+  if deps_extra_enabled collection "$deps_extra" && deps_extra_enabled training "$deps_extra"; then
+    if [[ -n "$token" ]]; then
+      echo "setup_next=run ./local.sh smoke, then ./local.sh collect and ./local.sh train"
+    else
+      echo "setup_next=add HF_TOKEN in .env if needed, or run hf auth login, then run ./local.sh smoke, ./local.sh collect, and ./local.sh train"
+    fi
+    return
+  fi
+  if deps_extra_enabled collection "$deps_extra"; then
+    if [[ -n "$token" ]]; then
+      echo "setup_next=run ./local.sh collect, then ./local.sh collect-status"
+    else
+      echo "setup_next=add HF_TOKEN in .env if needed, or run hf auth login, then run ./local.sh collect and ./local.sh collect-status"
+    fi
+    return
+  fi
+  if deps_extra_enabled training "$deps_extra"; then
+    echo "setup_next=prepare ./data_best and optional ./data_new/train (plus ./video_data if you want video training), then run ./local.sh train"
+    return
+  fi
   if [[ -n "$token" ]]; then
-    echo "setup_next=run ./local.sh smoke, then ./local.sh run"
+    echo "setup_next=run ./local.sh doctor"
   else
-    echo "setup_next=add HF_TOKEN in .env if needed, or run hf auth login, then run ./local.sh smoke and ./local.sh run"
+    echo "setup_next=add HF_TOKEN in .env if needed, or run hf auth login, then run ./local.sh doctor"
   fi
 }

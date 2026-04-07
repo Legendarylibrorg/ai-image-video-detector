@@ -14,7 +14,7 @@ python3 -m venv "$LOCK_VENV_DIR"
 # shellcheck disable=SC1091
 source "$LOCK_VENV_DIR/bin/activate"
 python -m pip install --upgrade pip setuptools wheel
-pip install --upgrade --upgrade-strategy eager -e .
+pip install --upgrade --upgrade-strategy eager -e '.[pipeline]'
 if ! python - <<'PY' >/dev/null 2>&1
 import tomllib
 PY
@@ -23,8 +23,8 @@ then
 fi
 python -m pip check
 
-# Keep the lock small and maintainable: pin only the project's direct runtime
-# dependencies and let pip resolve their transitives during install.
+# Keep the lock small and maintainable: pin only the default pipeline's direct
+# runtime dependencies and let pip resolve their transitives during install.
 python - <<'PY' "$ROOT_DIR/pyproject.toml" > "$TMP_FILE"
 import importlib.metadata as md
 from importlib.metadata import PackageNotFoundError
@@ -39,6 +39,8 @@ except ModuleNotFoundError:  # pragma: no cover - Python < 3.11
 project = tomllib.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 project_cfg = project.get("project", {})
 deps = list(project_cfg.get("dependencies", []))
+optional = project_cfg.get("optional-dependencies", {})
+deps.extend(optional.get("pipeline", []))
 rows: list[str] = []
 
 for dep in deps:

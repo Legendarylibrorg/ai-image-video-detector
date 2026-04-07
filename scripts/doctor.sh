@@ -12,6 +12,8 @@ DOCTOR_REQUIRE_TOKEN="${DOCTOR_REQUIRE_TOKEN:-0}"
 DOCTOR_REQUIRE_GPU="${DOCTOR_REQUIRE_GPU:-0}"
 DOCTOR_REQUIRE_CLAMAV="${DOCTOR_REQUIRE_CLAMAV:-0}"
 DOCTOR_REQUIRE_DOCKER="${DOCTOR_REQUIRE_DOCKER:-0}"
+DOCTOR_DEPS_EXTRA="${DOCTOR_DEPS_EXTRA:-${DEPS_EXTRA:-}}"
+DOCTOR_DEPS_PROFILE_FILE="${DOCTOR_DEPS_PROFILE_FILE:-$VENV_DIR/.deps_profile}"
 
 ok_count=0
 warn_count=0
@@ -42,6 +44,27 @@ normalize_path() {
   fi
   path="${path#./}"
   printf "%s/%s\n" "$ROOT_DIR" "$path"
+}
+
+doctor_deps_extra() {
+  resolve_deps_extra "$DOCTOR_DEPS_EXTRA" "$DOCTOR_DEPS_PROFILE_FILE"
+}
+
+doctor_extra_enabled() {
+  local wanted="$1"
+  deps_extra_enabled "$wanted" "$(doctor_deps_extra)"
+}
+
+doctor_setup_command() {
+  local deps_extra=""
+  deps_extra="$(doctor_deps_extra)"
+  printf '%s./local.sh setup\n' "$(deps_extra_env_prefix "$deps_extra")"
+}
+
+doctor_deps_command() {
+  local deps_extra=""
+  deps_extra="$(doctor_deps_extra)"
+  printf '%s./local.sh deps\n' "$(deps_extra_env_prefix "$deps_extra")"
 }
 
 check_disk_space() {
@@ -207,36 +230,44 @@ check_isolation_posture() {
 }
 
 check_venv_and_deps() {
+  local deps_extra=""
+  deps_extra="$(doctor_deps_extra)"
   if [[ ! -x "$VENV_DIR/bin/python" ]]; then
-    emit_warn "venv_missing path=$VENV_DIR run=./local.sh setup"
+    emit_warn "venv_missing path=$VENV_DIR profile=$deps_extra run=$(doctor_setup_command)"
     return
   fi
   emit_ok "venv_present path=$VENV_DIR"
-  if "$VENV_DIR/bin/python" - <<'PY' >/dev/null 2>&1
-import ai_image_detector  # noqa: F401
-import cv2  # noqa: F401
-import datasets  # noqa: F401
-import huggingface_hub  # noqa: F401
-import PIL  # noqa: F401
-import torch  # noqa: F401
-PY
+  emit_ok "deps_profile=$deps_extra"
+  if "$VENV_DIR/bin/python" "$ROOT_DIR/scripts/deps_profile.py" --extras "$deps_extra" --check-imports >/dev/null 2>&1
   then
     emit_ok "core_python_deps=ok"
   else
-    emit_warn "core_python_deps=missing_or_partial run=./local.sh setup"
+    emit_warn "core_python_deps=missing_or_partial profile=$deps_extra run=$(doctor_setup_command)"
   fi
 
   local cli
   local cli_missing=0
-  for cli in hf aid-train aid-video-train; do
+  local -a required_clis=()
+  if doctor_extra_enabled collection; then
+    required_clis+=(hf)
+  fi
+  if doctor_extra_enabled training; then
+    required_clis+=(aid-train)
+  fi
+  if doctor_extra_enabled training && doctor_extra_enabled video; then
+    required_clis+=(aid-video-train)
+  fi
+  for cli in "${required_clis[@]}"; do
     if [[ -x "$VENV_DIR/bin/$cli" ]]; then
       emit_ok "cli_ready name=$cli"
     else
       cli_missing=1
-      emit_warn "cli_missing name=$cli run=./local.sh deps"
+      emit_warn "cli_missing name=$cli profile=$deps_extra run=$(doctor_deps_command)"
     fi
   done
-  if [[ "$cli_missing" == "0" ]]; then
+  if [[ ${#required_clis[@]} -eq 0 ]]; then
+    emit_ok "core_cli_deps=not_required profile=$deps_extra"
+  elif [[ "$cli_missing" == "0" ]]; then
     emit_ok "core_cli_deps=ok"
   fi
 }

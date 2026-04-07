@@ -149,14 +149,15 @@ If you want to split the full flow:
 
 ## Python dependencies
 
-Runtime libraries (PyTorch, Hugging Face, OpenCV, and related packages) are declared in `pyproject.toml` under `[project] dependencies`. A normal install pulls the full pipeline stack:
+Runtime libraries are grouped in `pyproject.toml` under `[project.optional-dependencies]`. For direct Python imports and test runs, the manual fallback install is:
 
 ```bash
-pip install -e .
+pip install -e '.[pipeline]'
 ```
 
-For native local Linux use, prefer `./local.sh deps` or `./local.sh setup`; those install the same dependency set into `./.venv` using `scripts/install_deps.sh`.
-The packaged `aid-*` commands are thin entrypoints; if imports fail, they print `run=pip install -e .` on stderr.
+For native local Linux use, prefer `./local.sh deps` or `./local.sh setup`; those install the repo-managed environment into `./.venv` using `scripts/install_deps.sh`.
+When you only need part of the stack, use a profile-aware repo install such as `DEPS_EXTRA=collection ./local.sh deps` or `DEPS_EXTRA=training,video ./local.sh deps`.
+The repo bootstrap installs the `aid-*` wrappers into `./.venv/bin`; if imports fail, they print an absolute repo-root `./local.sh deps` recovery command on stderr.
 
 ## Repo Layout
 
@@ -245,7 +246,7 @@ curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-det
 
 Important notes:
 - `./local.sh setup` bootstraps `./.venv`, retries dependency install and doctor checks, and does not stop to prompt for `HF_TOKEN` by default.
-- The full repo workflow expects `./local.sh deps` or `pip install -e .` so the declared runtime dependencies are present.
+- The full repo workflow expects `./local.sh deps` or `./local.sh setup`; direct `pip install -e '.[pipeline]'` is only the manual fallback for Python imports and test runs.
 - The main operator commands are `./local.sh collect`, `./local.sh train`, `./local.sh retrain`, `./local.sh finetune`, `./local.sh continuous`, and `./local.sh collect-status`.
 - `./local.sh run` is the canonical full pipeline path and writes reports under `./.local/reports` plus release artifacts under `./artifacts_ens/release`.
 - `./local.sh smoke` is the tiny local end-to-end validation path. `./local.sh smoke-real` is the optional real Hugging Face + CUDA validation path.
