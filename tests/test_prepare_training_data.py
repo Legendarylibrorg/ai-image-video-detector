@@ -2,14 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = ROOT / "scripts"
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
+from _support import ROOT, SCRIPTS
 
 import prepare_training_data
 

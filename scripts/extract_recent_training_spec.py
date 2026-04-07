@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
-from typing import Any, Iterable
+from typing import Any
 
 from script_support import ensure_src_path
 

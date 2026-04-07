@@ -20,7 +20,8 @@ from ai_image_detector.data import MetadataImageFolder, build_loader_kwargs, mak
 from ai_image_detector.ensemble import EnsembleDetector, load_models
 from ai_image_detector.model import build_model, model_runtime_spec
 from ai_image_detector.release_tools import write_timestamped_release
-from ai_image_detector.runtime import build_adamw, configure_torch_runtime, git_commit, seed_all, training_device
+from ai_image_detector.runtime import build_adamw, configure_torch_runtime, seed_all, training_device
+from ai_image_detector.utils import git_commit
 from ai_image_detector.utils.jsonio import write_json_atomic
 
 

@@ -5,8 +5,7 @@ import tempfile
 import subprocess
 import unittest
 
-
-ROOT = Path(__file__).resolve().parents[1]
+from _support import ROOT
 
 
 class DoShTests(unittest.TestCase):

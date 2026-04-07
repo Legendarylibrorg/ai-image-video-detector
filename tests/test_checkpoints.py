@@ -7,15 +7,38 @@ import unittest
 from unittest import mock
 
 from _support import ROOT  # noqa: F401
+import script_support
 from ai_image_detector import checkpoints
 
 try:
     import torch
+    from ai_image_detector import runtime as aid_runtime
 except ModuleNotFoundError:  # pragma: no cover - optional dependency path
     torch = None  # type: ignore[assignment]
+    aid_runtime = None  # type: ignore[assignment]
 
 
 class CheckpointsTests(unittest.TestCase):
+    def test_maybe_compile_model_returns_original_when_disabled(self) -> None:
+        if torch is None or aid_runtime is None:
+            self.skipTest("requires torch")
+
+        model = torch.nn.Linear(2, 1)
+
+        compiled = aid_runtime.maybe_compile_model(model, enabled=False)
+
+        self.assertIs(compiled, model)
+
+    def test_maybe_compile_model_falls_back_on_compile_error(self) -> None:
+        if torch is None or aid_runtime is None:
+            self.skipTest("requires torch")
+
+        model = torch.nn.Linear(2, 1)
+        with mock.patch.object(aid_runtime.torch, "compile", side_effect=RuntimeError("boom")):
+            compiled = aid_runtime.maybe_compile_model(model, enabled=True)
+
+        self.assertIs(compiled, model)
+
     def test_load_checkpoint_rejects_pickle_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "model.pt"
@@ -36,16 +59,18 @@ class CheckpointsTests(unittest.TestCase):
         self.assertEqual(loaded, fake_ckpt)
         mock_load.assert_called_once_with(path, map_location="cpu")
 
-    def test_resolve_checkpoint_path_prefers_safetensors_when_both_exist(self) -> None:
+    def test_script_support_checkpoint_resolvers_cover_live_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             pt_path = Path(tmp) / "model.pt"
             sft_path = Path(tmp) / "model.safetensors"
             pt_path.write_bytes(b"pt")
             sft_path.write_bytes(b"sft")
 
-            resolved = checkpoints.resolve_checkpoint_path(pt_path)
+            resolved = script_support.resolve_checkpoint(sft_path)
+            preferred = script_support.resolve_preferred_checkpoint(pt_path)
 
         self.assertEqual(resolved, sft_path)
+        self.assertEqual(preferred, sft_path)
 
     def test_save_training_checkpoint_updates_latest_marker(self) -> None:
         if torch is None:
@@ -64,6 +89,24 @@ class CheckpointsTests(unittest.TestCase):
         self.assertIn("save_training_checkpoint(", train_text)
         self.assertIn("ckpt = load_training_checkpoint(resume_path, map_location=device)", train_text)
         self.assertNotIn("torch.load(", train_text)
+
+    def test_train_module_checkpoint_io_stays_on_plain_model_when_compile_is_enabled(self) -> None:
+        runtime_text = (ROOT / "src" / "ai_image_detector" / "runtime.py").read_text(encoding="utf-8")
+        train_text = (ROOT / "src" / "ai_image_detector" / "train.py").read_text(encoding="utf-8")
+        self.assertIn("def maybe_compile_model(", runtime_text)
+        self.assertIn("train_model = maybe_compile_model(model, enabled=bool(args.compile))", train_text)
+        self.assertIn('"state_dict": model.state_dict()', train_text)
+        self.assertIn('model.load_state_dict(ckpt["state_dict"])', train_text)
+        self.assertIn("logits = train_model(x, metadata_features=metadata_features)", train_text)
+
+    def test_video_training_checkpoint_io_stays_on_plain_model_when_compile_is_enabled(self) -> None:
+        runtime_text = (ROOT / "src" / "ai_image_detector" / "runtime.py").read_text(encoding="utf-8")
+        video_text = (ROOT / "src" / "ai_image_detector" / "video_temporal.py").read_text(encoding="utf-8")
+        self.assertIn("def maybe_compile_model(", runtime_text)
+        self.assertIn("train_model = maybe_compile_model(model, enabled=bool(args.compile))", video_text)
+        self.assertIn('"state_dict": model.state_dict()', video_text)
+        self.assertIn('model.load_state_dict(ckpt["state_dict"])', video_text)
+        self.assertIn("logit = train_model(x)", video_text)
 
     def test_distill_script_uses_shared_checkpoint_loader_for_resume(self) -> None:
         distill_text = (ROOT / "scripts" / "train_distill.py").read_text(encoding="utf-8")
