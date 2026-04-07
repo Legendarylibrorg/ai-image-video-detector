@@ -5,13 +5,10 @@ x-pipeline-service: &pipeline-service
     HF_HOME: /workspace/.local/hf
     HF_HUB_CACHE: /workspace/.local/hf/hub
     HF_DATASETS_CACHE: /workspace/.local/hf/datasets
-    HUGGINGFACE_HUB_CACHE: /workspace/.local/hf/hub
-    HF_HUB_ENABLE_HF_TRANSFER: "1"
     PIP_CACHE_DIR: /workspace/.local/pip
     PIP_DISABLE_PIP_VERSION_CHECK: "1"
     HOME: /tmp/aid-home
     HF_TOKEN: ${HF_TOKEN:-}
-    HUGGINGFACE_HUB_TOKEN: ${HUGGINGFACE_HUB_TOKEN:-}
   volumes:
     - type: bind
       source: .

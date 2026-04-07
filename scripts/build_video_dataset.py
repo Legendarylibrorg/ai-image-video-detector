@@ -11,7 +11,7 @@ import time
 from typing import Dict, List
 
 from dataset_builder_common import HF_CACHE_DIR_DEFAULT, configure_hf_cache_env, count_existing_split_classes, targets_met
-from hf_data import download_dataset_file, list_dataset_repo_files, normalize_hf_token, snapshot_dataset_repo
+from hf_data import download_dataset_file, list_dataset_repo_files, resolve_hf_token_value, snapshot_dataset_repo
 
 hf_hub_download = download_dataset_file
 list_repo_files = list_dataset_repo_files
@@ -157,16 +157,18 @@ def main():
     ap.add_argument("--token-env", default="HF_TOKEN")
     args = ap.parse_args()
 
-    os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
     cache_dir = configure_hf_cache_env(args.cache_dir)
     if cache_dir is not None:
         print(f"hf_cache_dir={cache_dir}")
 
-    token = normalize_hf_token(os.getenv(args.token_env))
+    token, token_source = resolve_hf_token_value(args.token_env)
     if token:
-        print(f"using_token_env={args.token_env}")
+        if token_source.startswith("env:"):
+            print(f"using_token_env={token_source.split(':', 1)[1]}")
+        else:
+            print(f"using_token_source={token_source}")
     else:
-        print(f"warning_no_token env={args.token_env} (works, but lower rate limits)")
+        print(f"warning_no_token env={args.token_env} (works, but lower rate limits; hf auth login also works)")
     print(f"video_quality_filters min_bytes={args.min_video_bytes} max_bytes={args.max_video_bytes}")
 
     random.seed(args.seed)

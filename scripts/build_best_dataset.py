@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 import math
-import os
 from pathlib import Path
 import random
 import re
@@ -29,8 +28,8 @@ from hf_data import (
     iter_source_examples,
     load_hf_dataset_source,
     load_latest_source_manifest,
-    normalize_hf_token,
     normalize_image_dataset_split,
+    resolve_hf_token_value,
 )
 from image_materialize import (
     ImageDeduper,
@@ -271,6 +270,16 @@ def main():
     ap.add_argument("--hf-cache-file", default="", help="Optional file path to cache discovered HF source ids")
     ap.add_argument("--hf-cache-only-if-present", action="store_true", default=True, help="If cache file exists, use it and skip live HF discovery calls")
     ap.add_argument("--no-hf-cache-only-if-present", dest="hf_cache_only_if_present", action="store_false")
+    ap.add_argument("--hf-audit-sources", action="store_true", default=True, help="Audit discovered HF sources and write a review manifest before collection")
+    ap.add_argument("--no-hf-audit-sources", dest="hf_audit_sources", action="store_false")
+    ap.add_argument("--hf-audit-file", default=".local/reports/hf_source_audit.jsonl", help="Where to write the Hugging Face source audit manifest")
+    ap.add_argument("--hf-audit-min-rows", type=int, default=100, help="Reject audited sources with fewer known rows than this")
+    ap.add_argument("--hf-audit-require-image-field", action="store_true", default=True, help="Require the audit stage to infer an image field")
+    ap.add_argument("--no-hf-audit-require-image-field", dest="hf_audit_require_image_field", action="store_false")
+    ap.add_argument("--hf-audit-require-label-field", action="store_true", default=True, help="Require the audit stage to infer a label field")
+    ap.add_argument("--no-hf-audit-require-label-field", dest="hf_audit_require_label_field", action="store_false")
+    ap.add_argument("--hf-audit-filter-to-approved", action="store_true", default=True, help="Use only audit-approved HF sources for collection")
+    ap.add_argument("--no-hf-audit-filter-to-approved", dest="hf_audit_filter_to_approved", action="store_false")
     ap.add_argument("--streaming", action="store_true", default=True, help="Use HF streaming mode to reduce metadata overhead")
     ap.add_argument("--no-streaming", dest="streaming", action="store_false")
     ap.add_argument("--cache-dir", default=HF_CACHE_DIR_DEFAULT, help="HF datasets cache directory (improves resume and avoids repeated downloads)")
@@ -297,11 +306,14 @@ def main():
     random.seed(args.seed)
     rng = random.Random(args.seed + 17)
 
-    token = normalize_hf_token(os.environ.get(args.token_env))
+    token, token_source = resolve_hf_token_value(args.token_env)
     if token:
-        print(f"using_token_env={args.token_env}")
+        if token_source.startswith("env:"):
+            print(f"using_token_env={token_source.split(':', 1)[1]}")
+        else:
+            print(f"using_token_source={token_source}")
     else:
-        print(f"warning_no_token env={args.token_env} (public datasets still work, but with lower limits)")
+        print(f"warning_no_token env={args.token_env} (public datasets still work, but lower limits; hf auth login also works)")
     cache_dir = configure_hf_cache_env(args.cache_dir)
     if cache_dir is not None:
         print(f"hf_cache_dir={cache_dir}")

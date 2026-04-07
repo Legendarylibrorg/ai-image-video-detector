@@ -31,11 +31,14 @@ trap cleanup EXIT
 
 load_env_file
 
-if [[ -z "${HF_TOKEN:-${HUGGINGFACE_HUB_TOKEN:-}}" ]]; then
+resolve_current_hf_token
+token="$CURRENT_HF_TOKEN"
+if [[ -z "$token" ]]; then
   echo "smoke_real_status=missing_hf_token"
-  echo "set HF_TOKEN in the environment or .env before running smoke-real" >&2
+  echo "set HF_TOKEN in the environment or .env, or run hf auth login before running smoke-real" >&2
   exit 2
 fi
+set_hf_token_vars "$token"
 
 bash scripts/install_deps.sh >&2
 # shellcheck disable=SC1091

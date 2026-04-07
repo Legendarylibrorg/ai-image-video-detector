@@ -1,12 +1,25 @@
 from __future__ import annotations
 
 import json
+import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Sequence
 
-from datasets import are_progress_bars_disabled, disable_progress_bars, enable_progress_bars, load_dataset
+try:
+    from datasets import are_progress_bars_disabled, disable_progress_bars, enable_progress_bars, load_dataset
+except Exception:  # pragma: no cover - optional dependency path
+    load_dataset = None  # type: ignore[assignment]
+
+    def are_progress_bars_disabled() -> bool:  # type: ignore[override]
+        return True
+
+    def disable_progress_bars() -> None:  # type: ignore[override]
+        return None
+
+    def enable_progress_bars() -> None:  # type: ignore[override]
+        return None
 
 
 PREFERRED_SPLITS = ("train", "validation", "test")
@@ -43,6 +56,28 @@ def normalize_hf_token(token: str | None) -> str | None:
     return cleaned or None
 
 
+def resolve_hf_token_value(token_env: str = "HF_TOKEN") -> tuple[str | None, str]:
+    env_names = [token_env, "HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_HUB_TOKEN"]
+    seen: set[str] = set()
+    for name in env_names:
+        normalized_name = str(name or "").strip()
+        if not normalized_name or normalized_name in seen:
+            continue
+        seen.add(normalized_name)
+        token = normalize_hf_token(os.environ.get(normalized_name))
+        if token:
+            return token, f"env:{normalized_name}"
+    try:
+        from huggingface_hub import get_token
+
+        token = normalize_hf_token(get_token())
+        if token:
+            return token, "hf_auth_login"
+    except Exception:
+        pass
+    return None, "missing"
+
+
 def load_hf_dataset_source(
     source_id: str,
     *,
@@ -51,6 +86,8 @@ def load_hf_dataset_source(
     cache_dir: str | None = None,
     preferred_splits: Sequence[str] = PREFERRED_SPLITS,
 ) -> LoadedDatasetSource:
+    if load_dataset is None:
+        raise RuntimeError("datasets package is required to load Hugging Face datasets")
     token = normalize_hf_token(token)
     kwargs = {
         "streaming": bool(streaming),
@@ -171,7 +208,6 @@ def snapshot_dataset_repo(
         repo_type="dataset",
         token=normalize_hf_token(token),
         allow_patterns=list(allow_patterns or []),
-        resume_download=True,
         max_workers=max(1, int(max_workers)),
         cache_dir=cache_dir or None,
     )
