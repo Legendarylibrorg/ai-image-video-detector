@@ -248,6 +248,18 @@ class DoShTests(unittest.TestCase):
         )
         self.assertEqual(out.strip().splitlines()[-1], "from_file from_hub")
 
+    def test_load_env_file_normalizes_official_deprecated_token_alias(self) -> None:
+        out = self.run_bash(
+            "tmpenv=$(mktemp); "
+            "printf 'HUGGING_FACE_HUB_TOKEN=from_deprecated\\n' > \"$tmpenv\"; "
+            "ENV_FILE=\"$tmpenv\"; "
+            "HF_TOKEN=''; "
+            "source scripts/do.sh; "
+            "load_env_file; "
+            "printf '%s\\n' \"$HF_TOKEN\""
+        )
+        self.assertEqual(out.strip().splitlines()[-1], "from_deprecated")
+
     def test_train_existing_pipeline_passes_collected_and_prepared_roots_to_4090_wrapper(self) -> None:
         out = self.run_bash("source scripts/do.sh; declare -f run_prepared_max_quality_pipeline; declare -f train_existing_pipeline")
         self.assertIn('run_prepared_max_quality_pipeline ()', out)

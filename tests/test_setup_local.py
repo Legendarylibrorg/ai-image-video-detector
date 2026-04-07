@@ -98,6 +98,30 @@ class SetupLinuxSurfaceTests(unittest.TestCase):
 
         self.assertEqual(proc.stdout.strip(), "HF_TOKEN=''")
 
+    def test_persist_env_hf_token_if_present_uses_hf_login_cache_without_copying_to_env_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            env_file = tmp / ".env"
+            env_file.write_text("HF_TOKEN=''\n", encoding="utf-8")
+            token_dir = tmp / ".cache" / "huggingface"
+            token_dir.mkdir(parents=True)
+            (token_dir / "token").write_text("from_cached_login\n", encoding="utf-8")
+            proc = self.run_bash(
+                "source scripts/setup_linux.sh; "
+                f"HOME='{tmp}'; "
+                "HF_HOME=''; "
+                "HF_TOKEN=''; "
+                "HUGGINGFACE_HUB_TOKEN=''; "
+                f"ENV_FILE='{env_file}'; "
+                "persist_env_hf_token_if_present; "
+                "printf 'token=%s\\n' \"$HF_TOKEN\"; "
+                f"cat '{env_file}'",
+            )
+
+        self.assertIn("token=from_cached_login", proc.stdout)
+        self.assertNotIn("setup_stage=env_token status=done", proc.stdout)
+        self.assertTrue(proc.stdout.strip().endswith("HF_TOKEN=''"))
+
     def test_print_next_step_prefers_smoke_then_run(self) -> None:
         proc = self.run_bash(
             "source scripts/setup_linux.sh; "
@@ -128,6 +152,22 @@ class SetupLinuxSurfaceTests(unittest.TestCase):
         )
 
         self.assertIn("upgrade=1 cmd=python_deps env UPGRADE_TOOLCHAIN=1 bash scripts/install_deps.sh", proc.stdout)
+
+    def test_prepare_local_dirs_creates_repo_runtime_roots(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proc = self.run_bash(
+                "source scripts/setup_linux.sh; "
+                f"ROOT_DIR='{tmpdir}'; "
+                "prepare_local_dirs; "
+                "printf 'paths=%s,%s,%s,%s\\n' "
+                "\"$(test -d \"$ROOT_DIR/.local/reports\" && echo 1 || echo 0)\" "
+                "\"$(test -d \"$ROOT_DIR/data_best\" && echo 1 || echo 0)\" "
+                "\"$(test -d \"$ROOT_DIR/artifacts_ens\" && echo 1 || echo 0)\" "
+                "\"$(test -d \"$ROOT_DIR/incoming_review_queue\" && echo 1 || echo 0)\""
+            )
+
+        self.assertIn("setup_stage=local_dirs status=done", proc.stdout)
+        self.assertIn("paths=1,1,1,1", proc.stdout)
 
 
 if __name__ == "__main__":

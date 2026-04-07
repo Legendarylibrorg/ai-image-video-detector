@@ -63,35 +63,102 @@ set_env_var_literal() {
   export "$name"
 }
 
+normalize_hf_token_env_aliases() {
+  local token="${HF_TOKEN:-}"
+  if [[ -z "$token" && -n "${HUGGING_FACE_HUB_TOKEN:-}" ]]; then
+    token="$HUGGING_FACE_HUB_TOKEN"
+  fi
+  if [[ -z "$token" && -n "${HUGGINGFACE_HUB_TOKEN:-}" ]]; then
+    token="$HUGGINGFACE_HUB_TOKEN"
+  fi
+  if [[ -n "$token" ]]; then
+    export HF_TOKEN="$token"
+  fi
+}
+
 load_env_file() {
   local env_file="${1:-${ENV_FILE:-}}"
-  [[ -n "$env_file" && -f "$env_file" ]] || return 0
+  if [[ -n "$env_file" && -f "$env_file" ]]; then
+    local line=""
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      if ! parse_env_assignment "$line"; then
+        continue
+      fi
+      if [[ "${!ENV_ASSIGN_NAME+x}" == "x" && -n "${!ENV_ASSIGN_NAME}" ]]; then
+        continue
+      fi
+      set_env_var_literal "$ENV_ASSIGN_NAME" "$ENV_ASSIGN_VALUE"
+    done < "$env_file"
+  fi
+  normalize_hf_token_env_aliases
+}
 
-  local line=""
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    if ! parse_env_assignment "$line"; then
-      continue
-    fi
-    if [[ "${!ENV_ASSIGN_NAME+x}" == "x" && -n "${!ENV_ASSIGN_NAME}" ]]; then
-      continue
-    fi
-    set_env_var_literal "$ENV_ASSIGN_NAME" "$ENV_ASSIGN_VALUE"
-  done < "$env_file"
+hf_token_path() {
+  if [[ -n "${HF_TOKEN_PATH:-}" ]]; then
+    printf "%s\n" "$HF_TOKEN_PATH"
+    return
+  fi
+  if [[ -n "${HF_HOME:-}" ]]; then
+    printf "%s/token\n" "$HF_HOME"
+    return
+  fi
+  if [[ -n "${XDG_CACHE_HOME:-}" ]]; then
+    printf "%s/huggingface/token\n" "$XDG_CACHE_HOME"
+    return
+  fi
+  if [[ -n "${HOME:-}" ]]; then
+    printf "%s/.cache/huggingface/token\n" "$HOME"
+    return
+  fi
+  printf "\n"
+}
+
+read_hf_token_file() {
+  local token_path=""
+  token_path="$(hf_token_path)"
+  [[ -n "$token_path" && -f "$token_path" ]] || return 1
+
+  local token=""
+  IFS= read -r token < "$token_path" || true
+  token="${token#"${token%%[![:space:]]*}"}"
+  token="${token%"${token##*[![:space:]]}"}"
+  [[ -n "$token" ]] || return 1
+  printf "%s\n" "$token"
+}
+
+CURRENT_HF_TOKEN=""
+CURRENT_HF_TOKEN_SOURCE=""
+
+resolve_current_hf_token() {
+  CURRENT_HF_TOKEN=""
+  CURRENT_HF_TOKEN_SOURCE=""
+  normalize_hf_token_env_aliases
+  if [[ -n "${HF_TOKEN:-}" ]]; then
+    CURRENT_HF_TOKEN="$HF_TOKEN"
+    CURRENT_HF_TOKEN_SOURCE="env"
+    return 0
+  fi
+  local token=""
+  token="$(read_hf_token_file || true)"
+  if [[ -n "$token" ]]; then
+    CURRENT_HF_TOKEN="$token"
+    CURRENT_HF_TOKEN_SOURCE="hf_token_file"
+  fi
+  return 0
 }
 
 current_hf_token() {
-  if [[ -n "${HF_TOKEN:-}" ]]; then
-    printf "%s\n" "$HF_TOKEN"
-    return
+  resolve_current_hf_token
+  if [[ -n "$CURRENT_HF_TOKEN" ]]; then
+    printf "%s\n" "$CURRENT_HF_TOKEN"
   fi
-  if [[ -n "${HUGGINGFACE_HUB_TOKEN:-}" ]]; then
-    printf "%s\n" "$HUGGINGFACE_HUB_TOKEN"
-  fi
+  return 0
 }
 
 set_hf_token_vars() {
   local token="$1"
   export HF_TOKEN="$token"
+  export HUGGING_FACE_HUB_TOKEN="$token"
   export HUGGINGFACE_HUB_TOKEN="$token"
 }
 

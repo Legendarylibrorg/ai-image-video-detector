@@ -4,12 +4,10 @@ set -euo pipefail
 ROOT_DIR="/workspace"
 cd "$ROOT_DIR"
 
-export VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
+export VENV_DIR="${VENV_DIR:-/opt/aid-venv}"
 export HF_HOME="${HF_HOME:-$ROOT_DIR/.local/hf}"
 export HF_HUB_CACHE="${HF_HUB_CACHE:-$HF_HOME/hub}"
 export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-$HF_HOME/datasets}"
-export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-$HF_HUB_CACHE}"
-export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
 export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$ROOT_DIR/.local/pip}"
 export HOME="${HOME:-/tmp/aid-home}"
 

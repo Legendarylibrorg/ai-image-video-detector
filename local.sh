@@ -20,11 +20,19 @@ Full command map and stage meanings: docs/COMMANDS.md
 Docker VM walkthrough and native Linux bootstrap: docs/STARTUP.md
 
 Typical native path:
-  sudo apt-get update && sudo apt-get install -y $APT_PACKAGES && sudo freshclam || true
+  sudo apt-get update
+  sudo apt-get install -y $APT_PACKAGES
+  sudo freshclam || true
   ./local.sh setup
   printf "HF_TOKEN='your_token_here'\n" >> .env
   ./local.sh smoke && ./local.sh run
   (no sudo for repo commands after system packages)
+
+Need the source first on Linux?
+  git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
+  cd ai-image-video-detector
+  or use curl + tar from docs/STARTUP.md
+  or use: curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
 
 Typical Compose path (repo root after clone):
   ./local.sh docker-doctor && docker compose build

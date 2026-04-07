@@ -15,7 +15,6 @@ def configure_hf_cache_env(cache_dir: str) -> Path | None:
     os.environ.setdefault("HF_HOME", str(cache_path))
     os.environ.setdefault("HF_HUB_CACHE", str(cache_path / "hub"))
     os.environ.setdefault("HF_DATASETS_CACHE", str(cache_path / "datasets"))
-    os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
     return cache_path
 
 
