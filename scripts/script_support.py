@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 
 
-def _ensure_src_path() -> None:
+def ensure_src_path() -> None:
     src_root = Path(__file__).resolve().parents[1] / "src"
     src_entry = str(src_root)
     if src_entry not in sys.path:
@@ -14,7 +14,7 @@ def _ensure_src_path() -> None:
 try:
     from ai_image_detector.utils import git_commit, read_json_dict, read_nonempty_lines, write_json_dict
 except ModuleNotFoundError:
-    _ensure_src_path()
+    ensure_src_path()
     from ai_image_detector.utils import git_commit, read_json_dict, read_nonempty_lines, write_json_dict
 
 

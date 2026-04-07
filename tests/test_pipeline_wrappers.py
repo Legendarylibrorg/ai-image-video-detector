@@ -45,9 +45,12 @@ class PipelineWrapperTests(unittest.TestCase):
         self.assertNotIn("activate_repo_venv()", full_text)
         self.assertIn("\nensure_env\n", full_text)
         self.assertIn('source "$ROOT_DIR/scripts/lib/core.sh"', smoke_text)
+        self.assertIn('source "$ROOT_DIR/scripts/lib/training.sh"', smoke_text)
         self.assertIn("\nensure_env\n", smoke_text)
-        self.assertIn("repo_python scripts/benchmark_gate.py", smoke_text)
-        self.assertIn("repo_python -m ai_image_detector.robust_eval", smoke_text)
+        self.assertIn("prepare_training_image_data", smoke_text)
+        self.assertIn("run_prepared_max_quality_pipeline", smoke_text)
+        self.assertIn("run_benchmark_gate", smoke_text)
+        self.assertNotIn("scripts/fit_ensemble.py", smoke_text)
         self.assertNotIn("repo_python() {", smoke_text)
 
     def test_core_trims_csv_without_xargs(self) -> None:

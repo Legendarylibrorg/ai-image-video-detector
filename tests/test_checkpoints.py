@@ -6,10 +6,13 @@ import tempfile
 import unittest
 from unittest import mock
 
-import torch
-
 from _support import ROOT  # noqa: F401
 from ai_image_detector import checkpoints
+
+try:
+    import torch
+except ModuleNotFoundError:  # pragma: no cover - optional dependency path
+    torch = None  # type: ignore[assignment]
 
 
 class CheckpointsTests(unittest.TestCase):
@@ -45,6 +48,8 @@ class CheckpointsTests(unittest.TestCase):
         self.assertEqual(resolved, sft_path)
 
     def test_save_training_checkpoint_updates_latest_marker(self) -> None:
+        if torch is None:
+            self.skipTest("requires torch")
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "last.pt"
 
@@ -73,6 +78,8 @@ class CheckpointsTests(unittest.TestCase):
         self.assertIn('out / "best_model_summary.json"', distill_text)
 
     def test_load_training_checkpoint_roundtrip(self) -> None:
+        if torch is None:
+            self.skipTest("requires torch")
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "last.pt"
             payload = {

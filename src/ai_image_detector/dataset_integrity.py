@@ -8,10 +8,11 @@ import os
 from pathlib import Path
 from typing import Any, Iterable
 
+from .dataset_layout import IMAGE_EXTS
 from .io_limits import MAX_IMAGE_FILE_BYTES, check_file_size
 from .utils.jsonio import write_json_atomic
 
-IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+IMAGE_SUFFIXES = IMAGE_EXTS
 
 
 def _is_image_path(path: Path) -> bool:

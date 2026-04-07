@@ -71,9 +71,11 @@ class LocalShTests(unittest.TestCase):
             check=True,
             capture_output=True,
             text=True,
+            env={**os.environ, "DRY_RUN": "1"},
         )
 
-        self.assertIn("deps_status=up_to_date", proc.stdout)
+        self.assertIn("[DRY_RUN] bash scripts/install_deps.sh", proc.stdout)
+        self.assertIn("deps_status=dry_run", proc.stdout)
 
     def test_collect_status_stdout_is_valid_json(self) -> None:
         proc = subprocess.run(

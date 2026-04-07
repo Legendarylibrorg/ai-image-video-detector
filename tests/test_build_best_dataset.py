@@ -6,7 +6,13 @@ import unittest
 from unittest import mock
 
 from _support import write_rgb_image
-import build_best_dataset
+
+IMPORT_ERROR: Exception | None = None
+try:
+    import build_best_dataset
+except Exception as exc:  # pragma: no cover - optional dependency path
+    build_best_dataset = None  # type: ignore[assignment]
+    IMPORT_ERROR = exc
 
 
 class _FakeFeature:
@@ -19,6 +25,7 @@ class _FakeSplit:
         self.features = {"label": _FakeFeature(names)}
 
 
+@unittest.skipUnless(build_best_dataset is not None, f"optional deps unavailable: {IMPORT_ERROR}")
 class BuildBestDatasetTests(unittest.TestCase):
     def test_source_acceptance_path_decodes_each_example_once(self) -> None:
         text = Path(build_best_dataset.__file__).read_text(encoding="utf-8")
