@@ -7,7 +7,6 @@ import unittest
 from unittest import mock
 from contextlib import redirect_stdout
 
-from _support import ROOT  # noqa: F401
 import build_video_dataset
 
 

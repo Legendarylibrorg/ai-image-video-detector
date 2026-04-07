@@ -158,13 +158,13 @@ def build_public_model_manifest(
                 "temperature": temperature,
             },
             "recommended_output": {
-                "label": "ai|real|unknown",
+                "label": "AI-generated|Real|Unknown",
                 "prob_ai": "float",
                 "confidence": "low|medium|high",
                 "threshold": "float",
             },
             "example_output": {
-                "label": "ai",
+                "label": "AI-generated",
                 "prob_ai": 0.97,
                 "confidence": "high",
                 "threshold": threshold,

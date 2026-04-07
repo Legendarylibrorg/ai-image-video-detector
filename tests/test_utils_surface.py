@@ -7,10 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from _support import source_tree_env
-
-
-ROOT = Path(__file__).resolve().parents[1]
+from _support import ROOT, source_tree_env
 
 
 class UtilsSurfaceTests(unittest.TestCase):
