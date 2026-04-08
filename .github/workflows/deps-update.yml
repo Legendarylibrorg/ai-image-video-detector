@@ -1,0 +1,43 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Refresh dependency lock
+        run: |
+          bash scripts/update_deps_lock.sh
+          python scripts/update_deps_lock.py verify --require-current
+
+      - name: Run test suite
+        run: |
+          python -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Create dependency update PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: codex/dependency-refresh
+          commit-message: "Refresh locked dependencies"
+          title: "Refresh locked dependencies"
+          body: |
+            Automated dependency refresh.
+
+            - updates `requirements.lock`
+            - refreshes `requirements.lock.json`
+            - verifies pinned hashes against official PyPI metadata
+          labels: dependencies

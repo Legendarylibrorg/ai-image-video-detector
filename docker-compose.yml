@@ -1,0 +1,102 @@
+x-pipeline-service: &pipeline-service
+  working_dir: /workspace
+  environment:
+    AID_WORKSPACE_ROOT: /workspace
+    VENV_DIR: /opt/aid-venv
+    HF_HOME: /workspace/.local/hf
+    HF_HUB_CACHE: /workspace/.local/hf/hub
+    HF_DATASETS_CACHE: /workspace/.local/hf/datasets
+    PIP_CACHE_DIR: /workspace/.local/pip
+    PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    HOME: /tmp/aid-home
+    HF_TOKEN: ${HF_TOKEN:-}
+  volumes:
+    - type: bind
+      source: .
+      target: /workspace
+    - type: bind
+      source: ./.local
+      target: /workspace/.local
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./data_best
+      target: /workspace/data_best
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./data_new
+      target: /workspace/data_new
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./video_data
+      target: /workspace/video_data
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./artifacts_ens
+      target: /workspace/artifacts_ens
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./artifacts_sweep
+      target: /workspace/artifacts_sweep
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./artifacts_finetune_metadata
+      target: /workspace/artifacts_finetune_metadata
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./video_artifacts
+      target: /workspace/video_artifacts
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./incoming_model_outputs
+      target: /workspace/incoming_model_outputs
+      bind:
+        create_host_path: true
+    - type: bind
+      source: ./incoming_review_queue
+      target: /workspace/incoming_review_queue
+      bind:
+        create_host_path: true
+    - aid_venv:/opt/aid-venv
+    - aid_hf_cache:/workspace/.local/hf
+    - aid_pip_cache:/workspace/.local/pip
+  user: "${AID_UID:-1000}:${AID_GID:-1000}"
+  stdin_open: true
+  tty: true
+  shm_size: "8gb"
+  pids_limit: 1024
+  tmpfs:
+    - /tmp:size=8g,exec
+    - /run:size=64m
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  pipeline:
+    <<: *pipeline-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["./local.sh", "help"]
+
+  pipeline-gpu:
+    <<: *pipeline-service
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    command: ["./local.sh", "help"]
+    gpus: all
+
+volumes:
+  aid_venv:
+  aid_hf_cache:
+  aid_pip_cache:

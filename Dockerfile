@@ -1,0 +1,28 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    build-essential \
+    ca-certificates \
+    clamav \
+    clamav-daemon \
+    curl \
+    git \
+    python3 \
+    python3-pip \
+    python3-venv \
+    tini \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+COPY scripts/docker-entrypoint.sh /usr/local/bin/aid-docker-entrypoint
+RUN chmod +x /usr/local/bin/aid-docker-entrypoint
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/aid-docker-entrypoint"]
+CMD ["./local.sh", "help"]

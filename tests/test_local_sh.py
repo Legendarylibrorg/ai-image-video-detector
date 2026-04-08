@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+from _support import ROOT
+
+
+class LocalShTests(unittest.TestCase):
+    def test_help_shows_simple_workflow(self) -> None:
+        proc = subprocess.run(
+            ["bash", "./local.sh", "help"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        out = proc.stdout
+        self.assertIn(
+            "usage: ./local.sh [setup|deps|doctor|docker-doctor|collect|run|train|retrain|finetune|continuous|status|collect-status|smoke|smoke-real]",
+            out,
+        )
+        self.assertIn("docs/COMMANDS.md", out)
+        self.assertIn("docs/STARTUP.md", out)
+        self.assertIn("typical native path", out.lower())
+        self.assertIn("typical compose path", out.lower())
+        self.assertIn("sudo apt-get update", out)
+        self.assertIn("git python3", out)
+        self.assertNotIn("unzip", out)
+        self.assertIn("./local.sh setup", out)
+        self.assertIn("printf \"HF_TOKEN='your_token_here'\\n\" >> .env", out)
+        self.assertIn("./local.sh smoke", out)
+        self.assertIn("./local.sh docker-doctor", out)
+        self.assertIn("/opt/aid-venv", out)
+        self.assertNotIn("advanced aliases still work", out.lower())
+        self.assertNotIn("detect <image>", out)
+        self.assertNotIn("./local.sh deps-update", out)
+        self.assertNotIn("./local.sh venv", out)
+
+    def test_setup_uses_linux_setup_path_in_dry_run(self) -> None:
+        proc = subprocess.run(
+            ["bash", "./local.sh", "setup"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "DRY_RUN": "1",
+                "SETUP_INSTALL_SYSTEM_DEPS": "0",
+                "SETUP_PROMPT_FOR_HF_TOKEN": "0",
+                "HF_SETUP_REQUIRE_TOKEN": "0",
+            },
+        )
+
+        out = proc.stdout
+        self.assertIn("setup_stage=python_deps status=run", out)
+        self.assertIn("[DRY_RUN] env UPGRADE_TOOLCHAIN=0 bash scripts/install_deps.sh", out)
+        self.assertIn("[DRY_RUN] env DOCTOR_REQUIRE_TOKEN=0 DOCTOR_MIN_FREE_GB=0 bash scripts/doctor.sh", out)
+        self.assertIn("setup_status=ready", out)
+
+    def test_deps_command_runs_install_script(self) -> None:
+        proc = subprocess.run(
+            ["bash", "./local.sh", "deps"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "DRY_RUN": "1"},
+        )
+
+        self.assertIn("[DRY_RUN] bash scripts/install_deps.sh", proc.stdout)
+        self.assertIn("deps_status=dry_run", proc.stdout)
+
+    def test_deps_command_dry_run_preserves_explicit_profile(self) -> None:
+        proc = subprocess.run(
+            ["bash", "./local.sh", "deps"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "DRY_RUN": "1", "DEPS_EXTRA": "collection"},
+        )
+
+        self.assertIn("[DRY_RUN] env DEPS_EXTRA=collection bash scripts/install_deps.sh", proc.stdout)
+        self.assertIn("deps_status=dry_run", proc.stdout)
+
+    def test_deps_command_dry_run_reuses_stored_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            venv_dir = Path(tmpdir) / "venv"
+            venv_dir.mkdir(parents=True, exist_ok=True)
+            (venv_dir / ".deps_profile").write_text("collection\n", encoding="utf-8")
+            proc = subprocess.run(
+                ["bash", "./local.sh", "deps"],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "DRY_RUN": "1", "VENV_DIR": str(venv_dir), "DEPS_EXTRA": ""},
+            )
+
+        self.assertIn("[DRY_RUN] env DEPS_EXTRA=collection bash scripts/install_deps.sh", proc.stdout)
+        self.assertIn("deps_status=dry_run", proc.stdout)
+
+    def test_collect_status_stdout_is_valid_json(self) -> None:
+        proc = subprocess.run(
+            ["bash", "./local.sh", "collect-status"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        payload = json.loads(proc.stdout)
+        self.assertIn("data_root", payload)
+        self.assertTrue(proc.stdout.lstrip().startswith("{"))
+
+    def test_collect_command_routes_to_collection_pipeline(self) -> None:
+        text = (ROOT / "local.sh").read_text(encoding="utf-8")
+        self.assertIn("collect)", text)
+        self.assertIn('run_do collect', text)
+
+    def test_retrain_and_continuous_commands_route_to_supported_pipeline_paths(self) -> None:
+        text = (ROOT / "local.sh").read_text(encoding="utf-8")
+        self.assertIn("docker-doctor)", text)
+        self.assertIn("retrain)", text)
+        self.assertIn("finetune)", text)
+        self.assertIn("continuous)", text)
+        self.assertIn('DOCTOR_REQUIRE_DOCKER=1 bash scripts/doctor.sh "$@"', text)
+        self.assertIn('run_do retrain "$@"', text)
+        self.assertIn('run_do finetune "$@"', text)
+        self.assertIn('run_do continuous "$@"', text)
+
+
+if __name__ == "__main__":
+    unittest.main()
