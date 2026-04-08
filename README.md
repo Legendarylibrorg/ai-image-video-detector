@@ -51,6 +51,15 @@ cd ai-image-video-detector
 curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
 ```
 
+Safer bootstrap (pin the installer to a **known commit or tag** instead of tracking `main`):
+
+```bash
+export INSTALL_REV="main"   # replace with a release tag or full commit SHA
+curl -fsSL "https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/${INSTALL_REV}/install.sh" | bash
+```
+
+Official `install.sh` clones this repo’s default URL only. For a **GitHub fork**, set **`INSTALL_ALLOW_CUSTOM_REPO=1`** and **`INSTALL_ALLOW_NON_OFFICIAL_GITHUB_REPO=1`**. For mirrors on other hosts, add them to **`INSTALL_REPO_HOST_ALLOWLIST`** (comma-separated) or, only if you accept the risk, **`INSTALL_ALLOW_ANY_HTTPS_HOST=1`**. See [SECURITY.md](SECURITY.md).
+
 After the source tree is present:
 
 ```bash

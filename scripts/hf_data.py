@@ -25,6 +25,12 @@ except Exception:  # pragma: no cover - optional dependency path
 PREFERRED_SPLITS = ("train", "validation", "test")
 
 
+def _hf_trust_remote_code_from_env() -> bool:
+    """When false (default), Hugging Face ``datasets`` will not run custom Hub loading scripts."""
+    v = (os.environ.get("AID_HF_TRUST_REMOTE_CODE") or "").strip().lower()
+    return v in ("1", "true", "yes")
+
+
 @dataclass(frozen=True)
 class LoadedDatasetSource:
     source_id: str
@@ -89,19 +95,39 @@ def load_hf_dataset_source(
     if load_dataset is None:
         raise RuntimeError("datasets package is required to load Hugging Face datasets")
     token = normalize_hf_token(token)
-    kwargs = {
+    base_kw: dict[str, object] = {
         "streaming": bool(streaming),
         "cache_dir": cache_dir or None,
     }
     if token:
-        kwargs["token"] = token
-    try:
-        ds = load_dataset(source_id, **kwargs)
-    except TypeError:
-        kwargs.pop("token", None)
-        ds = load_dataset(source_id, **kwargs)
-    except Exception as exc:
-        raise RuntimeError(f"failed to load dataset {source_id}: {exc}") from exc
+        base_kw["token"] = token
+    trust_requested = _hf_trust_remote_code_from_env()
+    attempts: list[dict[str, object]] = []
+    for use_token in (True, False):
+        for pass_trust_flag in (True, False):
+            kw = dict(base_kw)
+            if not use_token:
+                kw.pop("token", None)
+            if pass_trust_flag:
+                kw["trust_remote_code"] = trust_requested
+            attempts.append(kw)
+
+    last_type_error: TypeError | None = None
+    ds = None
+    for kw in attempts:
+        try:
+            ds = load_dataset(source_id, **kw)
+            break
+        except TypeError as exc:
+            last_type_error = exc
+            continue
+        except Exception as exc:
+            raise RuntimeError(f"failed to load dataset {source_id}: {exc}") from exc
+
+    if ds is None:
+        raise RuntimeError(
+            f"failed to load dataset {source_id}: incompatible load_dataset() arguments"
+        ) from last_type_error
 
     split_name = next((name for name in preferred_splits if name in ds), None)
     if split_name is None:
