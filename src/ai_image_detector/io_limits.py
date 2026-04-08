@@ -115,6 +115,7 @@ def open_image_rgb(
 
 def read_json_file_limited(path: str | Path, *, max_bytes: int = MAX_JSON_CONFIG_BYTES) -> dict[str, Any]:
     p = Path(path)
+    reject_symlink(p)
     if not p.exists():
         return {}
     st = p.stat()
