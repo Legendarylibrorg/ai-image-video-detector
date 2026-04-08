@@ -30,7 +30,7 @@ This file keeps the README short and startup-focused while collecting the broade
 - `Dockerfile.gpu`: CUDA-enabled container image definition used by the GPU Compose service
 - `docs/`: user-facing documentation
 - `scripts/`: internal pipeline helpers and advanced wrappers
-- `src/ai_image_detector/`: Python package code
+- `src/ai_image_detector/`: Python package code (includes `checkpoint_io` for staged checkpoint reads and `io_limits` for media/config bounds)
 - `tests/`: regression coverage
 
 ## Public commands
@@ -117,6 +117,17 @@ Orchestration is normally **`scripts/full_pipeline_4090.sh`** (full run) or **`s
 
 Robustness evaluation is run as **`repo_python -m ai_image_detector.robust_eval`** from `full_pipeline_4090.sh` (library module, not a `scripts/*.py` file).
 
+### Shell helpers (`scripts/lib/core.sh`)
+
+Pipeline scripts use:
+
+- **`repo_python`** — runs the repo venv’s Python with **`PYTHONPATH`** including **`./src`** and **`./scripts`** (same import paths as training).
+- **`run_repo_python`** — same as **`repo_python`**, but calls **`ensure_env`** first so the venv exists or dependency install runs when appropriate.
+- **`run_repo_python_with_timeout`** — like **`run_repo_python`**, but wraps the interpreter with **`timeout`** when available; **`PYTHONPATH`** matches **`run_repo_python`**.
+- **`ensure_env`** — in **`DRY_RUN=1`**, dry-run lines are written to **stderr** so **stdout** stays clean for structured output and command substitutions.
+
+Collection gates such as **`require_pipeline_collection_data`** (in **`scripts/lib/training.sh`**) use **`run_repo_python`** when reading **`dataset_build_report.json`** so the parse uses the same environment as the rest of the pipeline.
+
 ## `scripts/*.py` inventory
 
 All of these live under `scripts/` (repo root on `PYTHONPATH` when invoked via `repo_python` / `bash scripts/...`). Nothing listed as **internal** should be treated as a stable public CLI; call it only through the supported shell entrypoints or imports from other repo scripts.
@@ -164,6 +175,8 @@ data/
     real/
     ai/
 ```
+
+For **`./data_best`**, when **`dataset_build_report.json`** is present and reports **`full_targets_ok`**, the training shell helpers can skip minimum per-class image counts unless you set explicit **`PIPELINE_MIN_*`** / **`TRAIN_PER_CLASS`** minima (see **`require_pipeline_collection_data`** in **`scripts/lib/training.sh`**).
 
 Typical video dataset layout:
 
@@ -320,8 +333,22 @@ Bounds and toggles are intentionally env-driven so containers and CI can tune wi
 | `AID_MAX_VIDEO_FILE_BYTES` | 2 GiB | Video file size before decode |
 | `AID_MAX_VIDEO_DECODE_FRAMES` | 500000 | Video frame decode budget |
 | `AID_MAX_SAFETENSORS_METADATA_BYTES` | 256 KiB | Checkpoint metadata JSON cap |
+| `AID_MAX_SAFETENSORS_FILE_BYTES` | 2 GiB | `.safetensors` checkpoint file size cap before load |
 | `AID_MAX_TRAINING_CHECKPOINT_BYTES` | 2 GiB | `.pt` training checkpoint load cap |
+| `AID_HF_TRUST_REMOTE_CODE` | unset | Set to `1`/`true`/`yes` to allow Hugging Face datasets that require Hub custom loading scripts |
+| `AID_CHECKPOINT_LOAD_STAGING` | `1` | Implemented in `checkpoint_io.py`. Set to `0`/`false`/`no`/`off` to load checkpoints in place (skips `O_NOFOLLOW` + temp copy; faster, weaker TOCTOU defense) |
 | `AID_SKIP_DATA_PREFLIGHT` | unset | Set to `1`/`true`/`yes` to skip dataset symlink preflight (tests only; not recommended for real training) |
+
+## Install-time environment variables (`install.sh`)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `REPO_URL` | official `https://github.com/Legendarylibrorg/ai-image-video-detector.git` | Git remote URL for a fresh clone (HTTPS only when custom) |
+| `INSTALL_DIR` | `$PWD/ai-image-video-detector` | Target directory when the installer clones or reuses a tree |
+| `INSTALL_ALLOW_CUSTOM_REPO` | `0` | Set to `1` to clone non-default `REPO_URL` values |
+| `INSTALL_ALLOW_NON_OFFICIAL_GITHUB_REPO` | unset | Set to `1` when `REPO_URL` is a GitHub fork or non-canonical `org/repo` under `github.com` |
+| `INSTALL_REPO_HOST_ALLOWLIST` | `github.com` (via `install_validate.py` when env unset) | Comma-separated HTTPS hostnames allowed when `INSTALL_ALLOW_CUSTOM_REPO=1`; must be non-empty unless `INSTALL_ALLOW_ANY_HTTPS_HOST=1` |
+| `INSTALL_ALLOW_ANY_HTTPS_HOST` | unset | Set to `1` to skip hostname allowlisting (not recommended) |
 
 ## `aid-train` dataset integrity flags
 

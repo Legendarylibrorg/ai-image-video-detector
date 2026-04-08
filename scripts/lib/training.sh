@@ -47,16 +47,14 @@ require_pipeline_collection_data() {
   if [[ -f "$report_path" ]]; then
     local full_targets_ok=""
     full_targets_ok="$(
-      python3 - <<'PY' "$report_path"
-import json, sys
-path = sys.argv[1]
+      run_repo_python -c 'import json,sys
+path=sys.argv[1]
 try:
-    data = json.loads(open(path, encoding="utf-8").read())
+    data=json.loads(open(path,encoding="utf-8").read())
 except Exception:
     print("")
     raise SystemExit(0)
-print("1" if bool(data.get("full_targets_ok", False)) else "0")
-PY
+print("1" if bool(data.get("full_targets_ok",False)) else "0")' "$report_path"
     )"
     if [[ "$full_targets_ok" != "1" ]]; then
       echo "collection_build_report=invalid path=$report_path full_targets_ok=0"
@@ -178,7 +176,10 @@ run_review_queue_ingest() {
 run_weekly_retrain_cycle() {
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) weekly_retrain_start"
   run_review_queue_ingest
-  run_retrain_pipeline
+  if ! run_retrain_pipeline; then
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) weekly_retrain_pipeline_failed"
+    return 1
+  fi
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) weekly_retrain_gate_passed"
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) weekly_retrain_done"
 }

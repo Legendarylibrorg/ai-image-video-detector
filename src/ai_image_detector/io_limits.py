@@ -29,6 +29,9 @@ MAX_VIDEO_DECODE_FRAMES = int(os.environ.get("AID_MAX_VIDEO_DECODE_FRAMES", str(
 # Safetensors string metadata (checkpoint sidecar JSON).
 MAX_SAFETENSORS_METADATA_BYTES = int(os.environ.get("AID_MAX_SAFETENSORS_METADATA_BYTES", str(256 * 1024)))
 
+# Full .safetensors checkpoint files on disk (DoS / TOCTOU mitigation; aligns with training .pt cap).
+MAX_SAFETENSORS_FILE_BYTES = int(os.environ.get("AID_MAX_SAFETENSORS_FILE_BYTES", str(2 * 1024**3)))
+
 _pil_limits_applied = False
 
 
@@ -98,10 +101,10 @@ def open_image_rgb(
 
     p = Path(path)
     if root is not None:
+        reject_symlink(p)
         p = path_must_be_under(p, root)
-        reject_symlink(path)
     elif not allow_symlink:
-        reject_symlink(path)
+        reject_symlink(p)
     check_file_size(p, max_bytes=MAX_IMAGE_FILE_BYTES)
     img = Image.open(p)
     try:

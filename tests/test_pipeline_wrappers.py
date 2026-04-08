@@ -91,8 +91,8 @@ class PipelineWrapperTests(unittest.TestCase):
                 text=True,
             )
 
-        self.assertIn("[DRY_RUN] bash scripts/install_deps.sh", proc.stdout)
-        self.assertIn(f"[DRY_RUN] source {missing_venv / 'bin' / 'activate'}", proc.stdout)
+        self.assertIn("[DRY_RUN] bash scripts/install_deps.sh", proc.stderr)
+        self.assertIn(f"[DRY_RUN] source {missing_venv / 'bin' / 'activate'}", proc.stderr)
         self.assertIn("Pipeline complete.", proc.stdout)
 
     def test_core_ensure_env_reuses_stored_profile_for_bootstrap(self) -> None:
@@ -114,8 +114,8 @@ class PipelineWrapperTests(unittest.TestCase):
                 text=True,
             )
 
-        self.assertIn("[DRY_RUN] env DEPS_EXTRA=collection bash scripts/install_deps.sh", proc.stdout)
-        self.assertIn(f"[DRY_RUN] source {venv_dir / 'bin' / 'activate'}", proc.stdout)
+        self.assertIn("[DRY_RUN] env DEPS_EXTRA=collection bash scripts/install_deps.sh", proc.stderr)
+        self.assertIn(f"[DRY_RUN] source {venv_dir / 'bin' / 'activate'}", proc.stderr)
 
     def test_local_collect_status_executes_without_bootstrapping_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
