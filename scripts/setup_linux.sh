@@ -19,6 +19,8 @@ HF_SETUP_SAVE_ENV="${HF_SETUP_SAVE_ENV:-1}"
 SETUP_STAGE_DIR="${SETUP_STAGE_DIR:-$ROOT_DIR/.local/stages}"
 SETUP_FORCE_STAGES="${SETUP_FORCE_STAGES:-0}"
 APT_PACKAGES="${APT_PACKAGES:-curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon}"
+# shellcheck source=scripts/lib/apt_packages_validate.sh
+source "$ROOT_DIR/scripts/lib/apt_packages_validate.sh"
 source "$ROOT_DIR/scripts/lib/env.sh"
 source "$ROOT_DIR/scripts/lib/setup_common.sh"
 
@@ -33,6 +35,7 @@ run_cmd() {
 }
 
 run_apt_bootstrap() {
+  validate_apt_package_tokens_or_exit "$APT_PACKAGES" || exit 1
   local -a apt_packages=()
   read -r -a apt_packages <<< "$APT_PACKAGES"
   if command -v sudo >/dev/null 2>&1; then

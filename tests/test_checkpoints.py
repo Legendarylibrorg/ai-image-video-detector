@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -8,7 +9,7 @@ from unittest import mock
 
 from _support import ROOT  # noqa: F401
 import script_support
-from ai_image_detector import checkpoints
+from ai_image_detector import checkpoints, io_limits
 
 try:
     import torch
@@ -58,6 +59,26 @@ class CheckpointsTests(unittest.TestCase):
 
         self.assertEqual(loaded, fake_ckpt)
         mock_load.assert_called_once_with(path, map_location="cpu")
+
+    def test_load_checkpoint_rejects_symlink_safetensors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            real = Path(tmp) / "weights.safetensors"
+            real.write_bytes(b"x")
+            link = Path(tmp) / "via_link.safetensors"
+            try:
+                link.symlink_to(real)
+            except OSError:
+                self.skipTest("symlinks not supported")
+            with self.assertRaisesRegex(ValueError, "symlink_not_allowed"):
+                checkpoints.load_checkpoint(link, map_location="cpu")
+
+    def test_load_checkpoint_rejects_oversized_safetensors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "big.safetensors"
+            path.write_bytes(b"")
+            os.truncate(path, io_limits.MAX_SAFETENSORS_FILE_BYTES + 1)
+            with self.assertRaisesRegex(ValueError, "file_too_large"):
+                checkpoints.load_checkpoint(path, map_location="cpu")
 
     def test_script_support_checkpoint_resolvers_cover_live_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
