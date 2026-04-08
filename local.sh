@@ -24,7 +24,7 @@ Docker VM walkthrough and native Linux bootstrap: docs/STARTUP.md
 
 Typical native path:
   sudo apt-get update
-  sudo apt-get install -y $APT_PACKAGES
+  sudo apt-get install -y curl ca-certificates git python3 python3-venv python3-pip build-essential clamav clamav-daemon
   sudo freshclam || true
   ./local.sh setup
   printf "HF_TOKEN='your_token_here'\n" >> .env

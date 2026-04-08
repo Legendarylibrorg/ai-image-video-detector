@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -91,6 +92,44 @@ class HFDataTests(unittest.TestCase):
                 policy,
             )
         )
+
+    def test_load_hf_dataset_disables_hub_remote_code_by_default(self) -> None:
+        captured: list[dict[str, object]] = []
+        stub = {"train": Dataset.from_dict({"k": [1]})}
+
+        def fake_load(_sid: str, **kw: object) -> dict:
+            captured.append(dict(kw))
+            return dict(stub)
+
+        original = hf_data.load_dataset
+        hf_data.load_dataset = fake_load
+        try:
+            os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
+            src = hf_data.load_hf_dataset_source("org/name", token=None, streaming=True, cache_dir=None)
+            self.assertEqual(src.split_name, "train")
+        finally:
+            hf_data.load_dataset = original
+        self.assertTrue(captured)
+        self.assertIs(captured[0].get("trust_remote_code"), False)
+
+    def test_load_hf_dataset_trust_remote_code_follows_env(self) -> None:
+        captured: list[dict[str, object]] = []
+        stub = {"train": Dataset.from_dict({"k": [1]})}
+
+        def fake_load(_sid: str, **kw: object) -> dict:
+            captured.append(dict(kw))
+            return dict(stub)
+
+        original = hf_data.load_dataset
+        hf_data.load_dataset = fake_load
+        try:
+            os.environ["AID_HF_TRUST_REMOTE_CODE"] = "1"
+            hf_data.load_hf_dataset_source("org/name", token=None, streaming=True, cache_dir=None)
+        finally:
+            hf_data.load_dataset = original
+            os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
+        self.assertTrue(captured)
+        self.assertIs(captured[0].get("trust_remote_code"), True)
 
 
 if __name__ == "__main__":

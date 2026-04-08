@@ -62,6 +62,7 @@ class TrainingSurfaceTests(unittest.TestCase):
                 "scripts/train_distill.py",
                 "src/ai_image_detector/train.py",
                 "src/ai_image_detector/video_temporal.py",
+                "src/ai_image_detector/checkpoint_io.py",
             ],
             cwd=ROOT,
             env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
