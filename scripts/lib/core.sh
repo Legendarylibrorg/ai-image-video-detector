@@ -34,8 +34,8 @@ ensure_env() {
   local install_cmd=""
   install_cmd="$(deps_install_command)"
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
-    echo "[DRY_RUN] $install_cmd"
-    echo "[DRY_RUN] source $venv_dir/bin/activate"
+    echo "[DRY_RUN] $install_cmd" >&2
+    echo "[DRY_RUN] source $venv_dir/bin/activate" >&2
     ENV_READY=1
     return 0
   fi
@@ -265,8 +265,8 @@ run_repo_python_with_timeout() {
   local python_bin=""
   python_bin="$(repo_python_bin)"
   if command -v timeout >/dev/null 2>&1; then
-    timeout "${timeout_sec}s" "$python_bin" "$@"
+    timeout "${timeout_sec}s" env PYTHONPATH="$(repo_pythonpath)" "$python_bin" "$@"
     return
   fi
-  "$python_bin" "$@"
+  env PYTHONPATH="$(repo_pythonpath)" "$python_bin" "$@"
 }

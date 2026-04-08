@@ -6,7 +6,13 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from .io_limits import MAX_SAFETENSORS_METADATA_BYTES, check_file_size, reject_symlink
+from .checkpoint_io import checkpoint_load_staging_enabled, materialize_checkpoint_file
+from .io_limits import (
+    MAX_SAFETENSORS_FILE_BYTES,
+    MAX_SAFETENSORS_METADATA_BYTES,
+    check_file_size,
+    reject_symlink,
+)
 
 _MAX_TRAINING_CHECKPOINT_BYTES = int(
     os.environ.get("AID_MAX_TRAINING_CHECKPOINT_BYTES", str(2 * 1024**3))
@@ -156,33 +162,49 @@ def save_training_checkpoint(
 
 
 def load_safetensors_checkpoint(path: str | Path, map_location: Any = None) -> dict[str, Any]:
-    from safetensors import safe_open
-    from safetensors.torch import load_file
-
     in_path = Path(path)
-    tensors = load_file(str(in_path), device="cpu")
-    with safe_open(str(in_path), framework="pt", device="cpu") as f:
-        metadata = f.metadata() or {}
+    staged: Path | None = None
+    try:
+        if checkpoint_load_staging_enabled():
+            staged = materialize_checkpoint_file(in_path, max_bytes=MAX_SAFETENSORS_FILE_BYTES)
+            load_path = staged
+        else:
+            reject_symlink(in_path)
+            check_file_size(in_path, max_bytes=MAX_SAFETENSORS_FILE_BYTES)
+            load_path = in_path
 
-    meta_text = metadata.get("checkpoint_meta", "{}") or "{}"
-    meta: dict[str, Any] = {}
-    if len(meta_text.encode("utf-8")) <= MAX_SAFETENSORS_METADATA_BYTES:
-        try:
-            parsed = json.loads(meta_text) if meta_text else {}
-            if isinstance(parsed, dict):
-                meta = parsed
-        except Exception:
-            meta = {}
+        from safetensors import safe_open
+        from safetensors.torch import load_file
 
-    if map_location is not None:
-        target = str(map_location)
-        if target != "cpu":
-            tensors = {k: v.to(target) for k, v in tensors.items()}
+        tensors = load_file(str(load_path), device="cpu")
+        with safe_open(str(load_path), framework="pt", device="cpu") as f:
+            metadata = f.metadata() or {}
 
-    out = dict(meta)
-    out["state_dict"] = tensors
-    out["_checkpoint_format"] = "safetensors"
-    return out
+        meta_text = metadata.get("checkpoint_meta", "{}") or "{}"
+        meta: dict[str, Any] = {}
+        if len(meta_text.encode("utf-8")) <= MAX_SAFETENSORS_METADATA_BYTES:
+            try:
+                parsed = json.loads(meta_text) if meta_text else {}
+                if isinstance(parsed, dict):
+                    meta = parsed
+            except Exception:
+                meta = {}
+
+        if map_location is not None:
+            target = str(map_location)
+            if target != "cpu":
+                tensors = {k: v.to(target) for k, v in tensors.items()}
+
+        out = dict(meta)
+        out["state_dict"] = tensors
+        out["_checkpoint_format"] = "safetensors"
+        return out
+    finally:
+        if staged is not None:
+            try:
+                staged.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def load_checkpoint(path: str | Path, map_location: Any = None) -> dict[str, Any]:
@@ -200,18 +222,31 @@ def load_training_checkpoint(path: str | Path, map_location: Any = None) -> dict
     """
     torch = _torch()
     p = Path(path)
-    reject_symlink(p)
-    check_file_size(p, max_bytes=_MAX_TRAINING_CHECKPOINT_BYTES)
-
-    kwargs: dict[str, Any] = {"map_location": map_location}
-    if "weights_only" in inspect.signature(torch.load).parameters:
-        kwargs["weights_only"] = True
-
+    staged: Path | None = None
     try:
-        return torch.load(p, **kwargs)
-    except Exception as first_exc:
-        raise RuntimeError(
-            "training_checkpoint_load_failed path={} "
-            "(not a weights_only-safe checkpoint; re-save with current save_training_checkpoint "
-            "or load weights via safetensors export)".format(p)
-        ) from first_exc
+        if checkpoint_load_staging_enabled():
+            staged = materialize_checkpoint_file(p, max_bytes=_MAX_TRAINING_CHECKPOINT_BYTES)
+            load_path = staged
+        else:
+            reject_symlink(p)
+            check_file_size(p, max_bytes=_MAX_TRAINING_CHECKPOINT_BYTES)
+            load_path = p
+
+        kwargs: dict[str, Any] = {"map_location": map_location}
+        if "weights_only" in inspect.signature(torch.load).parameters:
+            kwargs["weights_only"] = True
+
+        try:
+            return torch.load(load_path, **kwargs)
+        except Exception as first_exc:
+            raise RuntimeError(
+                "training_checkpoint_load_failed path={} "
+                "(not a weights_only-safe checkpoint; re-save with current save_training_checkpoint "
+                "or load weights via safetensors export)".format(p)
+            ) from first_exc
+    finally:
+        if staged is not None:
+            try:
+                staged.unlink(missing_ok=True)
+            except OSError:
+                pass
