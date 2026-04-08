@@ -20,6 +20,7 @@ from script_support import ensure_src_path
 
 ensure_src_path()
 
+from ai_image_detector.collection_paths import validate_collection_io_paths
 from ai_image_detector.dataset_layout import IMAGE_EXTS, count_split_class_files
 
 
@@ -827,6 +828,14 @@ def main() -> int:
         args.hf_cache_file = f"./.local/reports/target_sources__{slug}.txt"
     if not args.hf_audit_file:
         args.hf_audit_file = f"./.local/reports/target_source_audit__{slug}.jsonl"
+
+    validate_collection_io_paths(
+        out=args.out,
+        sources_file=args.sources_file or None,
+        hf_cache_file=args.hf_cache_file or None,
+        hf_audit_file=args.hf_audit_file or None,
+        cache_dir=args.cache_dir or None,
+    )
 
     if args.emit_llm_prompt:
         print(build_llm_target_spec_prompt(spec))

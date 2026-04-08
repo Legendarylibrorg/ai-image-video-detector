@@ -40,6 +40,18 @@ class IoLimitsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 read_json_file_limited(p)
 
+    def test_read_json_file_limited_rejects_symlink_leaf(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "a.json"
+            target.write_text("{}", encoding="utf-8")
+            link = Path(tmp) / "b.json"
+            try:
+                link.symlink_to(target)
+            except OSError:
+                self.skipTest("symlinks not supported")
+            with self.assertRaises(ValueError):
+                read_json_file_limited(link)
+
     def test_validate_ensemble_rejects_bad_temperature(self) -> None:
         with self.assertRaises(ValueError):
             validate_ensemble_config({"weights": [0.5, 0.5], "temperature": 0.0})
