@@ -10,6 +10,8 @@ import shutil
 import time
 from typing import Dict, List
 
+from ai_image_detector.collection_paths import validate_collection_io_paths
+
 from dataset_builder_common import HF_CACHE_DIR_DEFAULT, configure_hf_cache_env, count_existing_split_classes, targets_met
 from hf_data import download_dataset_file, list_dataset_repo_files, resolve_hf_token_value, snapshot_dataset_repo
 
@@ -156,6 +158,7 @@ def main():
     ap.add_argument("--cache-dir", default=HF_CACHE_DIR_DEFAULT)
     ap.add_argument("--token-env", default="HF_TOKEN")
     args = ap.parse_args()
+    validate_collection_io_paths(out=args.out, cache_dir=args.cache_dir or None)
 
     cache_dir = configure_hf_cache_env(args.cache_dir)
     if cache_dir is not None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -176,24 +177,29 @@ class BuildBestDatasetTests(unittest.TestCase):
 
     def test_main_reaches_source_validation_without_nameerror(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch(
-                "sys.argv",
-                [
-                    "build_best_dataset.py",
-                    "--out",
-                    tmp,
-                    "--train-per-class",
-                    "0",
-                    "--val-per-class",
-                    "0",
-                    "--test-per-class",
-                    "0",
-                    "--no-discover-hf",
-                    "--no-default-sources",
-                ],
-            ):
-                with self.assertRaises(SystemExit) as ctx:
-                    build_best_dataset.main()
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(tmp)
+                with mock.patch(
+                    "sys.argv",
+                    [
+                        "build_best_dataset.py",
+                        "--out",
+                        ".",
+                        "--train-per-class",
+                        "0",
+                        "--val-per-class",
+                        "0",
+                        "--test-per-class",
+                        "0",
+                        "--no-discover-hf",
+                        "--no-default-sources",
+                    ],
+                ):
+                    with self.assertRaises(SystemExit) as ctx:
+                        build_best_dataset.main()
+            finally:
+                os.chdir(old_cwd)
 
         self.assertIn("no_hf_sources_resolved", str(ctx.exception))
 

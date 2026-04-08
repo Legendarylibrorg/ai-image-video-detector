@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 
 from .data import make_eval_transform
-from .io_limits import configure_pil_limits, open_image_rgb, read_bytes_limited
+from .io_limits import configure_pil_limits, open_image_rgb, read_bytes_limited, reject_symlink
 from .decision import combined_risk, decide_label, image_ood_score
 from .domain import classify_domain, load_domain_config, resolve_domain_threshold
 from .ensemble import EnsembleDetector, load_models
@@ -48,6 +48,7 @@ def main():
     tf = make_eval_transform(loaded.img_size)
 
     image_path = Path(args.image)
+    reject_symlink(image_path)
     image_bytes = read_bytes_limited(image_path)
     img = open_image_rgb(image_path, allow_symlink=False)
     x = tf(img).unsqueeze(0).to(device)

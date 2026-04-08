@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -47,7 +48,7 @@ class BuildVideoDatasetTests(unittest.TestCase):
             argv = [
                 "prog",
                 "--out",
-                str(out),
+                "out",
                 "--train-per-class",
                 "2",
                 "--val-per-class",
@@ -63,12 +64,17 @@ class BuildVideoDatasetTests(unittest.TestCase):
             ]
             sources = [{"repo": "org/repo", "real_prefixes": ["dataset/real/"], "fake_prefixes": ["dataset/fake/"]}]
 
-            with mock.patch("sys.argv", argv), \
-                mock.patch.object(build_video_dataset, "SOURCES", sources), \
-                mock.patch.object(build_video_dataset, "snapshot_download", return_value=str(snapshot_root)), \
-                mock.patch.object(build_video_dataset.time, "sleep", return_value=None):
-                with redirect_stdout(io.StringIO()):
-                    build_video_dataset.main()
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(tmp_path)
+                with mock.patch("sys.argv", argv), \
+                    mock.patch.object(build_video_dataset, "SOURCES", sources), \
+                    mock.patch.object(build_video_dataset, "snapshot_download", return_value=str(snapshot_root)), \
+                    mock.patch.object(build_video_dataset.time, "sleep", return_value=None):
+                    with redirect_stdout(io.StringIO()):
+                        build_video_dataset.main()
+            finally:
+                os.chdir(old_cwd)
 
             self.assertEqual(len(list((out / "train" / "ai").glob("*"))), 1)
             self.assertEqual(len(list((out / "train" / "real").glob("*"))), 1)

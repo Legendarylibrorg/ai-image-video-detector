@@ -335,7 +335,10 @@ Bounds and toggles are intentionally env-driven so containers and CI can tune wi
 | `AID_MAX_SAFETENSORS_METADATA_BYTES` | 256 KiB | Checkpoint metadata JSON cap |
 | `AID_MAX_SAFETENSORS_FILE_BYTES` | 2 GiB | `.safetensors` checkpoint file size cap before load |
 | `AID_MAX_TRAINING_CHECKPOINT_BYTES` | 2 GiB | `.pt` training checkpoint load cap |
-| `AID_HF_TRUST_REMOTE_CODE` | unset | Set to `1`/`true`/`yes` to allow Hugging Face datasets that require Hub custom loading scripts |
+| `AID_HF_TRUST_REMOTE_CODE` | unset | Set to `1`/`true`/`yes` together with **`AID_HF_TRUST_REMOTE_ALLOWLIST`** so listed **`org/dataset`** ids may use Hub custom loading scripts |
+| `AID_HF_TRUST_REMOTE_ALLOWLIST` | unset | Comma-separated Hugging Face dataset ids; only these get **`trust_remote_code=True`** when **`AID_HF_TRUST_REMOTE_CODE=1`** |
+| `AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL` | unset | Set to `1`/`true`/`yes` for legacy behavior: trust remote code for **every** dataset when **`AID_HF_TRUST_REMOTE_CODE=1`** (avoid in production) |
+| `AID_WORKSPACE_ROOT` | process **`cwd`** | Collection and ingest paths must resolve under this directory; Docker Compose sets **`/workspace`** |
 | `AID_CHECKPOINT_LOAD_STAGING` | `1` | Implemented in `checkpoint_io.py`. Set to `0`/`false`/`no`/`off` to load checkpoints in place (skips `O_NOFOLLOW` + temp copy; faster, weaker TOCTOU defense) |
 | `AID_SKIP_DATA_PREFLIGHT` | unset | Set to `1`/`true`/`yes` to skip dataset symlink preflight (tests only; not recommended for real training) |
 

@@ -1,6 +1,7 @@
 x-pipeline-service: &pipeline-service
   working_dir: /workspace
   environment:
+    AID_WORKSPACE_ROOT: /workspace
     VENV_DIR: /opt/aid-venv
     HF_HOME: /workspace/.local/hf
     HF_HUB_CACHE: /workspace/.local/hf/hub
