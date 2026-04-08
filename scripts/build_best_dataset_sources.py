@@ -10,7 +10,14 @@ import time
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from hf_data import normalize_hf_token, read_noncomment_lines, resolve_hf_token_value, unique_preserve, write_noncomment_lines
+from hf_data import (
+    normalize_hf_token,
+    read_noncomment_lines,
+    resolve_hf_token_value,
+    unique_preserve,
+    validate_hf_dataset_source_id,
+    write_noncomment_lines,
+)
 
 try:
     from huggingface_hub import HfApi
@@ -118,7 +125,6 @@ DEFAULT_DISCOVERY_QUERIES = [
 ]
 
 LOW_QUALITY_NAME_RE = re.compile(r"(^|[^a-z0-9])(toy|dummy|sample|mini|tiny|test)([^a-z0-9]|$)")
-HF_DATASET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
 USEFUL_KEYWORD_GROUPS: dict[str, tuple[str, ...]] = {
     "detector_labels": ("real", "fake", "deepfake", "generated", "synthetic", "cifake"),
     "photo": ("photo", "camera", "smartphone", "dslr", "webcam", "cctv", "selfie", "portrait"),
@@ -392,7 +398,14 @@ def read_sources_file(path: Path) -> list[str]:
     if not path.exists():
         print(f"warning_sources_file_missing path={path}")
         return []
-    return read_noncomment_lines(path)
+    lines = read_noncomment_lines(path)
+    out: list[str] = []
+    for idx, line in enumerate(lines, start=1):
+        try:
+            out.append(validate_hf_dataset_source_id(line))
+        except ValueError as exc:
+            raise ValueError(f"sources_file_invalid_line path={path} line={idx} value={line!r}") from exc
+    return out
 
 
 def write_audit_manifest(path: Path, entries: Sequence[AuditedSource]) -> None:
@@ -562,7 +575,11 @@ def audit_hf_sources(
 
 
 def is_probable_hf_dataset_id(src: str) -> bool:
-    return bool(HF_DATASET_ID_RE.match(src.strip()))
+    try:
+        validate_hf_dataset_source_id(src)
+        return True
+    except ValueError:
+        return False
 
 
 def discover_hf_sources(

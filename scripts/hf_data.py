@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,10 +25,56 @@ except Exception:  # pragma: no cover - optional dependency path
 
 PREFERRED_SPLITS = ("train", "validation", "test")
 
+_MAX_HF_SOURCE_ID_LEN = 256
+HF_DATASET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+def validate_hf_repo_blob_path(filename: str) -> str:
+    """Reject path traversal in Hub ``filename`` / relative paths passed to ``hf_hub_download``."""
+    fn = str(filename).strip().replace("\\", "/")
+    if not fn or fn.startswith("/"):
+        raise ValueError(f"invalid_hf_repo_filename={filename!r}")
+    parts = fn.split("/")
+    if any(p in ("", ".", "..") for p in parts):
+        raise ValueError(f"invalid_hf_repo_filename={filename!r}")
+    return fn
+
+
+def validate_hf_dataset_source_id(source_id: str) -> str:
+    """Reject malformed or path-like strings before they reach Hub APIs."""
+    s = str(source_id).strip()
+    if not s or len(s) > _MAX_HF_SOURCE_ID_LEN:
+        raise ValueError(f"invalid_hf_dataset_id length={len(s)}")
+    if "\n" in s or "\r" in s or "\x00" in s:
+        raise ValueError("invalid_hf_dataset_id control_chars")
+    if ".." in s or s.startswith("/") or "\\" in s:
+        raise ValueError(f"invalid_hf_dataset_id path_tokens source_id={s!r}")
+    if not HF_DATASET_ID_RE.match(s):
+        raise ValueError(f"invalid_hf_dataset_id format={s!r}")
+    return s
+
+
+def _hf_trust_allowlist() -> frozenset[str] | None:
+    """When set, only these repo ids may use ``trust_remote_code`` (requires trust env on)."""
+    raw = (os.environ.get("AID_HF_TRUST_REMOTE_ALLOWLIST") or "").strip()
+    if not raw:
+        return None
+    out = {validate_hf_dataset_source_id(x) for x in raw.split(",") if x.strip()}
+    return frozenset(out)
+
 
 def _hf_trust_remote_code_from_env() -> bool:
     """When false (default), Hugging Face ``datasets`` will not run custom Hub loading scripts."""
     v = (os.environ.get("AID_HF_TRUST_REMOTE_CODE") or "").strip().lower()
+    return v in ("1", "true", "yes")
+
+
+def _hf_trust_remote_unsafe_global_from_env() -> bool:
+    """Opt-in to legacy behavior: ``trust_remote_code=True`` for every dataset when trust is on.
+
+    Without this, ``AID_HF_TRUST_REMOTE_CODE=1`` only enables trust for ids listed in
+    ``AID_HF_TRUST_REMOTE_ALLOWLIST``.
+    """
+    v = (os.environ.get("AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL") or "").strip().lower()
     return v in ("1", "true", "yes")
 
 
@@ -94,6 +141,7 @@ def load_hf_dataset_source(
 ) -> LoadedDatasetSource:
     if load_dataset is None:
         raise RuntimeError("datasets package is required to load Hugging Face datasets")
+    source_id = validate_hf_dataset_source_id(source_id)
     token = normalize_hf_token(token)
     base_kw: dict[str, object] = {
         "streaming": bool(streaming),
@@ -101,7 +149,17 @@ def load_hf_dataset_source(
     }
     if token:
         base_kw["token"] = token
-    trust_requested = _hf_trust_remote_code_from_env()
+    trust_env = _hf_trust_remote_code_from_env()
+    allow = _hf_trust_allowlist()
+    unsafe_global = _hf_trust_remote_unsafe_global_from_env()
+    if not trust_env:
+        trust_requested = False
+    elif unsafe_global:
+        trust_requested = True
+    elif allow is not None:
+        trust_requested = source_id in allow
+    else:
+        trust_requested = False
     attempts: list[dict[str, object]] = []
     for use_token in (True, False):
         for pass_trust_flag in (True, False):
@@ -229,6 +287,8 @@ def snapshot_dataset_repo(
 ) -> str:
     from huggingface_hub import snapshot_download
 
+    validate_hf_dataset_source_id(repo_id)
+
     return snapshot_download(
         repo_id=repo_id,
         repo_type="dataset",
@@ -242,6 +302,8 @@ def snapshot_dataset_repo(
 def list_dataset_repo_files(repo_id: str, *, token: str | None = None) -> list[str]:
     from huggingface_hub import list_repo_files
 
+    validate_hf_dataset_source_id(repo_id)
+
     return list_repo_files(repo_id, repo_type="dataset", token=normalize_hf_token(token))
 
 
@@ -254,10 +316,13 @@ def download_dataset_file(
 ) -> str:
     from huggingface_hub import hf_hub_download
 
+    validate_hf_dataset_source_id(repo_id)
+    fn = validate_hf_repo_blob_path(filename)
+
     return hf_hub_download(
         repo_id=repo_id,
         repo_type="dataset",
-        filename=filename,
+        filename=fn,
         token=normalize_hf_token(token),
         cache_dir=cache_dir or None,
     )

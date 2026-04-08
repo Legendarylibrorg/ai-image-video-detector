@@ -11,6 +11,7 @@ from typing import Callable, DefaultDict, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageFilter
 
+from ai_image_detector.collection_paths import validate_collection_io_paths
 from ai_image_detector.io_limits import configure_pil_limits, open_image_rgb
 from build_best_dataset_policy import (
     next_split_for_class,
@@ -291,6 +292,13 @@ def main():
     ap.add_argument("--min-hf-sources-per-class", type=int, default=0, help="Require at least this many HF sources with accepted samples for each class")
     ap.add_argument("--min-hf-sources-per-split-class", type=int, default=0, help="Require at least this many HF sources to contribute to each split/class bucket")
     args = ap.parse_args()
+    validate_collection_io_paths(
+        out=args.out,
+        sources_file=args.sources_file or None,
+        hf_cache_file=args.hf_cache_file or None,
+        hf_audit_file=args.hf_audit_file or None,
+        cache_dir=args.cache_dir or None,
+    )
     start_time = time.time()
 
     random.seed(args.seed)

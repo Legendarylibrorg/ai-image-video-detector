@@ -112,7 +112,19 @@ class HFDataTests(unittest.TestCase):
         self.assertTrue(captured)
         self.assertIs(captured[0].get("trust_remote_code"), False)
 
-    def test_load_hf_dataset_trust_remote_code_follows_env(self) -> None:
+    def test_validate_hf_dataset_source_id_rejects_path_tokens(self) -> None:
+        with self.assertRaises(ValueError):
+            hf_data.validate_hf_dataset_source_id("../evil/name")
+        with self.assertRaises(ValueError):
+            hf_data.validate_hf_dataset_source_id("org")
+
+    def test_validate_hf_repo_blob_path_rejects_traversal(self) -> None:
+        with self.assertRaises(ValueError):
+            hf_data.validate_hf_repo_blob_path("../secret")
+        with self.assertRaises(ValueError):
+            hf_data.validate_hf_repo_blob_path("a/../b.bin")
+
+    def test_trust_remote_allowlist_restricts_flag(self) -> None:
         captured: list[dict[str, object]] = []
         stub = {"train": Dataset.from_dict({"k": [1]})}
 
@@ -124,10 +136,67 @@ class HFDataTests(unittest.TestCase):
         hf_data.load_dataset = fake_load
         try:
             os.environ["AID_HF_TRUST_REMOTE_CODE"] = "1"
+            os.environ["AID_HF_TRUST_REMOTE_ALLOWLIST"] = "allowed/repo"
+            hf_data.load_hf_dataset_source("other/repo", token=None, streaming=True, cache_dir=None)
+        finally:
+            hf_data.load_dataset = original
+            os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
+            os.environ.pop("AID_HF_TRUST_REMOTE_ALLOWLIST", None)
+        self.assertTrue(captured)
+        self.assertIs(captured[0].get("trust_remote_code"), False)
+
+        captured.clear()
+        hf_data.load_dataset = fake_load
+        try:
+            os.environ["AID_HF_TRUST_REMOTE_CODE"] = "1"
+            os.environ["AID_HF_TRUST_REMOTE_ALLOWLIST"] = "allowed/repo"
+            hf_data.load_hf_dataset_source("allowed/repo", token=None, streaming=True, cache_dir=None)
+        finally:
+            hf_data.load_dataset = original
+            os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
+            os.environ.pop("AID_HF_TRUST_REMOTE_ALLOWLIST", None)
+        self.assertTrue(captured)
+        self.assertIs(captured[0].get("trust_remote_code"), True)
+
+    def test_trust_remote_without_allowlist_stays_false(self) -> None:
+        captured: list[dict[str, object]] = []
+        stub = {"train": Dataset.from_dict({"k": [1]})}
+
+        def fake_load(_sid: str, **kw: object) -> dict:
+            captured.append(dict(kw))
+            return dict(stub)
+
+        original = hf_data.load_dataset
+        hf_data.load_dataset = fake_load
+        try:
+            os.environ["AID_HF_TRUST_REMOTE_CODE"] = "1"
+            os.environ.pop("AID_HF_TRUST_REMOTE_ALLOWLIST", None)
+            os.environ.pop("AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL", None)
             hf_data.load_hf_dataset_source("org/name", token=None, streaming=True, cache_dir=None)
         finally:
             hf_data.load_dataset = original
             os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
+        self.assertTrue(captured)
+        self.assertIs(captured[0].get("trust_remote_code"), False)
+
+    def test_trust_remote_unsafe_global_restores_legacy_flag(self) -> None:
+        captured: list[dict[str, object]] = []
+        stub = {"train": Dataset.from_dict({"k": [1]})}
+
+        def fake_load(_sid: str, **kw: object) -> dict:
+            captured.append(dict(kw))
+            return dict(stub)
+
+        original = hf_data.load_dataset
+        hf_data.load_dataset = fake_load
+        try:
+            os.environ["AID_HF_TRUST_REMOTE_CODE"] = "1"
+            os.environ["AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL"] = "1"
+            hf_data.load_hf_dataset_source("org/name", token=None, streaming=True, cache_dir=None)
+        finally:
+            hf_data.load_dataset = original
+            os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
+            os.environ.pop("AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL", None)
         self.assertTrue(captured)
         self.assertIs(captured[0].get("trust_remote_code"), True)
 

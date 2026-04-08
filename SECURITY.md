@@ -23,7 +23,8 @@ This repository targets **local or VM-isolated** training and data collection. I
 ## Hugging Face token and Hub trust
 
 - Use a **read-scoped** Hugging Face token unless you truly need write access. The token is passed to libraries and containers that talk to the Hub; treat `.env` and shell environments as **secret-bearing**.
-- By default, **`datasets.load_dataset`** is called with **`trust_remote_code=False`**. Hub datasets that require custom loading scripts will fail until you set **`AID_HF_TRUST_REMOTE_CODE=1`** (documented in `.env.example`). Enable this only for sources you explicitly trust.
+- By default, **`datasets.load_dataset`** is called with **`trust_remote_code=False`**. Hub datasets that require custom loading scripts need **`AID_HF_TRUST_REMOTE_CODE=1`** plus a comma-separated **`AID_HF_TRUST_REMOTE_ALLOWLIST`** of **`namespace/dataset`** ids. Only listed repos receive **`trust_remote_code=True`**. For the legacy behavior (trust flag applies to every dataset), set **`AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL=1`** (not recommended).
+- Collection scripts require **`--out`**, **`--sources-file`**, **`--hf-cache-file`**, **`--hf-audit-file`**, and **`--cache-dir`** to resolve under **`AID_WORKSPACE_ROOT`** when set, otherwise under the process **cwd**. Relative **`../`** escapes and absolute paths outside that anchor are rejected. Docker Compose sets **`AID_WORKSPACE_ROOT=/workspace`**. **`scripts/ingest_model_outputs.py`** applies the same rules to **`--src`**, **`--dst`**, and **`--archive`**, walks image trees with **`followlinks=False`**, and rejects symlink image leaves.
 
 ## Checkpoints and media
 
