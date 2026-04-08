@@ -6,10 +6,7 @@ import subprocess
 import sys
 import unittest
 
-from _support import source_tree_env
-
-
-ROOT = Path(__file__).resolve().parents[1]
+from _support import ROOT, source_tree_env
 
 
 def _workflow_text(name: str) -> str:

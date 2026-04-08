@@ -7,8 +7,7 @@ import subprocess
 import sys
 import unittest
 
-
-ROOT = Path(__file__).resolve().parents[1]
+from _support import ROOT
 
 
 def _locked_package_names() -> set[str]:

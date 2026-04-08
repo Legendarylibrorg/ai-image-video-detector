@@ -6,10 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-from _support import source_tree_env, write_rgb_image
-
-
-ROOT = Path(__file__).resolve().parents[1]
+from _support import ROOT, source_tree_env, write_rgb_image
 
 
 class MetadataFinetuneSurfaceTests(unittest.TestCase):

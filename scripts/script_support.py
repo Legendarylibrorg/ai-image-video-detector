@@ -22,17 +22,19 @@ def iter_member_dirs(ens_out: Path) -> list[Path]:
     return sorted((path for path in ens_out.glob("m*") if path.is_dir()), key=lambda path: path.name)
 
 
-def resolve_checkpoint(path: Path) -> Path | None:
-    if path.exists():
-        return path
-    safe = path.with_suffix(".safetensors")
-    if safe.exists():
-        return safe
-    return None
-
-
-def resolve_preferred_checkpoint(path: Path) -> Path:
+def _checkpoint_candidate(path: Path) -> Path:
     safe = path.with_suffix(".safetensors")
     if safe.exists():
         return safe
     return path
+
+
+def resolve_checkpoint(path: Path) -> Path | None:
+    candidate = _checkpoint_candidate(path)
+    if candidate.exists():
+        return candidate
+    return None
+
+
+def resolve_preferred_checkpoint(path: Path) -> Path:
+    return _checkpoint_candidate(path)
