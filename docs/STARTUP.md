@@ -239,6 +239,8 @@ One-line installer (clones with `git` when needed):
 curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
 ```
 
+For a **pinned installer revision** (commit or tag) and fork/mirror notes, see **Safer bootstrap** in [README.md](../README.md) and [SECURITY.md](../SECURITY.md).
+
 `./local.sh setup` is the short native bootstrap once `local.sh` is present.
 
 ## macOS startup
@@ -275,7 +277,7 @@ cd ai-image-video-detector
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[pipeline]'
-python -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
 Notes:

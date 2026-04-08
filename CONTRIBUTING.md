@@ -41,8 +41,8 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 Useful targeted checks:
 
 ```bash
-bash -n local.sh scripts/install_deps.sh scripts/doctor.sh
-python3 -m py_compile src/ai_image_detector/cli.py
+bash -n local.sh install.sh scripts/install_deps.sh scripts/doctor.sh scripts/lib/apt_packages_validate.sh scripts/lib/core.sh scripts/lib/training.sh
+python3 -m py_compile src/ai_image_detector/cli.py src/ai_image_detector/checkpoint_io.py scripts/lib/install_validate.py
 python3 scripts/update_deps_lock.py verify --require-current
 ```
 

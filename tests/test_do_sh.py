@@ -309,6 +309,32 @@ class DoShTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
         self.assertIn("collection_min_counts=skipped reason=build_report_ok", proc.stdout + proc.stderr)
 
+    def test_require_pipeline_collection_data_dry_run_keeps_ensure_env_off_stdout(self) -> None:
+        """DRY_RUN ensure_env lines must not pollute $(run_repo_python ...) capture in training.sh."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "data_best"
+            for split in ("train", "val", "test"):
+                for cls in ("ai", "real"):
+                    bucket = root / split / cls
+                    bucket.mkdir(parents=True, exist_ok=True)
+                    (bucket / f"{split}_{cls}.jpg").write_bytes(b"x")
+            (root / "dataset_build_report.json").write_text('{"full_targets_ok": true}\n', encoding="utf-8")
+
+            proc = self.run_bash_proc(
+                f"source scripts/do.sh; "
+                "unset ENV_READY; "
+                "DRY_RUN=1; "
+                f"DATA_DIR='{root}'; "
+                "unset PIPELINE_MIN_TRAIN_PER_CLASS PIPELINE_MIN_VAL_PER_CLASS PIPELINE_MIN_TEST_PER_CLASS; "
+                "unset TRAIN_PER_CLASS VAL_PER_CLASS TEST_PER_CLASS; "
+                "require_pipeline_collection_data \"$DATA_DIR\""
+            )
+
+        self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        self.assertIn("collection_min_counts=skipped reason=build_report_ok", proc.stdout + proc.stderr)
+        self.assertIn("[DRY_RUN]", proc.stderr)
+        self.assertNotIn("[DRY_RUN]", proc.stdout)
+
     def test_run_full_pipeline_uses_canonical_quality_wrapper(self) -> None:
         out = self.run_bash("source scripts/do.sh; declare -f run_full_pipeline")
         self.assertIn(
