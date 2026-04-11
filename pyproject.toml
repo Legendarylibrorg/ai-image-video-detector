@@ -54,7 +54,7 @@ collection = [
   "pillow>=10.0",
 ]
 video = [
-  "opencv-python-headless>=4.10",
+  "opencv-python-headless>=4.13.0.92",
 ]
 pipeline = [
   "torch>=2.2",
@@ -63,7 +63,7 @@ pipeline = [
   "scikit-learn>=1.3",
   "pillow>=10.0",
   "piexif>=1.1.3",
-  "opencv-python-headless>=4.10",
+  "opencv-python-headless>=4.13.0.92",
   "datasets>=2.19",
   "huggingface_hub>=0.24",
   "safetensors>=0.4",
