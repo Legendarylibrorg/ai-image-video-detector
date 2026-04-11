@@ -33,14 +33,14 @@ Documentation = "https://github.com/Legendarylibrorg/ai-image-video-detector/blo
 
 [project.optional-dependencies]
 inference = [
-  "torch>=2.2",
+  "torch>=2.11.0",
   "torchvision>=0.17",
   "numpy>=1.25",
   "pillow>=10.0",
   "safetensors>=0.4",
 ]
 training = [
-  "torch>=2.2",
+  "torch>=2.11.0",
   "torchvision>=0.17",
   "numpy>=1.25",
   "pillow>=10.0",
@@ -57,7 +57,7 @@ video = [
   "opencv-python-headless>=4.10",
 ]
 pipeline = [
-  "torch>=2.2",
+  "torch>=2.11.0",
   "torchvision>=0.17",
   "numpy>=1.25",
   "scikit-learn>=1.3",
