@@ -29,7 +29,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_*.py'
 
       - name: Create dependency update PR
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: codex/dependency-refresh
           commit-message: "Refresh locked dependencies"
