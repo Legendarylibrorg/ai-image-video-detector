@@ -3,6 +3,8 @@
 
 # Python
 .venv/
+.ci-venv/
+.tmp-venv/
 .pycache/
 __pycache__/
 .pytest_cache/
@@ -38,3 +40,13 @@ incoming_model_outputs/
 
 # Misc
 *.log
+
+# Local editor and OS cruft (never commit)
+.cursor/
+.cursorrules
+.cursorignore
+.vscode/
+.idea/
+Thumbs.db
+*.swp
+*~

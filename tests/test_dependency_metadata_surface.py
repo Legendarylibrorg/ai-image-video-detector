@@ -38,8 +38,16 @@ def _toml_array_items(section_text: str, key: str) -> list[str]:
 
 
 class DependencyMetadataSurfaceTests(unittest.TestCase):
+    def test_pre_commit_wires_detect_secrets_baseline(self) -> None:
+        cfg = (ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+        self.assertIn("detect-secrets", cfg)
+        self.assertIn(".secrets.baseline", cfg)
+        self.assertIn("--exclude-files", cfg)
+        self.assertRegex(cfg, r"requirements.*lock.*json")
+
     def test_update_deps_lock_script_is_bash_valid(self) -> None:
         subprocess.run(["bash", "-n", "scripts/update_deps_lock.sh"], cwd=ROOT, check=True)
+        subprocess.run(["bash", "-n", "scripts/verify_secrets_scan.sh"], cwd=ROOT, check=True)
         subprocess.run([sys.executable, "-m", "py_compile", "scripts/update_deps_lock.py"], cwd=ROOT, check=True)
 
     def test_requirements_lock_tracks_expected_runtime_packages(self) -> None:
@@ -90,10 +98,12 @@ class DependencyMetadataSurfaceTests(unittest.TestCase):
         self.assertIn('Homepage = "https://github.com/Legendarylibrorg/ai-image-video-detector"', urls)
         self.assertIn('Repository = "https://github.com/Legendarylibrorg/ai-image-video-detector"', urls)
         self.assertIn('Issues = "https://github.com/Legendarylibrorg/ai-image-video-detector/issues"', urls)
-        self.assertIn("torch>=2.2", _toml_array_items(optional, "inference"))
-        self.assertIn("datasets>=2.19", _toml_array_items(optional, "collection"))
-        self.assertIn("opencv-python-headless>=4.10", _toml_array_items(optional, "video"))
-        self.assertIn("safetensors>=0.4", _toml_array_items(optional, "pipeline"))
+        self.assertIn("torch>=2.11", _toml_array_items(optional, "inference"))
+        self.assertIn("numpy>=2.4", _toml_array_items(optional, "inference"))
+        self.assertIn("scikit-learn>=1.8", _toml_array_items(optional, "training"))
+        self.assertIn("datasets>=4.8", _toml_array_items(optional, "collection"))
+        self.assertIn("opencv-python-headless>=4.13", _toml_array_items(optional, "video"))
+        self.assertIn("safetensors>=0.7", _toml_array_items(optional, "pipeline"))
 
     def test_deps_profile_script_emits_profile_specific_modules(self) -> None:
         proc = subprocess.run(

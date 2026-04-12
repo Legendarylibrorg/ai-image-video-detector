@@ -1,3 +1,8 @@
+# Security Checks: supply chain + secrets for this repo only.
+# Package: pyproject name "ai-image-detector", import path src/ai_image_detector/.
+# Interpreter version: .github/ci-python-version.txt (same minor as MANIFEST_MAX_WHEEL_CP in
+# scripts/update_deps_lock.py). Installed via .github/actions/setup-aid-python.
+# Triggers: every PR + push to main; weekly Monday 14:00 UTC (after Monday 06:30 CodeQL and 13:00 lock refresh).
 name: Security Checks
 
 on:
@@ -11,43 +16,49 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.repository }}-aid-security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   scan:
+    name: Lock + secrets + pip-audit
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
 
-      - name: Setup Python
-        uses: actions/setup-python@v6
+      - name: Setup CI Python
+        id: aid_py
+        uses: ./.github/actions/setup-aid-python
         with:
-          python-version: "3.11"
-          cache: "pip"
           cache-dependency-path: requirements.lock
 
-      - name: Install Security Tools
-        run: |
-          python -m pip install --upgrade pip
-          pip install detect-secrets pip-audit
+      - name: Report CI Python
+        run: echo "ci_python_version=${{ steps.aid_py.outputs.python-version }}"
 
-      - name: Verify Locked Dependency Hashes
+      - name: Install security tools
         run: |
-          python scripts/update_deps_lock.py verify --require-current
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --upgrade "detect-secrets>=1.5.0" "pip-audit>=2.10.0"
 
-      - name: Secret Scan
+      - name: Verify lock digests vs PyPI
+        run: python3 scripts/update_deps_lock.py verify --require-current
+
+      - name: Secret scan
         run: |
           if [ -f .secrets.baseline ]; then
-            git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+            git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline \
+              --exclude-files '^requirements\.lock\.json$'
           else
             detect-secrets scan . > .secrets.baseline
             git diff --exit-code .secrets.baseline
           fi
 
-      - name: Dependency Vulnerability Audit
+      - name: Audit locked dependencies
         run: |
           if [ -f requirements.lock ]; then
-            pip-audit -r requirements.lock
+            python3 -m pip_audit -r requirements.lock
           else
-            pip-audit
+            python3 -m pip_audit
           fi

@@ -160,16 +160,21 @@ If you want to split the full flow:
 
 ## Python dependencies
 
-Runtime libraries are grouped in `pyproject.toml` under `[project.optional-dependencies]`. For direct Python imports and test runs, the manual fallback install is:
+**Where versions actually live:** committed **`requirements.lock`** (exact pins) and **`requirements.lock.json`** (each artifact’s **PyPI SHA256**). **Markdown docs do not pin package versions**—if you need a number, open those files in the repo (or your checkout after `git pull`).
+
+**What `pyproject.toml` is for:** `requires-python` (**≥3.11**, a floor—3.12+ is fine) and **`[project.optional-dependencies]`** (`>=` **minimums** per extra: `pipeline`, `training`, `collection`, `video`, `inference`). That file declares compatibility; it does **not** replace the lock for `./local.sh deps`.
+
+**Default install (matches the lock):** `./local.sh deps` or `./local.sh setup` → **`scripts/install_deps.sh`** installs the selected profile from **`requirements.lock`** (default profile is **pipeline**), then editable-installs the package with **`--no-deps`** so the venv matches the lock. Narrower installs: `DEPS_EXTRA=collection ./local.sh deps`, etc. The `aid-*` wrappers land in `./.venv/bin`; if imports fail, stderr points you at `./local.sh deps`.
+
+**Refreshing dependencies:** `bash scripts/update_deps_lock.sh` picks **newest stable** PyPI releases for the pipeline profile (see **`scripts/update_deps_lock.py`**; **torch** / **torchvision** series map; **`MANIFEST_MAX_WHEEL_CP`** matches CI Python). Then `python3 scripts/update_deps_lock.py verify --require-current` and commit **both** lock files. **Security Checks** re-verifies digests; **Dependency Updates** runs **daily** and can open a refresh PR. Details: [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md).
+
+**Manual fallback (resolver, not the lock):**
 
 ```bash
 pip install -e '.[pipeline]'
 ```
 
-For native local Linux use, prefer `./local.sh deps` or `./local.sh setup`; those install the repo-managed environment into `./.venv` using `scripts/install_deps.sh`.
-When you only need part of the stack, use a profile-aware repo install such as `DEPS_EXTRA=collection ./local.sh deps` or `DEPS_EXTRA=training,video ./local.sh deps`.
-The repo bootstrap installs the `aid-*` wrappers into `./.venv/bin`; if imports fail, they print an absolute repo-root `./local.sh deps` recovery command on stderr.
-The pinned direct dependency set lives in `requirements.lock`, and `requirements.lock.json` stores the official PyPI SHA256 digest chosen for each pinned release. `.github/workflows/security.yml` verifies those hashes, and `.github/workflows/deps-update.yml` refreshes both files on a schedule.
+Uses **`pyproject.toml`** minimums only; versions can differ from **`requirements.lock`** until you run `./local.sh deps` or regenerate the lock.
 
 ## Repo Layout
 

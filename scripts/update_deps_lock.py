@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""Pin the pipeline stack: newest stable release per dependency on PyPI (no prereleases).
+
+Versions match requires-python in pyproject.toml. Torch and torchvision stay aligned
+using TORCHVISION_SERIES_BY_TORCH_SERIES in this file. Wheel artifacts prefer manylinux
+x86_64 with the highest compatible ``cp`` tag up to MANIFEST_MAX_WHEEL_CP (CI Python).
+"""
 from __future__ import annotations
 
 import argparse
@@ -29,6 +35,12 @@ PYPI_VERSION_JSON = "https://pypi.org/pypi/{project}/{version}/json"
 # TorchVision publishes an explicit compatibility table on PyPI. We mirror the
 # stable torch->torchvision major/minor mapping here so the updater can keep the
 # pair aligned while still taking the newest compatible patch release.
+# Prefer manylinux x86_64 wheels tagged at or below this CPython ABI so the manifest
+# matches GitHub Actions (see `.github/ci-python-version.txt` and workflows) and typical
+# `pip install` on 3.11–3.14. If PyPI only ships newer `cp` wheels, selection falls back
+# to the highest available tag (bump this when CI moves to a newer interpreter).
+MANIFEST_MAX_WHEEL_CP = Version("3.14")
+
 TORCHVISION_SERIES_BY_TORCH_SERIES = {
     "2.11": "0.26",
     "2.10": "0.25",
@@ -104,6 +116,22 @@ def parse_version(version: str) -> Version | None:
         return None
 
 
+def wheel_abi_python_version(filename: str) -> Version | None:
+    """Parse the first ``cpXYZ`` ABI segment from a wheel filename (PEP 425)."""
+    match = re.search(r"-cp(\d+)-", filename)
+    if match is None:
+        return None
+    nodot = match.group(1)
+    try:
+        if len(nodot) == 2:
+            return Version(f"{nodot[0]}.{nodot[1]}")
+        if len(nodot) == 3:
+            return Version(f"{nodot[0]}.{nodot[1:]}")
+    except InvalidVersion:
+        return None
+    return None
+
+
 def select_preferred_artifact(files: list[dict]) -> dict:
     sdists = [item for item in files if item.get("packagetype") == "sdist"]
     if sdists:
@@ -115,33 +143,33 @@ def select_preferred_artifact(files: list[dict]) -> dict:
     ]
     if universal:
         return sorted(universal, key=lambda item: item["filename"])[0]
-    linux_cp310_x86_64 = [
+    manylinux_x86_64 = [
         item
         for item in files
-        if "manylinux" in item.get("filename", "") and "cp310" in item.get("filename", "") and "x86_64" in item.get("filename", "")
+        if item.get("packagetype") == "bdist_wheel"
+        and "manylinux" in item.get("filename", "")
+        and "x86_64" in item.get("filename", "")
     ]
-    if linux_cp310_x86_64:
-        return sorted(linux_cp310_x86_64, key=lambda item: item["filename"])[0]
-    linux_cp310 = [
-        item
-        for item in files
-        if "manylinux" in item.get("filename", "") and "cp310" in item.get("filename", "")
-    ]
-    if linux_cp310:
-        return sorted(linux_cp310, key=lambda item: item["filename"])[0]
-    linux_x86_64 = [
-        item
-        for item in files
-        if "manylinux" in item.get("filename", "") and "x86_64" in item.get("filename", "")
-    ]
-    if linux_x86_64:
-        return sorted(linux_x86_64, key=lambda item: item["filename"])[0]
+    tagged = [(wheel_abi_python_version(item["filename"]), item) for item in manylinux_x86_64]
+    tagged = [(ver, item) for ver, item in tagged if ver is not None]
+    capped = [(ver, item) for ver, item in tagged if ver <= MANIFEST_MAX_WHEEL_CP]
+    tier = capped if capped else tagged
+    if tier:
+        max_ver = max(ver for ver, _ in tier)
+        best = [item for ver, item in tier if ver == max_ver]
+        return sorted(best, key=lambda item: item["filename"])[0]
+    if manylinux_x86_64:
+        return sorted(manylinux_x86_64, key=lambda item: item["filename"])[0]
     linux_wheels = [item for item in files if "manylinux" in item.get("filename", "")]
     if linux_wheels:
         return sorted(linux_wheels, key=lambda item: item["filename"])[0]
-    cp310_wheels = [item for item in files if "cp310" in item.get("filename", "")]
-    if cp310_wheels:
-        return sorted(cp310_wheels, key=lambda item: item["filename"])[0]
+    cp_wheels = [
+        item
+        for item in files
+        if item.get("packagetype") == "bdist_wheel" and re.search(r"-cp\d+-", item.get("filename", ""))
+    ]
+    if cp_wheels:
+        return sorted(cp_wheels, key=lambda item: item["filename"])[0]
     return sorted(files, key=lambda item: item["filename"])[0]
 
 

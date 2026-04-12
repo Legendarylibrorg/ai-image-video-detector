@@ -3,10 +3,10 @@
   "packages": [
     {
       "artifact": {
-        "filename": "torch-2.11.0-cp310-cp310-manylinux_2_28_x86_64.whl",
+        "filename": "torch-2.11.0-cp314-cp314-manylinux_2_28_x86_64.whl",
         "packagetype": "bdist_wheel",
-        "sha256": "1b32ceda909818a03b112006709b02be1877240c31750a8d9c6b7bf5f2d8a6e5",
-        "url": "https://files.pythonhosted.org/packages/f9/1e/18a9b10b4bd34f12d4e561c52b0ae7158707b8193c6cfc0aad2b48167090/torch-2.11.0-cp310-cp310-manylinux_2_28_x86_64.whl"
+        "sha256": "4dc8b3809469b6c30b411bb8c4cad3828efd26236153d9beb6a3ec500f211a60",
+        "url": "https://files.pythonhosted.org/packages/47/e8/b98ca2d39b2e0e4730c0ee52537e488e7008025bc77ca89552ff91021f7c/torch-2.11.0-cp314-cp314-manylinux_2_28_x86_64.whl"
       },
       "name": "torch",
       "project": "torch",
@@ -15,10 +15,10 @@
     },
     {
       "artifact": {
-        "filename": "torchvision-0.26.0-cp310-cp310-manylinux_2_28_x86_64.whl",
+        "filename": "torchvision-0.26.0-cp314-cp314-manylinux_2_28_x86_64.whl",
         "packagetype": "bdist_wheel",
-        "sha256": "b6f9ad1ecc0eab52647298b379ee9426845f8903703e6127973f8f3d049a798b",
-        "url": "https://files.pythonhosted.org/packages/5e/00/24d8c7845c3f270153fb81395a5135b2778e2538e81d14c6aea5106c689c/torchvision-0.26.0-cp310-cp310-manylinux_2_28_x86_64.whl"
+        "sha256": "0f3e572efe62ad645017ea847e0b5e4f2f638d4e39f05bc011d1eb9ac68d4806",
+        "url": "https://files.pythonhosted.org/packages/a4/21/a2266f7f1b0e58e624ff15fd6f01041f59182c49551ece0db9a183071329/torchvision-0.26.0-cp314-cp314-manylinux_2_28_x86_64.whl"
       },
       "name": "torchvision",
       "project": "torchvision",
@@ -27,27 +27,27 @@
     },
     {
       "artifact": {
-        "filename": "numpy-2.2.6.tar.gz",
+        "filename": "numpy-2.4.4.tar.gz",
         "packagetype": "sdist",
-        "sha256": "e29554e2bef54a90aa5cc07da6ce955accb83f21ab5de01a62c8478897b264fd",
-        "url": "https://files.pythonhosted.org/packages/76/21/7d2a95e4bba9dc13d043ee156a356c0a8f0c6309dff6b21b4d71a073b8a8/numpy-2.2.6.tar.gz"
+        "sha256": "2d390634c5182175533585cc89f3608a4682ccb173cc9bb940b2881c8d6f8fa0",
+        "url": "https://files.pythonhosted.org/packages/d7/9f/b8cef5bffa569759033adda9481211426f12f53299629b410340795c2514/numpy-2.4.4.tar.gz"
       },
       "name": "numpy",
       "project": "numpy",
-      "requires_python": ">=3.10",
-      "version": "2.2.6"
+      "requires_python": ">=3.11",
+      "version": "2.4.4"
     },
     {
       "artifact": {
-        "filename": "scikit_learn-1.7.2.tar.gz",
+        "filename": "scikit_learn-1.8.0.tar.gz",
         "packagetype": "sdist",
-        "sha256": "20e9e49ecd130598f1ca38a1d85090e1a600147b9c02fa6f15d69cb53d968fda",
-        "url": "https://files.pythonhosted.org/packages/98/c2/a7855e41c9d285dfe86dc50b250978105dce513d6e459ea66a6aeb0e1e0c/scikit_learn-1.7.2.tar.gz"
+        "sha256": "9bccbb3b40e3de10351f8f5068e105d0f4083b1a65fa07b6634fbc401a6287fd",
+        "url": "https://files.pythonhosted.org/packages/0e/d4/40988bf3b8e34feec1d0e6a051446b1f66225f8529b9309becaeef62b6c4/scikit_learn-1.8.0.tar.gz"
       },
       "name": "scikit-learn",
       "project": "scikit-learn",
-      "requires_python": ">=3.10",
-      "version": "1.7.2"
+      "requires_python": ">=3.11",
+      "version": "1.8.0"
     },
     {
       "artifact": {
@@ -99,15 +99,15 @@
     },
     {
       "artifact": {
-        "filename": "huggingface_hub-1.9.1.tar.gz",
+        "filename": "huggingface_hub-1.10.1.tar.gz",
         "packagetype": "sdist",
-        "sha256": "442af372207cc24dcb089caf507fcd7dbc1217c11d6059a06f6b90afe64e8bd2",
-        "url": "https://files.pythonhosted.org/packages/44/40/68d9b286b125d9318ae95c8f8b206e8672e7244b0eea61ebb4a88037638c/huggingface_hub-1.9.1.tar.gz"
+        "sha256": "696c53cf9c2ac9befbfb5dd41d05392a031c69fc6930d1ed9671debd405b6fff",
+        "url": "https://files.pythonhosted.org/packages/e4/28/baf5d745559503ce8d28cf5bc9551f5ac59158eafd7b6a6afff0bcdb0f50/huggingface_hub-1.10.1.tar.gz"
       },
       "name": "huggingface_hub",
       "project": "huggingface-hub",
       "requires_python": ">=3.10.0",
-      "version": "1.9.1"
+      "version": "1.10.1"
     },
     {
       "artifact": {
@@ -122,5 +122,5 @@
       "version": "0.7.0"
     }
   ],
-  "python_requires": ">=3.10"
+  "python_requires": ">=3.11"
 }

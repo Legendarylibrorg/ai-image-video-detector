@@ -6,7 +6,7 @@ Disabled by default so `python -m unittest discover` stays fast locally.
 Enable explicitly:
   AID_E2E_SMOKE=1 .venv/bin/python -m unittest tests.test_e2e_smoke
 
-CI sets `AID_E2E_SMOKE=1` in `.github/workflows/smoke.yml`.
+GitHub Actions for this repo focus on security scans; run this smoke locally before release.
 """
 
 from __future__ import annotations

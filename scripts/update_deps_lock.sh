@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Regenerate requirements.lock + requirements.lock.json from pyproject.toml; CI runs verify against PyPI.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
