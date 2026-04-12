@@ -30,6 +30,8 @@ class InstallShTests(unittest.TestCase):
     def test_install_script_supports_repo_bootstrap_without_zip(self) -> None:
         text = (ROOT / "install.sh").read_text(encoding="utf-8")
         self.assertIn("git clone --depth 1", text)
+        self.assertIn("INSTALL_REV", text)
+        self.assertIn("install_security_notice", text)
         self.assertIn("INSTALL_ALLOW_CUSTOM_REPO", text)
         self.assertIn("validate_clone_parameters_or_exit", text)
         self.assertIn("install_validate.py", text)

@@ -112,12 +112,17 @@ class DependencyMetadataSurfaceTests(unittest.TestCase):
             'Documentation = "https://github.com/Legendarylibrorg/ai-image-video-detector/blob/main/docs/REFERENCE.md"',
             urls,
         )
-        self.assertIn("torch>=2.11", _toml_array_items(optional, "inference"))
-        self.assertIn("numpy>=2.4", _toml_array_items(optional, "inference"))
-        self.assertIn("scikit-learn>=1.8", _toml_array_items(optional, "training"))
-        self.assertIn("datasets>=4.8", _toml_array_items(optional, "collection"))
-        self.assertIn("opencv-python-headless>=4.13", _toml_array_items(optional, "video"))
-        self.assertIn("safetensors>=0.7", _toml_array_items(optional, "pipeline"))
+        inference = _toml_array_items(optional, "inference")
+        training = _toml_array_items(optional, "training")
+        collection = _toml_array_items(optional, "collection")
+        video = _toml_array_items(optional, "video")
+        pipeline = _toml_array_items(optional, "pipeline")
+        self.assertIn("torch>=2.11", inference)
+        self.assertTrue(any(x.startswith("numpy>=2.4") for x in inference), inference)
+        self.assertIn("scikit-learn>=1.8", training)
+        self.assertTrue(any(x.startswith("datasets>=4.8") for x in collection), collection)
+        self.assertTrue(any(x.startswith("opencv-python-headless>=4.13") for x in video), video)
+        self.assertIn("safetensors>=0.7", pipeline)
 
     def test_deps_profile_script_emits_profile_specific_modules(self) -> None:
         proc = subprocess.run(

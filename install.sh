@@ -2,6 +2,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Supply-chain: default clone follows the repo default branch (a moving target). Prefer
+# INSTALL_REV set to a release tag or known-good commit (see docs/STARTUP.md).
+if [ -z "${INSTALL_REV:-}" ]; then
+  printf '%s\n' "install_security_notice: INSTALL_REV is unset; clone will use the repository default branch. For a pinned checkout set INSTALL_REV to a tag or branch name (example: export INSTALL_REV=v0.1.0)." >&2
+fi
+
 # shellcheck source=scripts/lib/apt_packages_validate.sh
 source "$SCRIPT_DIR/scripts/lib/apt_packages_validate.sh"
 
@@ -37,10 +44,18 @@ run_cmd() {
 }
 
 validate_clone_parameters_or_exit() {
-  python3 "$SCRIPT_DIR/scripts/lib/install_validate.py" \
-    --install-dir "$INSTALL_DIR" \
-    --repo-url "$REPO_URL" \
-    --allow-custom-repo "$INSTALL_ALLOW_CUSTOM_REPO"
+  if [ -n "${INSTALL_REV:-}" ]; then
+    python3 "$SCRIPT_DIR/scripts/lib/install_validate.py" \
+      --install-dir "$INSTALL_DIR" \
+      --repo-url "$REPO_URL" \
+      --allow-custom-repo "$INSTALL_ALLOW_CUSTOM_REPO" \
+      --install-rev "$INSTALL_REV"
+  else
+    python3 "$SCRIPT_DIR/scripts/lib/install_validate.py" \
+      --install-dir "$INSTALL_DIR" \
+      --repo-url "$REPO_URL" \
+      --allow-custom-repo "$INSTALL_ALLOW_CUSTOM_REPO"
+  fi
 }
 
 run_repo_cmd() {
@@ -131,10 +146,18 @@ ensure_repo() {
   fi
   validate_clone_parameters_or_exit
   if [ "$DRY_RUN" = "1" ]; then
-    printf '[DRY_RUN] git clone --depth 1 %q %q\n' "$REPO_URL" "$INSTALL_DIR"
+    if [ -n "${INSTALL_REV:-}" ]; then
+      printf '[DRY_RUN] git clone --depth 1 --branch %q %q %q\n' "$INSTALL_REV" "$REPO_URL" "$INSTALL_DIR"
+    else
+      printf '[DRY_RUN] git clone --depth 1 %q %q\n' "$REPO_URL" "$INSTALL_DIR"
+    fi
     ROOT_DIR="$INSTALL_DIR"
   else
-    git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
+    if [ -n "${INSTALL_REV:-}" ]; then
+      git clone --depth 1 --branch "$INSTALL_REV" "$REPO_URL" "$INSTALL_DIR"
+    else
+      git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
+    fi
     ROOT_DIR=$(cd "$INSTALL_DIR" && pwd)
   fi
   display_root="$(display_path "$ROOT_DIR")"

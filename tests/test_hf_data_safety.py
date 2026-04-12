@@ -68,6 +68,35 @@ class HFDataCollectionSafetyTests(unittest.TestCase):
             p.write_text("#x\n  org/name  \n\n", encoding="utf-8")
             self.assertEqual(self.hf.read_noncomment_lines(p), ["org/name"])
 
+    def test_write_noncomment_lines_rejects_symlink_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            prev = os.getcwd()
+            try:
+                os.chdir(base)
+                target = Path("t.txt")
+                target.write_text("x", encoding="utf-8")
+                link = Path("out.txt")
+                try:
+                    link.symlink_to(target)
+                except OSError:
+                    self.skipTest("symlinks not supported")
+                with self.assertRaises(ValueError):
+                    self.hf.write_noncomment_lines(link, ["a/b"])
+            finally:
+                os.chdir(prev)
+
+    def test_write_noncomment_lines_rejects_escape_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            prev = os.getcwd()
+            try:
+                os.chdir(base)
+                with self.assertRaises(ValueError):
+                    self.hf.write_noncomment_lines(Path("../../etc/hf_data_safety_write_test"), ["x"])
+            finally:
+                os.chdir(prev)
+
 
 if __name__ == "__main__":
     unittest.main()
