@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from _support import ROOT
+from tests._support import ROOT
 
 import importlib.util
 

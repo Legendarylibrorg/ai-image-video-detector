@@ -5,7 +5,6 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from _support import ROOT, SCRIPTS
 
 IMPORT_ERROR: Exception | None = None
 try:

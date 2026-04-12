@@ -5,7 +5,7 @@ import tempfile
 import subprocess
 import unittest
 
-from _support import ROOT
+from tests._support import ROOT
 
 
 class DoShTests(unittest.TestCase):

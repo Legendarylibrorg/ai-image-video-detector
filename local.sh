@@ -19,7 +19,7 @@ print_usage() {
   cat <<EOF
 usage: ./local.sh [setup|deps|doctor|docker-doctor|collect|run|train|retrain|finetune|continuous|status|collect-status|smoke|smoke-real]
 
-Full command map and stage meanings: docs/COMMANDS.md
+Local research pipeline — full command map and stage meanings: docs/COMMANDS.md
 Docker VM walkthrough and native Linux bootstrap: docs/STARTUP.md
 
 Typical native path:

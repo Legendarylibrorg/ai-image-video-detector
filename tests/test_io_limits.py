@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from _support import write_rgb_image
+from tests._support import write_rgb_image
 from ai_image_detector.io_limits import (
     MAX_JSON_CONFIG_BYTES,
     open_image_rgb,

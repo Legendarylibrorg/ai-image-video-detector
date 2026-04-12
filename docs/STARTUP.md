@@ -1,6 +1,6 @@
 # Startup Guide
 
-This guide expands the startup path from the main README.
+This guide expands the startup path from the main README for the **local AI image & video research pipeline** (clone → environment → first `./local.sh` runs).
 
 This guide is Linux-VM-first.
 The main venv for that path is the isolated container virtualenv at `/opt/aid-venv`.

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import unittest
 
-from _support import ROOT
+from tests._support import ROOT
 
 
 class SmokeRealSurfaceTests(unittest.TestCase):

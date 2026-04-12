@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import importlib.util
 import json
-from pathlib import Path
 import re
 import subprocess
 import sys
+import tomllib
 import unittest
 
-from _support import ROOT
+from tests._support import ROOT
 
 
 def _locked_package_names() -> set[str]:
@@ -40,10 +41,18 @@ def _toml_array_items(section_text: str, key: str) -> list[str]:
 class DependencyMetadataSurfaceTests(unittest.TestCase):
     def test_pre_commit_wires_detect_secrets_baseline(self) -> None:
         cfg = (ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+        self.assertIn("ruff-pre-commit", cfg)
+        self.assertIn("rev: v0.9.10", cfg)
         self.assertIn("detect-secrets", cfg)
         self.assertIn(".secrets.baseline", cfg)
         self.assertIn("--exclude-files", cfg)
         self.assertRegex(cfg, r"requirements.*lock.*json")
+
+    def test_pyproject_declares_ruff_lint_config(self) -> None:
+        text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn("[tool.ruff]", text)
+        self.assertIn("[tool.ruff.lint]", text)
+        self.assertIn('ignore = ["E402"]', text)
 
     def test_update_deps_lock_script_is_bash_valid(self) -> None:
         subprocess.run(["bash", "-n", "scripts/update_deps_lock.sh"], cwd=ROOT, check=True)
@@ -85,6 +94,7 @@ class DependencyMetadataSurfaceTests(unittest.TestCase):
         urls = _toml_section(pyproject, "project.urls")
 
         self.assertIn("dependencies = []", project_cfg)
+        self.assertRegex(project_cfg, r'(?m)^name\s*=\s*"ai-image-video-detector"\s*$')
         self.assertIn('license = {file = "LICENSE"}', project_cfg)
         self.assertIn("authors = [", project_cfg)
         self.assertIn("keywords = [", project_cfg)
@@ -98,6 +108,10 @@ class DependencyMetadataSurfaceTests(unittest.TestCase):
         self.assertIn('Homepage = "https://github.com/Legendarylibrorg/ai-image-video-detector"', urls)
         self.assertIn('Repository = "https://github.com/Legendarylibrorg/ai-image-video-detector"', urls)
         self.assertIn('Issues = "https://github.com/Legendarylibrorg/ai-image-video-detector/issues"', urls)
+        self.assertIn(
+            'Documentation = "https://github.com/Legendarylibrorg/ai-image-video-detector/blob/main/docs/REFERENCE.md"',
+            urls,
+        )
         self.assertIn("torch>=2.11", _toml_array_items(optional, "inference"))
         self.assertIn("numpy>=2.4", _toml_array_items(optional, "inference"))
         self.assertIn("scikit-learn>=1.8", _toml_array_items(optional, "training"))
@@ -126,6 +140,27 @@ class DependencyMetadataSurfaceTests(unittest.TestCase):
             payload["python_modules"],
             ["ai_image_detector", "numpy", "PIL", "safetensors", "torch", "torchvision", "piexif", "sklearn", "cv2"],
         )
+
+    def test_deps_profile_rejects_unknown_extra(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, "scripts/deps_profile.py", "--extras", "training,nope", "--emit", "json"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("invalid_deps_extra_token", proc.stderr)
+
+    def test_allowed_deps_extras_matches_pyproject_optional_dependencies(self) -> None:
+        """``deps_profile.ALLOWED_DEPS_EXTRAS`` must stay the single Python source of truth vs pyproject."""
+        spec = importlib.util.spec_from_file_location("deps_profile_mod", ROOT / "scripts" / "deps_profile.py")
+        assert spec and spec.loader
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        with (ROOT / "pyproject.toml").open("rb") as handle:
+            data = tomllib.load(handle)
+        keys = frozenset(data["project"]["optional-dependencies"].keys())
+        self.assertEqual(mod.ALLOWED_DEPS_EXTRAS, keys)
 
     def test_requirements_manifest_exists_and_tracks_lock_packages(self) -> None:
         manifest = json.loads((ROOT / "requirements.lock.json").read_text(encoding="utf-8"))

@@ -7,7 +7,6 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 
-from _support import ROOT, SRC
 
 from ai_image_detector import dataset_tools
 

@@ -16,6 +16,7 @@ from hf_data import (
     resolve_hf_token_value,
     unique_preserve,
     validate_hf_dataset_source_id,
+    validate_hf_discovery_query,
     write_noncomment_lines,
 )
 
@@ -599,6 +600,20 @@ def discover_hf_sources(
     if HfApi is None:
         print("warning_hf_discovery_unavailable reason=huggingface_hub_missing")
         return []
+    validated_queries: list[str] = []
+    for raw in queries:
+        s = str(raw).strip()
+        if not s:
+            continue
+        try:
+            validated_queries.append(validate_hf_discovery_query(s))
+        except ValueError as exc:
+            raise ValueError(f"invalid_hf_discovery_query value={raw!r}") from exc
+    if not validated_queries:
+        print("warning_hf_discovery_no_queries_after_validation")
+        return []
+    queries = validated_queries
+
     found: list[tuple[str, float, int, int]] = []
     allowed_licenses = {normalize_license_marker(tag) for tag in allowed_license_tags if normalize_license_marker(tag)}
 

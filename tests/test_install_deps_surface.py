@@ -7,10 +7,23 @@ import subprocess
 import tempfile
 import unittest
 
-from _support import ROOT
+from tests._support import ROOT
 
 
 class InstallDepsSurfaceTests(unittest.TestCase):
+    def test_invalid_deps_extra_token_rejected(self) -> None:
+        proc = subprocess.run(
+            ["bash", "scripts/install_deps.sh"],
+            cwd=ROOT,
+            env={**os.environ, "DEPS_EXTRA": "training,evil_extra", "UPGRADE_TOOLCHAIN": "0"},
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        combined = (proc.stdout or "") + (proc.stderr or "")
+        self.assertIn("invalid_deps_extra_token", combined)
+        self.assertIn("evil_extra", combined)
+
     def test_pipeline_profile_uses_full_lock_path_and_publishes_both_training_wrappers(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

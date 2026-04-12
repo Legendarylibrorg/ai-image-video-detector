@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import subprocess
 import sys
 import unittest
 
-from _support import ROOT
+from tests._support import ROOT
 
 
 class TrainingSurfaceTests(unittest.TestCase):
@@ -46,12 +45,17 @@ class TrainingSurfaceTests(unittest.TestCase):
         for rel_path in [
             "scripts/continuous_training.sh",
             "scripts/full_pipeline_4090.sh",
+            "scripts/hparam_sweep.sh",
             "scripts/lib/training.sh",
             "scripts/metadata_finetune_4090.sh",
             "scripts/train_ensemble.sh",
         ]:
             with self.subTest(script=rel_path):
                 subprocess.run(["bash", "-n", rel_path], cwd=ROOT, check=True)
+
+    def test_hparam_sweep_avoids_shell_eval(self) -> None:
+        text = (ROOT / "scripts" / "hparam_sweep.sh").read_text(encoding="utf-8")
+        self.assertNotRegex(text, r"(?m)^\s*eval\s")
 
     def test_key_training_python_modules_compile(self) -> None:
         subprocess.run(
@@ -61,6 +65,10 @@ class TrainingSurfaceTests(unittest.TestCase):
                 "py_compile",
                 "scripts/train_distill.py",
                 "src/ai_image_detector/train.py",
+                "src/ai_image_detector/train_main.py",
+                "src/ai_image_detector/train_post.py",
+                "src/ai_image_detector/train_run_artifacts.py",
+                "src/ai_image_detector/train_support.py",
                 "src/ai_image_detector/video_temporal.py",
                 "src/ai_image_detector/checkpoint_io.py",
             ],

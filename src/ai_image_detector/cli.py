@@ -15,7 +15,7 @@ def _repo_root() -> Path | None:
 
 
 def _pip_extra_install_command(extra: str) -> str:
-    return f'python -m pip install --upgrade "ai-image-detector[{extra}]"'
+    return f'python -m pip install --upgrade "ai-image-video-detector[{extra}]"'
 
 
 def _run_entrypoint(module_name: str, attr_name: str, *, extra: str) -> int:

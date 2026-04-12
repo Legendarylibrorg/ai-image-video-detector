@@ -1,4 +1,8 @@
-# Local AI Image And Video Training Pipeline
+# Local AI Image & Video Research Pipeline
+
+**Summary:** Local AI image & video research pipeline — data, training, reports (not serving).
+
+**Research pipeline:** a reproducible, local-first workflow to **curate data**, **train image and video detectors**, and **iterate on models** (collection → preparation → training → reports), without shipping a hosted inference product.
 
 This repository is for one job:
 - collect Hugging Face image and video data locally
@@ -12,17 +16,18 @@ The native fallback uses a local virtualenv at `./.venv`; `./local.sh setup` cre
 Unless a section says otherwise, the shell snippets in this README use Linux `bash` command syntax.
 If you are on macOS or Windows, treat the Linux-native commands below as Linux-only and use the platform notes in [docs/STARTUP.md](docs/STARTUP.md) instead.
 
-It is not a production serving repo in the current mode.
-
 ## Documentation map
 
 | Doc | Audience |
 |-----|----------|
 | [docs/STARTUP.md](docs/STARTUP.md) | Full walkthrough: Linux VM + Docker, native Linux (`apt`), **macOS** (Docker Desktop + optional Python dev), Windows / WSL2 |
-| [docs/COMMANDS.md](docs/COMMANDS.md) | `./local.sh` subcommands and Compose one-liners |
-| [docs/REFERENCE.md](docs/REFERENCE.md) | Pipeline diagram, **`scripts/*.py` roles**, repo layout, artifacts, **`AID_*`**, `aid-train` flags |
+| [docs/COMMANDS.md](docs/COMMANDS.md) | **`./local.sh`** subcommands, **`scripts/do.sh`** stages, Compose one-liners (canonical command map) |
+| [docs/REFERENCE.md](docs/REFERENCE.md) | Research pipeline diagram, **`scripts/*.py`** roles, repo layout, artifacts, **`AID_*`**, `aid-train` flags |
+| [AGENTS.md](AGENTS.md) | Short orientation for contributors and **coding agents** (architecture, commands, security pointer) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contributor workflow, checks, and PR expectations |
 | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community behavior expectations |
+
+**Training Python layout:** `src/ai_image_detector/train.py` is the tiny **`python -m ai_image_detector.train`** entry; `train_main.py` holds the CLI argument parser and training loop; `train_support.py` has loss, EMA, and metric helpers; `train_run_artifacts.py` writes run config and dataset manifest; `train_post.py` runs optional holdout **test/** eval and release export. Pipeline drivers stay under **`scripts/`** (see [docs/REFERENCE.md](docs/REFERENCE.md)).
 
 ## Linux First Start
 
@@ -71,6 +76,30 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ```
 
 Use a Hugging Face `read` token unless you truly need write access. On native Linux, `hf auth login` also works; `./.env` is the simplest path for this repo and for Docker Compose.
+
+### Verify wiring (end-to-end)
+
+From the **repo root** after `./local.sh setup` (native) or an equivalent container shell at `/workspace`:
+
+```bash
+./local.sh help
+bash scripts/do.sh
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+- **`./local.sh`**: **most** subcommands call **`bash scripts/do.sh`** (`run`→`pipeline`, `smoke`, `train`→`train-existing`, …). **Exceptions** (bootstrap, no `do.sh` hop): **`setup`**, **`deps`**, **`docker-doctor`**. If `help` prints, the operator surface is wired.
+- **`bash scripts/do.sh`** with no arguments prints usage (exit code 2); that confirms `scripts/lib/core.sh` / `env.sh` load.
+- **`unittest discover`** exercises Python wiring (`src/`, `scripts/` imports, checkpoints, shell contract tests). CI runs the same command against **`requirements.lock`** (see `.github/workflows/tests.yml`).
+
+Optional **full smoke** (synthetic data, tiny training; requires a venv with **PyTorch** from **`./local.sh deps`**, default **`./.venv`**):
+
+```bash
+AID_E2E_SMOKE=1 ./.venv/bin/python -m unittest tests.test_e2e_smoke -v
+# Ephemeral or alternate venv (same variable as install_deps.sh / smoke scripts):
+# VENV_DIR=/path/to/venv AID_E2E_SMOKE=1 python -m unittest tests.test_e2e_smoke -v
+```
+
+That runs **`scripts/smoke_resume_eval.sh`** end-to-end. A scheduled / manual GitHub job does the same after a lock install (`.github/workflows/e2e-smoke.yml`).
 
 ## Secure Linux VM + Docker Compose
 
@@ -209,26 +238,19 @@ Important top-level paths:
 - `./.local`
   Local caches, resumable stage markers, and collection state.
 
-## Command Map
+## Command map
 
-The public commands line up to the project structure like this:
+`./local.sh` is the operator surface; most commands forward to **`scripts/do.sh`**. **Bootstrap-only:** `setup`, `deps`, `docker-doctor` (see [docs/REFERENCE.md](docs/REFERENCE.md) *Architecture at a glance*).
 
-- `./local.sh setup`
-  Bootstraps `./.venv` and health-checks the repo.
-- `./local.sh collect`
-  Writes collected image data to `./data_best`, video data to `./video_data`, and cache/state under `./.local`.
-- `./local.sh train`
-  Reads `./data_best` and `./data_new`, prepares `./.local/training_data`, and trains from there.
-- `./local.sh retrain`
-  Reruns the train-on-existing-data path and applies the benchmark gate to the resulting artifacts.
-- `./local.sh finetune`
-  Runs the separate metadata-aware finetune path on top of an existing checkpoint and writes results under `./artifacts_finetune_metadata`.
-- `./local.sh run`
-  Runs the full collect-then-train flow and writes reports under `./.local/reports` and model artifacts under `./artifacts_ens` and `./video_artifacts`.
-- `./local.sh continuous`
-  Repeats the collection and retraining loop for a long-lived machine.
-- `./local.sh status` and `./local.sh collect-status`
-  Read the current state from the same dataset, artifact, and cache paths above.
+| `./local.sh` | Typical `do.sh` / effect | Notes |
+|--------------|-------------------------|--------|
+| `run` | `pipeline` | Full collect → prepare → train → reports |
+| `smoke` / `smoke-real` | `smoke` / `smoke-real` | Fast synthetic vs optional real HF path |
+| `collect` | `collect` | Refresh `data_best`, `video_data`, `.local` |
+| `train` | `train-existing` | Prepare `.local/training_data`, train |
+| `retrain` / `finetune` / `continuous` | same | Retrain gate, metadata finetune script, or loop |
+
+Full flags, Compose one-liners, and stage semantics: **[docs/COMMANDS.md](docs/COMMANDS.md)** (canonical detail—avoid duplicating it here).
 
 ## Open Source Notes
 
@@ -262,22 +284,13 @@ Fastest installer:
 curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
 ```
 
-Important notes:
-- `./local.sh setup` bootstraps `./.venv`, retries dependency install and doctor checks, and does not stop to prompt for `HF_TOKEN` by default.
-- The full repo workflow expects `./local.sh deps` or `./local.sh setup`; direct `pip install -e '.[pipeline]'` is only the manual fallback for Python imports and test runs.
-- The main operator commands are `./local.sh collect`, `./local.sh train`, `./local.sh retrain`, `./local.sh finetune`, `./local.sh continuous`, and `./local.sh collect-status`.
-- `./local.sh run` is the canonical full pipeline path and writes reports under `./.local/reports` plus release artifacts under `./artifacts_ens/release`.
-- `./local.sh smoke` is the tiny local end-to-end validation path. `./local.sh smoke-real` is the optional real Hugging Face + CUDA validation path.
+Important notes: `./local.sh setup` bootstraps `./.venv` and does not prompt for `HF_TOKEN` by default; prefer **`./local.sh deps`** or **`setup`** over bare **`pip install -e '.[pipeline]'`** when you want **lock** alignment (see **Python dependencies** above). Command details: **[docs/COMMANDS.md](docs/COMMANDS.md)**.
 
 ## Docs
 
 Use these if you need more detail:
 
-- [docs/STARTUP.md](docs/STARTUP.md)
-  Setup flow and Linux startup details.
-- [docs/COMMANDS.md](docs/COMMANDS.md)
-  The small public command surface.
-- [docs/REFERENCE.md](docs/REFERENCE.md)
-  Higher-level reference notes for datasets, training, evaluation, video, and pipeline modes.
-- [SECURITY.md](SECURITY.md)
-  Security reporting guidance.
+- [docs/STARTUP.md](docs/STARTUP.md) — setup flow and Linux startup details.
+- [docs/COMMANDS.md](docs/COMMANDS.md) — canonical **`./local.sh`** / **`do.sh`** / Compose command map.
+- [docs/REFERENCE.md](docs/REFERENCE.md) — architecture, datasets, training, video, pipeline modes, **`AID_*`**.
+- [SECURITY.md](SECURITY.md) — security reporting guidance.

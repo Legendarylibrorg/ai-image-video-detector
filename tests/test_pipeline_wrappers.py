@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import unittest
 
-from _support import ROOT
+from tests._support import ROOT
 
 # Minimal full-pipeline env so dry-run completes in low-disk / CI sandboxes.
 _PIPELINE_DRY_RUN_LIGHT_ENV: dict[str, str] = {

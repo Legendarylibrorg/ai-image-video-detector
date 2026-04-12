@@ -8,6 +8,9 @@ import json
 
 PIPELINE_EXTRAS = ("inference", "training", "collection", "video")
 
+# Must match ``[project.optional-dependencies]`` keys in ``pyproject.toml``.
+ALLOWED_DEPS_EXTRAS = frozenset(("pipeline", "inference", "training", "collection", "video"))
+
 PYTHON_MODULES_BY_EXTRA: dict[str, tuple[str, ...]] = {
     "base": ("ai_image_detector",),
     "inference": ("numpy", "PIL", "safetensors", "torch", "torchvision"),
@@ -24,6 +27,9 @@ def normalize_requested_extras(raw_extra: str) -> list[str]:
         extra = item.strip()
         if not extra:
             continue
+        if extra not in ALLOWED_DEPS_EXTRAS:
+            allowed = ",".join(sorted(ALLOWED_DEPS_EXTRAS))
+            raise SystemExit(f"invalid_deps_extra_token token={extra!r} allowed={allowed}")
         if extra == "pipeline":
             return ["pipeline"]
         if extra in seen:

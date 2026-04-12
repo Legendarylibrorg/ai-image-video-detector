@@ -1,4 +1,4 @@
-# Dependabot for this repository (pyproject [project].name: ai-image-detector).
+# Dependabot for this repository (pyproject [project].name: ai-image-video-detector).
 # Ecosystems match the repo: pip reads ./pyproject.toml only; github-actions bumps pins in
 # .github/workflows/*.yml and composite actions under .github/actions/ (e.g. setup-aid-python).
 # No npm/Docker ecosystems.

@@ -1,4 +1,4 @@
-# Composite: single CI Python version for ai-image-detector workflows.
+# Composite: single CI Python version for ai-image-video-detector workflows.
 # Version is read from .github/ci-python-version.txt (one line, e.g. 3.14).
 name: Setup CI Python
 description: Install the interpreter version pinned for this repository's GitHub Actions.

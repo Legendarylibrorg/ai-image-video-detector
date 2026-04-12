@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   update-dependencies:
-    name: Refresh requirements.lock (ai-image-detector)
+    name: Refresh requirements.lock (ai-image-video-detector)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

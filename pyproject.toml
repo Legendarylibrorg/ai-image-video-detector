@@ -1,20 +1,23 @@
 [project]
-name = "ai-image-detector"
+name = "ai-image-video-detector"
 version = "0.1.0"
-description = "Linux pipeline for local AI image and video collection and PyTorch training"
+description = "Local AI image & video research pipeline — data, training, reports (not serving)."
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.11"
 authors = [
   {name = "Legendarylibrorg"},
 ]
-keywords = ["ai", "image-detection", "video-detection", "hugging-face", "pytorch", "training-pipeline"]
+keywords = ["ai", "image-detection", "video-detection", "hugging-face", "pytorch", "training-pipeline", "research-pipeline", "ml-research"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
   "License :: OSI Approved :: MIT License",
   "Operating System :: POSIX :: Linux",
+  "Operating System :: POSIX",
+  "Operating System :: MacOS :: MacOS X",
+  "Operating System :: Microsoft :: Windows",
   "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -28,7 +31,7 @@ dependencies = []
 Homepage = "https://github.com/Legendarylibrorg/ai-image-video-detector"
 Repository = "https://github.com/Legendarylibrorg/ai-image-video-detector"
 Issues = "https://github.com/Legendarylibrorg/ai-image-video-detector/issues"
-Documentation = "https://github.com/Legendarylibrorg/ai-image-video-detector/blob/main/README.md"
+Documentation = "https://github.com/Legendarylibrorg/ai-image-video-detector/blob/main/docs/REFERENCE.md"
 
 [project.optional-dependencies]
 inference = [
@@ -78,3 +81,14 @@ license-files = ["LICENSE"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Ruff: CI runs `ruff check src/ai_image_detector tests` after `pip install ruff` (not in requirements.lock).
+# E402 ignored: `from __future__ import annotations` then module docstring then imports is intentional here.
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = ["E402"]

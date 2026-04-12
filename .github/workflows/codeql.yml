@@ -19,7 +19,7 @@ permissions:
   security-events: write
 
 env:
-  AID_CI_PYPROJECT_NAME: "ai-image-detector"
+  AID_CI_PYPROJECT_NAME: "ai-image-video-detector"
   AID_CI_IMPORT_PACKAGE: "ai_image_detector"
 
 # CodeQL uploads SARIF; avoid canceling mid-upload on the same ref.

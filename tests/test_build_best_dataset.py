@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from _support import write_rgb_image
+from tests._support import write_rgb_image
 
 IMPORT_ERROR: Exception | None = None
 try:

@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from _support import write_rgb_image  # noqa: F401
+from tests._support import write_rgb_image  # noqa: F401
 from ai_image_detector.decision import combined_risk, decide_label
 from ai_image_detector.metadata import METADATA_FEATURE_NAMES, analyze_metadata, extract_metadata_features, metadata_feature_dim
 

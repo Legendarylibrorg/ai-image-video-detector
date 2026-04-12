@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from _support import ROOT  # noqa: F401
+from tests._support import ROOT  # noqa: F401
 import script_support
 from ai_image_detector import checkpoints, io_limits
 
@@ -105,15 +105,17 @@ class CheckpointsTests(unittest.TestCase):
             self.assertEqual((Path(tmp) / "latest_checkpoint.txt").read_text(encoding="utf-8"), "last.pt")
 
     def test_train_module_does_not_call_torch_load_for_best_checkpoint_eval(self) -> None:
-        train_text = (ROOT / "src" / "ai_image_detector" / "train.py").read_text(encoding="utf-8")
-        self.assertIn("best = load_checkpoint(best_path, map_location=device)", train_text)
-        self.assertIn("save_training_checkpoint(", train_text)
-        self.assertIn("ckpt = load_training_checkpoint(resume_path, map_location=device)", train_text)
-        self.assertNotIn("torch.load(", train_text)
+        train_main = (ROOT / "src" / "ai_image_detector" / "train_main.py").read_text(encoding="utf-8")
+        train_post = (ROOT / "src" / "ai_image_detector" / "train_post.py").read_text(encoding="utf-8")
+        combined = train_main + train_post
+        self.assertIn("best = load_checkpoint(best_path, map_location=device)", combined)
+        self.assertIn("save_training_checkpoint(", combined)
+        self.assertIn("ckpt = load_training_checkpoint(resume_path, map_location=device)", combined)
+        self.assertNotIn("torch.load(", combined)
 
     def test_train_module_checkpoint_io_stays_on_plain_model_when_compile_is_enabled(self) -> None:
         runtime_text = (ROOT / "src" / "ai_image_detector" / "runtime.py").read_text(encoding="utf-8")
-        train_text = (ROOT / "src" / "ai_image_detector" / "train.py").read_text(encoding="utf-8")
+        train_text = (ROOT / "src" / "ai_image_detector" / "train_main.py").read_text(encoding="utf-8")
         self.assertIn("def maybe_compile_model(", runtime_text)
         self.assertIn("train_model = maybe_compile_model(model, enabled=bool(args.compile))", train_text)
         self.assertIn('"state_dict": model.state_dict()', train_text)

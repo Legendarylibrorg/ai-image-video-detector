@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 import re
 import unittest
 
-from _support import ROOT
+from tests._support import ROOT
 
 
 class DocsSurfaceTests(unittest.TestCase):
@@ -29,6 +28,22 @@ class DocsSurfaceTests(unittest.TestCase):
         text = (ROOT / ".env.example").read_text(encoding="utf-8")
         self.assertIn("HF_TOKEN=''", text)
 
+    def test_readme_emphasizes_research_pipeline_in_title(self) -> None:
+        lines = (ROOT / "README.md").read_text(encoding="utf-8").splitlines()
+        self.assertTrue(lines, "README must not be empty")
+        self.assertIn("Research Pipeline", lines[0])
+        body = "\n".join(lines[:45])
+        self.assertIn("Research pipeline:", body)
+        self.assertIn("data, training, reports", body)
+        self.assertIn("not serving", body)
+
+    def test_pyproject_description_matches_readme_tagline(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        tag = "Local AI image & video research pipeline — data, training, reports (not serving)."
+        self.assertIn(tag, readme)
+        self.assertIn(f'description = "{tag}"', pyproject)
+
     def test_readme_documentation_links_resolve(self) -> None:
         text = (ROOT / "README.md").read_text(encoding="utf-8")
         linked_docs = sorted(set(re.findall(r"\((docs/[A-Z]+\.md)\)", text)))
@@ -38,7 +53,7 @@ class DocsSurfaceTests(unittest.TestCase):
 
     def test_open_source_docs_exist_and_are_linked(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        for rel_path in ["CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "SECURITY.md"]:
+        for rel_path in ["AGENTS.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "SECURITY.md"]:
             with self.subTest(path=rel_path):
                 self.assertTrue((ROOT / rel_path).exists(), rel_path)
                 self.assertIn(rel_path, readme)
@@ -53,6 +68,26 @@ class DocsSurfaceTests(unittest.TestCase):
         ]:
             with self.subTest(command=command):
                 self.assertIn(command, text)
+
+    def test_reference_documents_operator_layers_and_bootstrap_exceptions(self) -> None:
+        text = (ROOT / "docs" / "REFERENCE.md").read_text(encoding="utf-8")
+        self.assertIn("## Architecture at a glance", text)
+        self.assertIn("| **Bootstrap** |", text)
+        self.assertIn("scripts/setup_linux.sh", text)
+        self.assertIn("scripts/install_deps.sh", text)
+        self.assertIn("run_repo_python", text)
+        self.assertIn("| **Operator** |", text)
+
+    def test_agents_md_orients_contributors(self) -> None:
+        text = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("docs/REFERENCE.md", text)
+        self.assertIn("./local.sh", text)
+        self.assertIn("ruff check src/ai_image_detector tests", text)
+        self.assertIn("SECURITY.md", text)
+
+    def test_contributing_links_agents_md(self) -> None:
+        text = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+        self.assertIn("[AGENTS.md](AGENTS.md)", text)
 
 
 if __name__ == "__main__":
