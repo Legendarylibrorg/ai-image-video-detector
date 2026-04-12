@@ -1,0 +1,40 @@
+# Composite: single CI Python version for ai-image-detector workflows.
+# Version is read from .github/ci-python-version.txt (one line, e.g. 3.14).
+name: Setup CI Python
+description: Install the interpreter version pinned for this repository's GitHub Actions.
+
+inputs:
+  cache-dependency-path:
+    description: Path passed to actions/setup-python cache-dependency-path (pip cache).
+    required: false
+    default: requirements.lock
+
+outputs:
+  python-version:
+    description: Resolved version string from .github/ci-python-version.txt.
+    value: ${{ steps.resolve.outputs.python_version }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      run: |
+        set -euo pipefail
+        f="${GITHUB_WORKSPACE}/.github/ci-python-version.txt"
+        if [[ ! -f "$f" ]]; then
+          echo "missing_ci_python_version_file path=$f" >&2
+          exit 1
+        fi
+        v="$(tr -d '[:space:]' < "$f")"
+        if [[ -z "$v" ]]; then
+          echo "empty_ci_python_version_file path=$f" >&2
+          exit 1
+        fi
+        echo "python_version=$v" >> "$GITHUB_OUTPUT"
+        echo "ci_python_version=$v (from .github/ci-python-version.txt)"
+    - uses: actions/setup-python@v6.2.0
+      with:
+        python-version: ${{ steps.resolve.outputs.python_version }}
+        cache: pip
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}

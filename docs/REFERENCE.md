@@ -234,15 +234,21 @@ The repo bootstrap installs them as lightweight wrappers in `./.venv/bin` around
 
 ## Python dependencies
 
-The codebase uses **Python 3.10+** syntax (for example `str | None` unions). `requires-python` in `pyproject.toml` matches that.
+**Version numbers:** treat repo-root **`requirements.lock`** and **`requirements.lock.json`** as authoritative. **This documentation does not pin or mirror package versions**; it only describes mechanics.
 
-Everything needed for the default training and collection workflow is listed under the `pipeline` extra in `pyproject.toml`. For direct Python imports and test runs, install with:
+The codebase uses **Python 3.11+** syntax (for example `str | None` unions). `requires-python` in `pyproject.toml` matches that.
+
+**`pyproject.toml`** — **`[project.optional-dependencies]`** lists **minimum** (`>=`) versions per extra (`pipeline`, `training`, `collection`, `video`, `inference`). **`requirements.lock`** pins **exact** releases for the default **pipeline** profile used by **`scripts/update_deps_lock.py`** / **`./local.sh deps`**. **`requirements.lock.json`** stores the chosen filename, URL, and **PyPI SHA256** for each pin. Regenerate with **`bash scripts/update_deps_lock.sh`**, verify with **`python3 scripts/update_deps_lock.py verify --require-current`**, commit both files; CI **Security Checks** re-fetches PyPI metadata and compares digests.
+
+**Resolver behavior:** for each dependency the updater picks the **latest stable** release on PyPI compatible with `requires-python` (**prereleases skipped**). It does **not** cap below what PyPI publishes. **torch** and **torchvision** are kept on a matching stable series via **`TORCHVISION_SERIES_BY_TORCH_SERIES`** in **`scripts/update_deps_lock.py`**; when PyTorch ships a new stable torch minor, that map must gain an entry before the lock refresh can follow it. For **manylinux x86_64** wheels with several `cp*` tags, the script records the newest tag up to **`MANIFEST_MAX_WHEEL_CP`** (must match **`.github/ci-python-version.txt`** for CI wheel picks); bump both when CI moves to a newer interpreter.
+
+Default extra for the full training/collection stack is **`pipeline`**. Manual editable install (resolver-only, may differ from the lock until you re-sync):
 
 ```bash
 pip install -e '.[pipeline]'
 ```
 
-Normal native fallback usage should still go through `./local.sh deps` or `./local.sh setup`, which install the repo-managed environment and wrapper commands into `./.venv`.
+Normal native usage should still go through **`./local.sh deps`** or **`./local.sh setup`**, which install the repo-managed environment and wrapper commands into **`./.venv`** from **`requirements.lock`**.
 
 ## Containerized path
 

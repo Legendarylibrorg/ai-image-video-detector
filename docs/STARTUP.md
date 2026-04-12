@@ -307,15 +307,19 @@ Notes:
 
 ## Python dependencies
 
-The project groups its runtime stack in `pyproject.toml` extras (`pipeline`, `training`, `collection`, `video`, `inference`). For direct Python imports and test runs, install with:
+**Authoritative versions** are in the repo root **`requirements.lock`** and **`requirements.lock.json`** (SHA256 per artifact). **Docs do not list package versions**—always read those files (or the [README](../README.md) “Python dependencies” section for the full policy).
+
+- **Python:** `requires-python >=3.11` in **`pyproject.toml`** (floor only).
+- **Minimums:** **`[project.optional-dependencies]`** extras (`pipeline`, `training`, `collection`, `video`, `inference`).
+- **Install matching the lock:** `./local.sh deps` or `./local.sh setup` (see **`scripts/install_deps.sh`**); profiles via `DEPS_EXTRA=…`.
+- **Refresh pins:** `bash scripts/update_deps_lock.sh` then `python3 scripts/update_deps_lock.py verify --require-current`; commit both lock files.
+- **CI alignment:** GitHub **Security Checks** / **Dependency Updates** use **`.github/ci-python-version.txt`** (via **`.github/actions/setup-aid-python`**); **`scripts/update_deps_lock.py`** uses **`MANIFEST_MAX_WHEEL_CP`** so **`requirements.lock.json`** wheel tags stay in step with that interpreter (see [REFERENCE.md](REFERENCE.md)).
+
+Manual install (may differ from the lock until you re-run `./local.sh deps`):
 
 ```bash
 pip install -e '.[pipeline]'
 ```
-
-For normal use inside this repo, prefer `./local.sh deps` or `./local.sh setup`; they install the repo-managed environment and wrapper commands into `./.venv`.
-For narrower installs, use a repo-managed profile such as `DEPS_EXTRA=collection ./local.sh deps` or `DEPS_EXTRA=training,video ./local.sh deps`.
-The repo bootstrap installs the `aid-*` wrappers into `./.venv/bin`; if imports fail, they print an absolute repo-root `./local.sh deps` recovery command on stderr.
 
 ## What the pipeline does
 

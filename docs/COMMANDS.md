@@ -48,15 +48,16 @@ For the full secure startup walkthrough, use [STARTUP.md](STARTUP.md). GPU hosts
 
 ## Python dependencies
 
-Required packages are grouped in `pyproject.toml` extras. For direct Python imports and test runs, install the full pipeline stack with:
+Exact pins and digests: **`requirements.lock`** + **`requirements.lock.json`** at the repo root (docs never list versions). **`pyproject.toml`** holds **`requires-python >=3.11`** and optional-extra **minimums**.
+
+- **Match the lock:** `./local.sh deps` / `./local.sh setup` (optionally `DEPS_EXTRA=…`).
+- **Policy and refresh:** [README.md](../README.md) (“Python dependencies”) and [REFERENCE.md](REFERENCE.md) (“Python dependencies”).
 
 ```bash
 pip install -e '.[pipeline]'
 ```
 
-For the native fallback workflow, use `./local.sh deps` or `./local.sh setup`; both install the repo-managed environment and wrapper commands into `./.venv`.
-For smaller local installs, use a repo-managed profile such as `DEPS_EXTRA=collection ./local.sh deps` or `DEPS_EXTRA=training ./local.sh deps`.
-The repo bootstrap installs the `aid-*` wrappers into `./.venv/bin`; if a dependency is missing, they suggest an absolute repo-root `./local.sh deps` command.
+Above uses **`pyproject.toml`** only; use **`./local.sh deps`** when you want the same packages as **`requirements.lock`**.
 
 ## Pipeline at a glance
 

@@ -10,7 +10,7 @@ import update_deps_lock
 
 
 class UpdateDepsLockTests(unittest.TestCase):
-    def test_select_preferred_artifact_prefers_linux_cp310_wheel_when_no_sdist_exists(self) -> None:
+    def test_select_preferred_artifact_prefers_highest_cp_manylinux_x86_64_wheel(self) -> None:
         artifact = update_deps_lock.select_preferred_artifact(
             [
                 {"filename": "torch-2.11.0-cp310-cp310-manylinux_2_28_aarch64.whl", "packagetype": "bdist_wheel"},
@@ -20,7 +20,24 @@ class UpdateDepsLockTests(unittest.TestCase):
             ]
         )
 
+        self.assertEqual(artifact["filename"], "torch-2.11.0-cp311-cp311-manylinux_2_28_x86_64.whl")
+
+    def test_select_preferred_artifact_falls_back_to_only_cp310_x86_64_manylinux(self) -> None:
+        artifact = update_deps_lock.select_preferred_artifact(
+            [
+                {"filename": "torch-2.11.0-cp310-cp310-manylinux_2_28_x86_64.whl", "packagetype": "bdist_wheel"},
+            ]
+        )
         self.assertEqual(artifact["filename"], "torch-2.11.0-cp310-cp310-manylinux_2_28_x86_64.whl")
+
+    def test_select_preferred_artifact_caps_cp_at_manifest_max_for_ci_python(self) -> None:
+        artifact = update_deps_lock.select_preferred_artifact(
+            [
+                {"filename": "torch-2.11.0-cp313-cp313-manylinux_2_28_x86_64.whl", "packagetype": "bdist_wheel"},
+                {"filename": "torch-2.11.0-cp314-cp314-manylinux_2_28_x86_64.whl", "packagetype": "bdist_wheel"},
+            ]
+        )
+        self.assertEqual(artifact["filename"], "torch-2.11.0-cp314-cp314-manylinux_2_28_x86_64.whl")
 
     def test_latest_compatible_release_skips_newer_python_incompatible_version(self) -> None:
         payload = {
@@ -33,6 +50,18 @@ class UpdateDepsLockTests(unittest.TestCase):
             version, _ = update_deps_lock.latest_compatible_release("numpy", update_deps_lock.Version("3.10"))
 
         self.assertEqual(version, "2.2.6")
+
+    def test_latest_compatible_release_prefers_newer_numpy_when_python_allows(self) -> None:
+        payload = {
+            "releases": {
+                "2.4.4": [{"filename": "numpy-2.4.4.tar.gz", "packagetype": "sdist", "yanked": False, "requires_python": ">=3.11", "digests": {"sha256": "new"}}],
+                "2.2.6": [{"filename": "numpy-2.2.6.tar.gz", "packagetype": "sdist", "yanked": False, "requires_python": ">=3.10", "digests": {"sha256": "old"}}],
+            }
+        }
+        with mock.patch("update_deps_lock.fetch_json", return_value=payload):
+            version, _ = update_deps_lock.latest_compatible_release("numpy", update_deps_lock.Version("3.11"))
+
+        self.assertEqual(version, "2.4.4")
 
     def test_verify_manifest_checks_hashes_against_release_metadata(self) -> None:
         manifest = {

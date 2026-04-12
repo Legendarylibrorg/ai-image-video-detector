@@ -1,43 +1,54 @@
+# Dependency Updates: regenerate this repo's requirements.lock* from ./pyproject.toml only.
+# Opens PR branch chore/dependency-refresh when the lock changes; same scripts as local CONTRIBUTING.md.
+# Schedule: daily 13:00 UTC (before Monday 14:00 Security Checks when all three align).
+# No push trigger — avoids noise; use workflow_dispatch for on-demand refresh.
 name: Dependency Updates
 
 on:
   schedule:
-    - cron: "0 13 * * 1"
+    - cron: "0 13 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: ${{ github.repository }}-aid-deps-update
+  cancel-in-progress: true
+
 jobs:
   update-dependencies:
+    name: Refresh requirements.lock (ai-image-detector)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v6.0.2
         with:
-          python-version: "3.11"
+          fetch-depth: 0
 
-      - name: Refresh dependency lock
+      - name: Setup CI Python
+        id: aid_py
+        uses: ./.github/actions/setup-aid-python
+        with:
+          cache-dependency-path: requirements.lock
+
+      - name: Report CI Python
+        run: echo "ci_python_version=${{ steps.aid_py.outputs.python-version }}"
+
+      - name: Refresh lock and verify PyPI digests
         run: |
           bash scripts/update_deps_lock.sh
-          python scripts/update_deps_lock.py verify --require-current
+          python3 scripts/update_deps_lock.py verify --require-current
 
-      - name: Run test suite
-        run: |
-          python -m unittest discover -s tests -p 'test_*.py'
-
-      - name: Create dependency update PR
-        uses: peter-evans/create-pull-request@v7
+      - name: Open PR if lock changed
+        uses: peter-evans/create-pull-request@v8.1.1
         with:
-          branch: codex/dependency-refresh
-          commit-message: "Refresh locked dependencies"
-          title: "Refresh locked dependencies"
+          branch: chore/dependency-refresh
+          commit-message: "chore: refresh locked dependencies"
+          title: "chore: refresh locked dependencies"
           body: |
-            Automated dependency refresh.
+            Updates `requirements.lock` / `requirements.lock.json` from `pyproject.toml` and runs `verify --require-current` (SHA256 vs PyPI).
 
-            - updates `requirements.lock`
-            - refreshes `requirements.lock.json`
-            - verifies pinned hashes against official PyPI metadata
+            Same locally: `bash scripts/update_deps_lock.sh` then `python3 scripts/update_deps_lock.py verify --require-current`, then commit. Full checks run in **Security Checks** on PRs.
           labels: dependencies
