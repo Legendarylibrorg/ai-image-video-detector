@@ -15,6 +15,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -29,15 +31,11 @@ jobs:
           python -m unittest discover -s tests -p 'test_*.py'
 
       - name: Create dependency update PR
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: codex/dependency-refresh
-          commit-message: "Refresh locked dependencies"
-          title: "Refresh locked dependencies"
+          commit-message: "chore: refresh locked dependencies"
+          title: "chore: refresh locked dependencies"
           body: |
-            Automated dependency refresh.
-
-            - updates `requirements.lock`
-            - refreshes `requirements.lock.json`
-            - verifies pinned hashes against official PyPI metadata
+            Regenerates `requirements.lock` / `requirements.lock.json` from `pyproject.toml` and re-runs `update_deps_lock.py verify`.
           labels: dependencies

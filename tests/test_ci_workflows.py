@@ -73,6 +73,14 @@ class SecurityWorkflowTests(unittest.TestCase):
 
         self.assertIn("python scripts/update_deps_lock.py verify --require-current", verify_step)
 
+    def test_security_workflow_excludes_lock_manifest_from_secret_scan(self) -> None:
+        text = _workflow_text("security.yml")
+        secret_step = _named_step_block(text, "Secret Scan")
+
+        self.assertIn("detect-secrets-hook", secret_step)
+        self.assertIn("--exclude-files", secret_step)
+        self.assertIn(r"requirements\.lock\.json", secret_step)
+
 
 class DependencyUpdateWorkflowTests(unittest.TestCase):
     def test_dependency_update_workflow_exists_and_refreshes_lock(self) -> None:
@@ -85,7 +93,7 @@ class DependencyUpdateWorkflowTests(unittest.TestCase):
         self.assertIn("bash scripts/update_deps_lock.sh", refresh_step)
         self.assertIn("python scripts/update_deps_lock.py verify --require-current", refresh_step)
         self.assertIn("python -m unittest discover -s tests -p 'test_*.py'", text)
-        self.assertIn("peter-evans/create-pull-request@v7", pr_step)
+        self.assertIn("peter-evans/create-pull-request@v8", pr_step)
 
 
 if __name__ == "__main__":

@@ -38,7 +38,10 @@ jobs:
       - name: Secret Scan
         run: |
           if [ -f .secrets.baseline ]; then
-            git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+            # requirements.lock.json is generated; digests are public PyPI SHA256 values
+            # verified in "Verify Locked Dependency Hashes", not repository secrets.
+            git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline \
+              --exclude-files '^requirements\.lock\.json$'
           else
             detect-secrets scan . > .secrets.baseline
             git diff --exit-code .secrets.baseline

@@ -90,10 +90,10 @@ class DependencyMetadataSurfaceTests(unittest.TestCase):
         self.assertIn('Homepage = "https://github.com/Legendarylibrorg/ai-image-video-detector"', urls)
         self.assertIn('Repository = "https://github.com/Legendarylibrorg/ai-image-video-detector"', urls)
         self.assertIn('Issues = "https://github.com/Legendarylibrorg/ai-image-video-detector/issues"', urls)
-        self.assertIn("torch>=2.2", _toml_array_items(optional, "inference"))
-        self.assertIn("datasets>=2.19", _toml_array_items(optional, "collection"))
-        self.assertIn("opencv-python-headless>=4.10", _toml_array_items(optional, "video"))
-        self.assertIn("safetensors>=0.4", _toml_array_items(optional, "pipeline"))
+        self.assertIn("torch>=2.11.0", _toml_array_items(optional, "inference"))
+        self.assertIn("datasets>=4.8.4", _toml_array_items(optional, "collection"))
+        self.assertIn("opencv-python-headless>=4.13.0.92", _toml_array_items(optional, "video"))
+        self.assertIn("safetensors>=0.7.0", _toml_array_items(optional, "pipeline"))
 
     def test_deps_profile_script_emits_profile_specific_modules(self) -> None:
         proc = subprocess.run(

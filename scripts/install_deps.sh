@@ -82,13 +82,13 @@ def at_least(distribution: str, minimum: str) -> bool:
     return current_parts >= minimum_parts
 
 
-sys.exit(0 if at_least("pip", "21.3") and at_least("setuptools", "68") else 1)
+sys.exit(0 if at_least("pip", "21.3") and at_least("setuptools", "82.0.1") else 1)
 PY
 }
 
 ensure_packaging_toolchain() {
   if [[ "$UPGRADE_TOOLCHAIN" == "1" ]] || ! toolchain_supports_editable_install; then
-    if ! pip_cmd install --quiet --retries 1 --timeout 15 --upgrade "pip>=21.3" "setuptools>=68" wheel; then
+    if ! pip_cmd install --quiet --retries 1 --timeout 15 --upgrade "pip>=21.3" "setuptools>=82.0.1" wheel; then
       echo "warning_toolchain_upgrade_failed using_existing_versions=1"
     fi
   fi
