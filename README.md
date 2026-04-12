@@ -29,43 +29,11 @@ If you are on macOS or Windows, treat the Linux-native commands below as Linux-o
 
 **Training Python layout:** `src/ai_image_detector/train.py` is the tiny **`python -m ai_image_detector.train`** entry; `train_main.py` holds the CLI argument parser and training loop; `train_support.py` has loss, EMA, and metric helpers; `train_run_artifacts.py` writes run config and dataset manifest; `train_post.py` runs optional holdout **test/** eval and release export. Pipeline drivers stay under **`scripts/`** (see [docs/REFERENCE.md](docs/REFERENCE.md)).
 
-## Linux First Start
+## Get the code and run
 
-Choose one source path, then run the same repo-local bootstrap:
+Long-form options (**`git clone`**, **`curl` + `tar`**, **`install.sh`**, safer **`INSTALL_REV`**, fork/mirror flags) live in [docs/STARTUP.md](docs/STARTUP.md). Copy-paste **Compose** and stage-by-stage **`./local.sh`** blocks live in [docs/COMMANDS.md](docs/COMMANDS.md)—this README does not repeat them.
 
-1. Git clone (recommended)
-
-```bash
-git clone https://github.com/Legendarylibrorg/ai-image-video-detector.git
-cd ai-image-video-detector
-```
-
-2. `curl` + `tar` source archive
-
-```bash
-curl -fsSL -o ai-image-video-detector.tar.gz \
-  https://github.com/Legendarylibrorg/ai-image-video-detector/archive/refs/heads/main.tar.gz
-tar -xzf ai-image-video-detector.tar.gz
-mv ai-image-video-detector-main ai-image-video-detector
-cd ai-image-video-detector
-```
-
-3. One-line installer
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
-```
-
-Safer bootstrap (pin the installer to a **known commit or tag** instead of tracking `main`):
-
-```bash
-export INSTALL_REV="main"   # replace with a release tag or full commit SHA
-curl -fsSL "https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/${INSTALL_REV}/install.sh" | bash
-```
-
-Official `install.sh` clones this repo’s default URL only. For a **GitHub fork**, set **`INSTALL_ALLOW_CUSTOM_REPO=1`** and **`INSTALL_ALLOW_NON_OFFICIAL_GITHUB_REPO=1`**. For mirrors on other hosts, add them to **`INSTALL_REPO_HOST_ALLOWLIST`** (comma-separated) or, only if you accept the risk, **`INSTALL_ALLOW_ANY_HTTPS_HOST=1`**. See [SECURITY.md](SECURITY.md).
-
-After the source tree is present:
+Typical **native** flow from the repo root after you have a source tree:
 
 ```bash
 ./local.sh setup
@@ -75,7 +43,7 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 ./local.sh status
 ```
 
-Use a Hugging Face `read` token unless you truly need write access. On native Linux, `hf auth login` also works; `./.env` is the simplest path for this repo and for Docker Compose.
+Use a Hugging Face **read** token unless you need write access. On native Linux, `hf auth login` also works; `./.env` is the simplest path for this repo and for Docker Compose.
 
 ### Verify wiring (end-to-end)
 
@@ -103,89 +71,13 @@ That runs **`scripts/smoke_resume_eval.sh`** end-to-end. A scheduled / manual Gi
 
 ## Secure Linux VM + Docker Compose
 
-Use this as the default runtime path when possible.
+Prefer a **dedicated Linux VM**, then Docker Compose on that VM—not on the bare metal laptop you use for email. Compose is **not** a VM; the VM is the main isolation boundary. Inside the VM you want **Docker Engine**, the **Compose plugin**, and **NVIDIA Container Toolkit** for **`pipeline-gpu`**. You do **not** need host Python or a host **`./.venv`** for the container path.
 
-Important boundary:
-- Docker Compose is not a real VM.
-- The secure model here is: host -> dedicated Linux VM -> Docker Engine -> Compose containers.
-- If you want a true VM boundary on Linux, create the VM first and run Docker only inside that VM.
+Paths: host repo root → container **`/workspace`**; deps and CLIs → **`/opt/aid-venv`**; **`./.env`** on the host supplies **`HF_TOKEN`** to Compose. Writable data/artifact roots include **`./.local`**, **`./data_best`**, **`./data_new`**, **`./video_data`**, **`./artifacts_ens`**, and the other dirs under **Repo layout** below. **`pipeline`** is CPU-only; **`pipeline-gpu`** uses **`Dockerfile.gpu`**.
 
-Minimum needed inside the dedicated Linux VM:
-- `git`
-- Docker Engine
-- Docker Compose plugin
-- NVIDIA Container Toolkit for `pipeline-gpu`
+**Exact** clone → **`docker compose build`** → CPU/GPU doctor/smoke/run commands: [docs/STARTUP.md](docs/STARTUP.md) (**Exact secure startup**) and [docs/COMMANDS.md](docs/COMMANDS.md) (**Dedicated Linux VM + Docker Compose commands**).
 
-You do not need host Python, `pip`, or a host `./.venv` for this secure path.
-All commands in this section must be run from the repo root, the directory that contains `docker-compose.yml`, `local.sh`, and `scripts/install_deps.sh`.
-
-Repo-root check:
-
-```bash
-pwd
-test -f docker-compose.yml
-test -f Dockerfile
-test -f Dockerfile.gpu
-test -f local.sh
-test -f scripts/install_deps.sh
-./local.sh docker-doctor
-```
-
-Full clone-to-`docker compose` walkthrough (including `docker compose build`, CPU deps/doctor, `.env`, and GPU steps) lives in [docs/STARTUP.md](docs/STARTUP.md) under **Exact secure startup**.
-
-Secure path map:
-- host repo root: your current working directory
-- container repo root: `/workspace`
-- container virtualenv: `/opt/aid-venv`
-- repo env file: `./.env` on the host, auto-read by Docker Compose for `HF_TOKEN`
-- general source tree under `/workspace`: writable
-- writable data and artifact paths: `./.local`, `./data_best`, `./data_new`, `./video_data`, `./artifacts_ens`, `./artifacts_sweep`, `./artifacts_finetune_metadata`, `./video_artifacts`, `./incoming_model_outputs`, `./incoming_review_queue`
-
-Notes:
-- `pipeline` uses the CPU-only `Dockerfile`; `pipeline-gpu` uses `Dockerfile.gpu`
-- dependency install happens inside the isolated container venv at `/opt/aid-venv`
-- the container keeps Hugging Face and pip caches under `./.local` and in named volumes for reuse
-- the Compose services keep `cap_drop: [ALL]`, `no-new-privileges`, and `tmpfs` scratch space, but the checkout and container filesystem stay writable so setup and patching are simpler
-- the VM is the main isolation boundary; Compose is the second layer
-- for the full step-by-step walkthrough, use [docs/STARTUP.md](docs/STARTUP.md)
-
-Best security with GPU:
-- dedicated Linux VM
-- GPU passthrough
-- Docker Engine
-- Docker Compose plugin
-- NVIDIA Container Toolkit
-
-## Quick Start
-
-Day-to-day secure commands after setup:
-
-```bash
-docker compose run --rm pipeline-gpu ./local.sh doctor
-docker compose run --rm pipeline-gpu ./local.sh smoke
-docker compose run --rm pipeline-gpu ./local.sh run
-docker compose run --rm pipeline-gpu ./local.sh status
-```
-
-If you want the native Linux fallback instead:
-
-```bash
-./local.sh setup
-printf "HF_TOKEN='your_token_here'\n" >> .env
-./local.sh smoke
-./local.sh run
-./local.sh status
-```
-
-Setup runs a lenient disk check so clone-to-smoke works on typical dev disks; `./local.sh doctor` alone still defaults to **40GB** free for full training. One-liner install: `curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash` (see [docs/STARTUP.md](docs/STARTUP.md)).
-
-If you want to split the full flow:
-
-```bash
-./local.sh collect
-./local.sh train
-./local.sh retrain
-```
+`./local.sh setup` uses a lenient disk check for clone-to-smoke; **`./local.sh doctor`** alone still defaults to **40GB** free for full training.
 
 ## Python dependencies
 
@@ -261,36 +153,3 @@ Full flags, Compose one-liners, and stage semantics: **[docs/COMMANDS.md](docs/C
 - Do not commit secrets (tokens, keys) or private datasets.
 - Dataset and model licenses vary by source; verify each source license before commercial or production use.
 - Detection outputs are probabilistic and can be wrong; review high-risk decisions with human oversight.
-
-## Native Linux Startup
-
-For obtain-the-source options (`git clone` vs `curl` + `tar`), system packages, and native Linux startup, use [docs/STARTUP.md](docs/STARTUP.md). The short Linux-first commands also live above under **Linux First Start**.
-
-Shortest native Linux fallback after you are already in the repo root:
-
-```bash
-./local.sh setup
-printf "HF_TOKEN='your_token_here'\n" >> .env
-./local.sh smoke
-./local.sh run
-./local.sh status
-```
-
-Run `bash ./install.sh` only from inside the repo root after a `git clone` or after extracting a **`.tar.gz`** source archive (`curl` + `tar`; see [docs/STARTUP.md](docs/STARTUP.md)). The installer reuses that directory and does not create a nested checkout. To fetch and bootstrap in one step, use the curl installer below.
-
-Fastest installer:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Legendarylibrorg/ai-image-video-detector/main/install.sh | bash
-```
-
-Important notes: `./local.sh setup` bootstraps `./.venv` and does not prompt for `HF_TOKEN` by default; prefer **`./local.sh deps`** or **`setup`** over bare **`pip install -e '.[pipeline]'`** when you want **lock** alignment (see **Python dependencies** above). Command details: **[docs/COMMANDS.md](docs/COMMANDS.md)**.
-
-## Docs
-
-Use these if you need more detail:
-
-- [docs/STARTUP.md](docs/STARTUP.md) — setup flow and Linux startup details.
-- [docs/COMMANDS.md](docs/COMMANDS.md) — canonical **`./local.sh`** / **`do.sh`** / Compose command map.
-- [docs/REFERENCE.md](docs/REFERENCE.md) — architecture, datasets, training, video, pipeline modes, **`AID_*`**.
-- [SECURITY.md](SECURITY.md) — security reporting guidance.
