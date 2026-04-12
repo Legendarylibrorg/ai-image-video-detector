@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,7 +78,7 @@ def validate_hf_discovery_query(query: str) -> str:
 
 
 def _hf_trust_allowlist() -> frozenset[str] | None:
-    """When set, only these repo ids may use ``trust_remote_code`` (requires trust env on)."""
+    """When set, only these repo ids may use ``trust_remote_code`` (requires trust env + risk accept)."""
     raw = (os.environ.get("AID_HF_TRUST_REMOTE_ALLOWLIST") or "").strip()
     if not raw:
         return None
@@ -91,12 +92,21 @@ def _hf_trust_remote_code_from_env() -> bool:
     return v in ("1", "true", "yes")
 
 
-def _hf_trust_remote_unsafe_global_from_env() -> bool:
-    """Opt-in to legacy behavior: ``trust_remote_code=True`` for every dataset when trust is on.
+def _hf_accept_trust_remote_risk_from_env() -> bool:
+    """Explicit acknowledgement before Hub ``trust_remote_code=True`` (any dataset).
 
-    Without this, ``AID_HF_TRUST_REMOTE_CODE=1`` only enables trust for ids listed in
-    ``AID_HF_TRUST_REMOTE_ALLOWLIST``.
+    Required for **both** allowlisted datasets and legacy global trust so
+    ``AID_HF_TRUST_REMOTE_CODE=1`` alone cannot enable remote loading scripts.
     """
+    for key in ("AID_ACCEPT_HF_TRUST_REMOTE_RISK", "I_ACCEPT_HF_TRUST_RISK"):
+        v = (os.environ.get(key) or "").strip().lower()
+        if v in ("1", "true", "yes"):
+            return True
+    return False
+
+
+def _hf_trust_remote_unsafe_global_raw_from_env() -> bool:
+    """Legacy: opt in to ``trust_remote_code`` for **every** dataset (still needs accept; see load path)."""
     v = (os.environ.get("AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL") or "").strip().lower()
     return v in ("1", "true", "yes")
 
@@ -138,9 +148,18 @@ def read_noncomment_lines(path: Path) -> list[str]:
 
 
 def write_noncomment_lines(path: Path, items: Sequence[str]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    """Write sources list; path must stay under the collection workspace (same anchor as reads)."""
+    from ai_image_detector.collection_paths import collection_workspace_root, require_under_collection_workspace
+    from ai_image_detector.io_limits import reject_symlink
+
+    p = Path(path).expanduser()
+    w = collection_workspace_root()
+    require_under_collection_workspace(p, w)
+    if p.exists():
+        reject_symlink(p)
+    p.parent.mkdir(parents=True, exist_ok=True)
     text = "\n".join(str(item).strip() for item in items if str(item).strip())
-    path.write_text(text + ("\n" if text else ""), encoding="utf-8")
+    p.write_text(text + ("\n" if text else ""), encoding="utf-8")
 
 
 def normalize_hf_token(token: str | None) -> str | None:
@@ -190,8 +209,11 @@ def load_hf_dataset_source(
         base_kw["token"] = token
     trust_env = _hf_trust_remote_code_from_env()
     allow = _hf_trust_allowlist()
-    unsafe_global = _hf_trust_remote_unsafe_global_from_env()
+    unsafe_global = _hf_trust_remote_unsafe_global_raw_from_env()
+    accept = _hf_accept_trust_remote_risk_from_env()
     if not trust_env:
+        trust_requested = False
+    elif not accept:
         trust_requested = False
     elif unsafe_global:
         trust_requested = True
@@ -199,6 +221,13 @@ def load_hf_dataset_source(
         trust_requested = source_id in allow
     else:
         trust_requested = False
+    if trust_requested:
+        mode = "unsafe_global" if unsafe_global else "allowlist"
+        print(
+            f"notice_hf_trust_remote_code source_id={source_id} mode={mode}",
+            file=sys.stderr,
+            flush=True,
+        )
     attempts: list[dict[str, object]] = []
     for use_token in (True, False):
         for pass_trust_flag in (True, False):

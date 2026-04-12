@@ -125,6 +125,17 @@ class InstallValidateTests(unittest.TestCase):
             )
         self.assertIn("too_long", str(ctx.exception))
 
+    def test_install_rev_accepts_branch_and_tag(self) -> None:
+        iv.validate_install_rev("main")
+        iv.validate_install_rev("v0.1.0")
+        iv.validate_install_rev("release/2024-01")
+
+    def test_install_rev_rejects_injection(self) -> None:
+        for bad in ("main;rm", "x\ny", "a..b", "$(id)"):
+            with self.subTest(rev=bad):
+                with self.assertRaises(ValueError):
+                    iv.validate_install_rev(bad)
+
 
 if __name__ == "__main__":
     unittest.main()

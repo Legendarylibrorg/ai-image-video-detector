@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -253,7 +254,10 @@ class BuildBestDatasetSourcesTests(unittest.TestCase):
         try:
             build_best_dataset_sources.discover_hf_sources = lambda **_: ["org/real-fake-images"]
             with tempfile.TemporaryDirectory() as tmpdir:
-                args = SimpleNamespace(
+                old_ws = os.environ.get("AID_WORKSPACE_ROOT")
+                os.environ["AID_WORKSPACE_ROOT"] = tmpdir
+                try:
+                    args = SimpleNamespace(
                     no_default_sources=True,
                     sources_file="",
                     extra_source=[],
@@ -270,9 +274,14 @@ class BuildBestDatasetSourcesTests(unittest.TestCase):
                     hf_query_pause_ms=0,
                     token_env="HF_TOKEN",
                 )
-                open(args.hf_cache_file, "w", encoding="utf-8").close()
+                    open(args.hf_cache_file, "w", encoding="utf-8").close()
 
-                found = build_best_dataset_sources.build_source_list(args)
+                    found = build_best_dataset_sources.build_source_list(args)
+                finally:
+                    if old_ws is None:
+                        os.environ.pop("AID_WORKSPACE_ROOT", None)
+                    else:
+                        os.environ["AID_WORKSPACE_ROOT"] = old_ws
         finally:
             build_best_dataset_sources.discover_hf_sources = old_discover
 
@@ -283,42 +292,50 @@ class BuildBestDatasetSourcesTests(unittest.TestCase):
         try:
             build_best_dataset_sources.discover_hf_sources = lambda **_: ["org/new-stronger-source"]
             with tempfile.TemporaryDirectory() as tmpdir:
-                cache_path = Path(tmpdir) / "sources.txt"
-                cache_path.write_text("org/old-source\n", encoding="utf-8")
-                build_best_dataset_sources.save_cache_policy(
-                    cache_path,
-                    {
-                        "queries": ["old query"],
-                        "hf_discovery_limit": 5,
-                        "hf_max_sources": 10,
-                        "hf_min_downloads": 10,
-                        "hf_min_likes": 1,
-                        "hf_min_quality_score": 0.0,
-                        "hf_print_top": 0,
-                        "hf_query_pause_ms": 0,
-                    },
-                )
-                args = SimpleNamespace(
-                    no_default_sources=True,
-                    sources_file="",
-                    extra_source=[],
-                    discover_hf=True,
-                    hf_cache_file=str(cache_path),
-                    hf_cache_only_if_present=True,
-                    hf_query=["better query"],
-                    hf_discovery_limit=5,
-                    hf_max_sources=10,
-                    hf_min_downloads=10,
-                    hf_min_likes=1,
-                    hf_min_quality_score=1.0,
-                    hf_print_top=0,
-                    hf_query_pause_ms=0,
-                    token_env="HF_TOKEN",
-                )
+                old_ws = os.environ.get("AID_WORKSPACE_ROOT")
+                os.environ["AID_WORKSPACE_ROOT"] = tmpdir
+                try:
+                    cache_path = Path(tmpdir) / "sources.txt"
+                    cache_path.write_text("org/old-source\n", encoding="utf-8")
+                    build_best_dataset_sources.save_cache_policy(
+                        cache_path,
+                        {
+                            "queries": ["old query"],
+                            "hf_discovery_limit": 5,
+                            "hf_max_sources": 10,
+                            "hf_min_downloads": 10,
+                            "hf_min_likes": 1,
+                            "hf_min_quality_score": 0.0,
+                            "hf_print_top": 0,
+                            "hf_query_pause_ms": 0,
+                        },
+                    )
+                    args = SimpleNamespace(
+                        no_default_sources=True,
+                        sources_file="",
+                        extra_source=[],
+                        discover_hf=True,
+                        hf_cache_file=str(cache_path),
+                        hf_cache_only_if_present=True,
+                        hf_query=["better query"],
+                        hf_discovery_limit=5,
+                        hf_max_sources=10,
+                        hf_min_downloads=10,
+                        hf_min_likes=1,
+                        hf_min_quality_score=1.0,
+                        hf_print_top=0,
+                        hf_query_pause_ms=0,
+                        token_env="HF_TOKEN",
+                    )
 
-                found = build_best_dataset_sources.build_source_list(args)
-                cached_sources = build_best_dataset_sources.read_sources_file(cache_path)
-                cached_policy = build_best_dataset_sources.load_cache_policy(cache_path)
+                    found = build_best_dataset_sources.build_source_list(args)
+                    cached_sources = build_best_dataset_sources.read_sources_file(cache_path)
+                    cached_policy = build_best_dataset_sources.load_cache_policy(cache_path)
+                finally:
+                    if old_ws is None:
+                        os.environ.pop("AID_WORKSPACE_ROOT", None)
+                    else:
+                        os.environ["AID_WORKSPACE_ROOT"] = old_ws
         finally:
             build_best_dataset_sources.discover_hf_sources = old_discover
 

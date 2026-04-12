@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 from pathlib import Path
 import tempfile
@@ -102,14 +104,65 @@ class HFDataTests(unittest.TestCase):
 
         original = hf_data.load_dataset
         hf_data.load_dataset = fake_load
+        err = io.StringIO()
         try:
             os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
-            src = hf_data.load_hf_dataset_source("org/name", token=None, streaming=True, cache_dir=None)
+            with contextlib.redirect_stderr(err):
+                src = hf_data.load_hf_dataset_source("org/name", token=None, streaming=True, cache_dir=None)
             self.assertEqual(src.split_name, "train")
         finally:
             hf_data.load_dataset = original
         self.assertTrue(captured)
         self.assertIs(captured[0].get("trust_remote_code"), False)
+        self.assertEqual(err.getvalue(), "")
+
+    def test_trust_remote_emits_stderr_audit_when_enabled(self) -> None:
+        captured: list[dict[str, object]] = []
+        stub = {"train": Dataset.from_dict({"k": [1]})}
+
+        def fake_load(_sid: str, **kw: object) -> dict:
+            captured.append(dict(kw))
+            return dict(stub)
+
+        original = hf_data.load_dataset
+        hf_data.load_dataset = fake_load
+        err = io.StringIO()
+        try:
+            os.environ["AID_HF_TRUST_REMOTE_CODE"] = "1"
+            os.environ["AID_HF_TRUST_REMOTE_ALLOWLIST"] = "allowed/repo"
+            os.environ["AID_ACCEPT_HF_TRUST_REMOTE_RISK"] = "1"
+            os.environ.pop("AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL", None)
+            with contextlib.redirect_stderr(err):
+                hf_data.load_hf_dataset_source("allowed/repo", token=None, streaming=True, cache_dir=None)
+        finally:
+            hf_data.load_dataset = original
+            os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
+            os.environ.pop("AID_HF_TRUST_REMOTE_ALLOWLIST", None)
+            os.environ.pop("AID_ACCEPT_HF_TRUST_REMOTE_RISK", None)
+        out = err.getvalue()
+        self.assertIn("notice_hf_trust_remote_code", out)
+        self.assertIn("source_id=allowed/repo", out)
+        self.assertIn("mode=allowlist", out)
+
+        captured.clear()
+        err = io.StringIO()
+        hf_data.load_dataset = fake_load
+        try:
+            os.environ["AID_HF_TRUST_REMOTE_CODE"] = "1"
+            os.environ["AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL"] = "1"
+            os.environ["AID_ACCEPT_HF_TRUST_REMOTE_RISK"] = "1"
+            os.environ.pop("AID_HF_TRUST_REMOTE_ALLOWLIST", None)
+            with contextlib.redirect_stderr(err):
+                hf_data.load_hf_dataset_source("org/name", token=None, streaming=True, cache_dir=None)
+        finally:
+            hf_data.load_dataset = original
+            os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
+            os.environ.pop("AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL", None)
+            os.environ.pop("AID_ACCEPT_HF_TRUST_REMOTE_RISK", None)
+        out = err.getvalue()
+        self.assertIn("notice_hf_trust_remote_code", out)
+        self.assertIn("source_id=org/name", out)
+        self.assertIn("mode=unsafe_global", out)
 
     def test_validate_hf_dataset_source_id_rejects_path_tokens(self) -> None:
         with self.assertRaises(ValueError):
@@ -136,6 +189,8 @@ class HFDataTests(unittest.TestCase):
         try:
             os.environ["AID_HF_TRUST_REMOTE_CODE"] = "1"
             os.environ["AID_HF_TRUST_REMOTE_ALLOWLIST"] = "allowed/repo"
+            os.environ.pop("AID_ACCEPT_HF_TRUST_REMOTE_RISK", None)
+            os.environ.pop("I_ACCEPT_HF_TRUST_RISK", None)
             hf_data.load_hf_dataset_source("other/repo", token=None, streaming=True, cache_dir=None)
         finally:
             hf_data.load_dataset = original
@@ -149,13 +204,38 @@ class HFDataTests(unittest.TestCase):
         try:
             os.environ["AID_HF_TRUST_REMOTE_CODE"] = "1"
             os.environ["AID_HF_TRUST_REMOTE_ALLOWLIST"] = "allowed/repo"
+            os.environ["AID_ACCEPT_HF_TRUST_REMOTE_RISK"] = "1"
+            hf_data.load_hf_dataset_source("allowed/repo", token=None, streaming=True, cache_dir=None)
+        finally:
+            hf_data.load_dataset = original
+            os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
+            os.environ.pop("AID_HF_TRUST_REMOTE_ALLOWLIST", None)
+            os.environ.pop("AID_ACCEPT_HF_TRUST_REMOTE_RISK", None)
+        self.assertTrue(captured)
+        self.assertIs(captured[0].get("trust_remote_code"), True)
+
+    def test_trust_remote_allowlist_requires_risk_accept(self) -> None:
+        captured: list[dict[str, object]] = []
+        stub = {"train": Dataset.from_dict({"k": [1]})}
+
+        def fake_load(_sid: str, **kw: object) -> dict:
+            captured.append(dict(kw))
+            return dict(stub)
+
+        original = hf_data.load_dataset
+        hf_data.load_dataset = fake_load
+        try:
+            os.environ["AID_HF_TRUST_REMOTE_CODE"] = "1"
+            os.environ["AID_HF_TRUST_REMOTE_ALLOWLIST"] = "allowed/repo"
+            os.environ.pop("AID_ACCEPT_HF_TRUST_REMOTE_RISK", None)
+            os.environ.pop("I_ACCEPT_HF_TRUST_RISK", None)
             hf_data.load_hf_dataset_source("allowed/repo", token=None, streaming=True, cache_dir=None)
         finally:
             hf_data.load_dataset = original
             os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
             os.environ.pop("AID_HF_TRUST_REMOTE_ALLOWLIST", None)
         self.assertTrue(captured)
-        self.assertIs(captured[0].get("trust_remote_code"), True)
+        self.assertIs(captured[0].get("trust_remote_code"), False)
 
     def test_trust_remote_without_allowlist_stays_false(self) -> None:
         captured: list[dict[str, object]] = []
@@ -175,6 +255,31 @@ class HFDataTests(unittest.TestCase):
         finally:
             hf_data.load_dataset = original
             os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
+            os.environ.pop("AID_ACCEPT_HF_TRUST_REMOTE_RISK", None)
+            os.environ.pop("I_ACCEPT_HF_TRUST_RISK", None)
+        self.assertTrue(captured)
+        self.assertIs(captured[0].get("trust_remote_code"), False)
+
+    def test_trust_remote_unsafe_global_requires_risk_accept(self) -> None:
+        captured: list[dict[str, object]] = []
+        stub = {"train": Dataset.from_dict({"k": [1]})}
+
+        def fake_load(_sid: str, **kw: object) -> dict:
+            captured.append(dict(kw))
+            return dict(stub)
+
+        original = hf_data.load_dataset
+        hf_data.load_dataset = fake_load
+        try:
+            os.environ["AID_HF_TRUST_REMOTE_CODE"] = "1"
+            os.environ["AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL"] = "1"
+            os.environ.pop("AID_ACCEPT_HF_TRUST_REMOTE_RISK", None)
+            os.environ.pop("I_ACCEPT_HF_TRUST_RISK", None)
+            hf_data.load_hf_dataset_source("org/name", token=None, streaming=True, cache_dir=None)
+        finally:
+            hf_data.load_dataset = original
+            os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
+            os.environ.pop("AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL", None)
         self.assertTrue(captured)
         self.assertIs(captured[0].get("trust_remote_code"), False)
 
@@ -191,11 +296,36 @@ class HFDataTests(unittest.TestCase):
         try:
             os.environ["AID_HF_TRUST_REMOTE_CODE"] = "1"
             os.environ["AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL"] = "1"
+            os.environ["AID_ACCEPT_HF_TRUST_REMOTE_RISK"] = "1"
             hf_data.load_hf_dataset_source("org/name", token=None, streaming=True, cache_dir=None)
         finally:
             hf_data.load_dataset = original
             os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
             os.environ.pop("AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL", None)
+            os.environ.pop("AID_ACCEPT_HF_TRUST_REMOTE_RISK", None)
+        self.assertTrue(captured)
+        self.assertIs(captured[0].get("trust_remote_code"), True)
+
+    def test_trust_remote_unsafe_global_accepts_i_accept_alias(self) -> None:
+        captured: list[dict[str, object]] = []
+        stub = {"train": Dataset.from_dict({"k": [1]})}
+
+        def fake_load(_sid: str, **kw: object) -> dict:
+            captured.append(dict(kw))
+            return dict(stub)
+
+        original = hf_data.load_dataset
+        hf_data.load_dataset = fake_load
+        try:
+            os.environ["AID_HF_TRUST_REMOTE_CODE"] = "1"
+            os.environ["AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL"] = "1"
+            os.environ["I_ACCEPT_HF_TRUST_RISK"] = "1"
+            hf_data.load_hf_dataset_source("org/name", token=None, streaming=True, cache_dir=None)
+        finally:
+            hf_data.load_dataset = original
+            os.environ.pop("AID_HF_TRUST_REMOTE_CODE", None)
+            os.environ.pop("AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL", None)
+            os.environ.pop("I_ACCEPT_HF_TRUST_RISK", None)
         self.assertTrue(captured)
         self.assertIs(captured[0].get("trust_remote_code"), True)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from urllib.parse import urlparse
 
@@ -31,6 +32,8 @@ FORBIDDEN_INSTALL_PREFIXES = (
 
 _MAX_INSTALL_DIR_CHARS = 4096
 _MAX_REPO_URL_CHARS = 2048
+_MAX_INSTALL_REV_CHARS = 256
+_INSTALL_REV_SAFE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
 def _reject_embedded_credentials(parsed) -> None:
@@ -39,6 +42,22 @@ def _reject_embedded_credentials(parsed) -> None:
             "install_fail: repo_url_must_not_embed_credentials "
             "(use git credential helpers or a token in ~/.netrc instead of the clone URL)"
         )
+
+
+def validate_install_rev(install_rev: str) -> None:
+    """Reject shell metacharacters and path tricks in ``INSTALL_REV`` (passed to ``git clone --branch``)."""
+    rev = str(install_rev or "").strip()
+    if not rev:
+        return
+    if len(rev) > _MAX_INSTALL_REV_CHARS:
+        raise ValueError("install_fail: install_rev_too_long")
+    if "\n" in rev or "\r" in rev or "\x00" in rev or ".." in rev:
+        raise ValueError("install_fail: install_rev_invalid")
+    for c in ";|&$`'\"":
+        if c in rev:
+            raise ValueError("install_fail: install_rev_metachar")
+    if not _INSTALL_REV_SAFE.match(rev):
+        raise ValueError("install_fail: install_rev_unsafe_chars")
 
 
 def validate_install_dir(install_dir: str) -> None:
@@ -132,6 +151,7 @@ def main() -> None:
     ap.add_argument("--install-dir", required=True)
     ap.add_argument("--repo-url", required=True)
     ap.add_argument("--allow-custom-repo", default="0")
+    ap.add_argument("--install-rev", default="", help="Optional git ref for INSTALL_REV (branch or tag)")
     args = ap.parse_args()
     allow_custom = str(args.allow_custom_repo).strip() == "1"
     host_allowlist = os.environ.get("INSTALL_REPO_HOST_ALLOWLIST", "github.com")
@@ -139,6 +159,7 @@ def main() -> None:
     allow_non_gh = os.environ.get("INSTALL_ALLOW_NON_OFFICIAL_GITHUB_REPO", "").strip() == "1"
     try:
         validate_install_dir(args.install_dir)
+        validate_install_rev(args.install_rev)
         validate_repo_for_clone(
             args.repo_url,
             allow_custom_repo=allow_custom,

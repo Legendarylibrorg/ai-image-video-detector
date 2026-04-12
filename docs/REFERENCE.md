@@ -368,9 +368,10 @@ Bounds and toggles are intentionally env-driven so containers and CI can tune wi
 | `AID_MAX_SAFETENSORS_METADATA_BYTES` | 256 KiB | Checkpoint metadata JSON cap |
 | `AID_MAX_SAFETENSORS_FILE_BYTES` | 2 GiB | `.safetensors` checkpoint file size cap before load |
 | `AID_MAX_TRAINING_CHECKPOINT_BYTES` | 2 GiB | `.pt` training checkpoint load cap |
-| `AID_HF_TRUST_REMOTE_CODE` | unset | Set to `1`/`true`/`yes` together with **`AID_HF_TRUST_REMOTE_ALLOWLIST`** so listed **`org/dataset`** ids may use Hub custom loading scripts |
-| `AID_HF_TRUST_REMOTE_ALLOWLIST` | unset | Comma-separated Hugging Face dataset ids; only these get **`trust_remote_code=True`** when **`AID_HF_TRUST_REMOTE_CODE=1`** |
-| `AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL` | unset | Set to `1`/`true`/`yes` for legacy behavior: trust remote code for **every** dataset when **`AID_HF_TRUST_REMOTE_CODE=1`** (avoid in production) |
+| `AID_HF_TRUST_REMOTE_CODE` | unset | Set to `1`/`true`/`yes` with **`AID_HF_TRUST_REMOTE_ALLOWLIST`** and **`AID_ACCEPT_HF_TRUST_REMOTE_RISK`** (or **`I_ACCEPT_HF_TRUST_RISK`**) before allowlisted **`org/dataset`** ids use Hub **`trust_remote_code=True`** |
+| `AID_HF_TRUST_REMOTE_ALLOWLIST` | unset | Comma-separated Hugging Face dataset ids evaluated when **`AID_HF_TRUST_REMOTE_CODE=1`** and accept flags are set |
+| `AID_HF_TRUST_REMOTE_UNSAFE_GLOBAL` | unset | With **`AID_HF_TRUST_REMOTE_CODE=1`** and accept flags, set to `1`/`true`/`yes` for legacy global **`trust_remote_code`** on every dataset (not recommended) |
+| `AID_ACCEPT_HF_TRUST_REMOTE_RISK` | unset | Set to `1`/`true`/`yes` (or **`I_ACCEPT_HF_TRUST_RISK`**) before any Hub **`trust_remote_code=True`** path (allowlist or global) |
 | `AID_WORKSPACE_ROOT` | process **`cwd`** | Collection and ingest paths must resolve under this directory; Docker Compose sets **`/workspace`** |
 | `AID_CHECKPOINT_LOAD_STAGING` | `1` | Implemented in `checkpoint_io.py`. Set to `0`/`false`/`no`/`off` to load checkpoints in place (skips `O_NOFOLLOW` + temp copy; faster, weaker TOCTOU defense) |
 | `AID_SKIP_DATA_PREFLIGHT` | unset | Set to `1`/`true`/`yes` to skip dataset symlink preflight (tests only; not recommended for real training) |
@@ -381,6 +382,7 @@ Bounds and toggles are intentionally env-driven so containers and CI can tune wi
 |----------|---------|---------|
 | `REPO_URL` | official `https://github.com/Legendarylibrorg/ai-image-video-detector.git` | Git remote URL for a fresh clone (HTTPS only when custom) |
 | `INSTALL_DIR` | `$PWD/ai-image-video-detector` | Target directory when the installer clones or reuses a tree |
+| `INSTALL_REV` | unset | Optional tag or branch name for **`git clone --depth 1 --branch`** (pin the moving default branch); stderr notice when unset |
 | `INSTALL_ALLOW_CUSTOM_REPO` | `0` | Set to `1` to clone non-default `REPO_URL` values |
 | `INSTALL_ALLOW_NON_OFFICIAL_GITHUB_REPO` | unset | Set to `1` when `REPO_URL` is a GitHub fork or non-canonical `org/repo` under `github.com` |
 | `INSTALL_REPO_HOST_ALLOWLIST` | `github.com` (via `install_validate.py` when env unset) | Comma-separated HTTPS hostnames allowed when `INSTALL_ALLOW_CUSTOM_REPO=1`; must be non-empty unless `INSTALL_ALLOW_ANY_HTTPS_HOST=1` |
