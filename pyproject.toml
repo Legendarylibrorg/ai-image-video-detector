@@ -34,37 +34,37 @@ Documentation = "https://github.com/Legendarylibrorg/ai-image-video-detector/blo
 inference = [
   "torch>=2.11",
   "torchvision>=0.26",
-  "numpy>=2.4",
+  "numpy>=2.4.4",
   "pillow>=12.2",
   "safetensors>=0.7",
 ]
 training = [
   "torch>=2.11",
   "torchvision>=0.26",
-  "numpy>=2.4",
+  "numpy>=2.4.4",
   "pillow>=12.2",
   "safetensors>=0.7",
   "scikit-learn>=1.8",
   "piexif>=1.1.3",
 ]
 collection = [
-  "datasets>=4.8",
-  "huggingface_hub>=1.10",
+  "datasets>=4.8.4",
+  "huggingface_hub>=1.10.1",
   "pillow>=12.2",
 ]
 video = [
-  "opencv-python-headless>=4.13",
+  "opencv-python-headless>=4.13.0.92",
 ]
 pipeline = [
   "torch>=2.11",
   "torchvision>=0.26",
-  "numpy>=2.4",
+  "numpy>=2.4.4",
   "scikit-learn>=1.8",
   "pillow>=12.2",
   "piexif>=1.1.3",
-  "opencv-python-headless>=4.13",
-  "datasets>=4.8",
-  "huggingface_hub>=1.10",
+  "opencv-python-headless>=4.13.0.92",
+  "datasets>=4.8.4",
+  "huggingface_hub>=1.10.1",
   "safetensors>=0.7",
 ]
 
