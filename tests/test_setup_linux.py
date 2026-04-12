@@ -7,7 +7,7 @@ import tempfile
 import textwrap
 import unittest
 
-from _support import ROOT
+from tests._support import ROOT
 
 
 class SetupLinuxTests(unittest.TestCase):

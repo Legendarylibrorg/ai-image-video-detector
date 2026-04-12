@@ -8,7 +8,6 @@ import time
 from unittest import mock
 import unittest
 
-from _support import ROOT, SCRIPTS
 
 import extract_recent_training_spec
 

@@ -5,7 +5,6 @@ import subprocess
 import tempfile
 import unittest
 
-from _support import ROOT, SCRIPTS
 
 import prepare_training_data
 

@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from _support import ROOT, SRC
+from tests._support import ROOT, SRC
 
 from ai_image_detector import dataset_layout
 

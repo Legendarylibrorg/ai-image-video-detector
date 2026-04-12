@@ -98,15 +98,24 @@ resolve_deps_extra() {
   local profile_file="${2:-}"
   if [[ -n "$explicit" ]]; then
     normalized_deps_extra "$explicit"
-    return 0
+    return $?
   fi
   local stored=""
   stored="$(read_deps_profile_file "$profile_file" || true)"
   if [[ -n "$stored" ]]; then
     normalized_deps_extra "$stored"
-    return 0
+    return $?
   fi
   printf "pipeline\n"
+}
+
+# Must match ``scripts/deps_profile.py`` ``ALLOWED_DEPS_EXTRAS`` / ``pyproject.toml``
+# ``[project.optional-dependencies]`` (see ``tests/test_dependency_metadata_surface.py``).
+deps_extra_token_allowed() {
+  case "$1" in
+    pipeline|training|collection|video|inference) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 normalized_deps_extra() {
@@ -119,6 +128,10 @@ normalized_deps_extra() {
   for extra in "${extras[@]}"; do
     trimmed="$(trim_env_value "$extra")"
     [[ -n "$trimmed" ]] || continue
+    if ! deps_extra_token_allowed "$trimmed"; then
+      echo "deps_fail=invalid_deps_extra_token token=${trimmed} allowed=pipeline,training,collection,video,inference" >&2
+      return 1
+    fi
     if [[ "$trimmed" == "pipeline" ]]; then
       printf "pipeline\n"
       return 0

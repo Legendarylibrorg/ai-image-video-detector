@@ -28,6 +28,13 @@ PREFERRED_SPLITS = ("train", "validation", "test")
 _MAX_HF_SOURCE_ID_LEN = 256
 HF_DATASET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
 
+# Hub dataset search strings (``HfApi.list_datasets(search=...)``).
+_MAX_HF_DISCOVERY_QUERY_CHARS = int(os.environ.get("AID_MAX_HF_DISCOVERY_QUERY_CHARS", "512"))
+
+# JSONL dataset source manifest (append-only under ``.local`` / ``out``).
+_MAX_SOURCE_MANIFEST_BYTES = int(os.environ.get("AID_MAX_SOURCE_MANIFEST_BYTES", str(64 * 1024 * 1024)))
+
+
 def validate_hf_repo_blob_path(filename: str) -> str:
     """Reject path traversal in Hub ``filename`` / relative paths passed to ``hf_hub_download``."""
     fn = str(filename).strip().replace("\\", "/")
@@ -51,6 +58,22 @@ def validate_hf_dataset_source_id(source_id: str) -> str:
     if not HF_DATASET_ID_RE.match(s):
         raise ValueError(f"invalid_hf_dataset_id format={s!r}")
     return s
+
+
+def validate_hf_discovery_query(query: str) -> str:
+    """Reject control characters and oversized strings before Hub discovery APIs.
+
+    Discovery queries come from CLI flags and environment-driven CSV; this bounds
+    attacker-controlled growth and keeps newlines out of Hub search parameters.
+    """
+    q = str(query).strip()
+    if not q:
+        raise ValueError("empty_hf_discovery_query")
+    if len(q) > _MAX_HF_DISCOVERY_QUERY_CHARS:
+        raise ValueError(f"hf_discovery_query_too_long len={len(q)} max={_MAX_HF_DISCOVERY_QUERY_CHARS}")
+    if any(ch in q for ch in ("\n", "\r", "\x00")):
+        raise ValueError("hf_discovery_query_illegal_control_char")
+    return q
 
 
 def _hf_trust_allowlist() -> frozenset[str] | None:
@@ -87,14 +110,30 @@ class LoadedDatasetSource:
 
 
 def read_noncomment_lines(path: Path) -> list[str]:
+    """Read ``#``-stripped non-empty lines with byte/line caps (same env as ``io_limits`` line lists)."""
+    from ai_image_detector.io_limits import (
+        MAX_NONEMPTY_LINES_COUNT,
+        MAX_NONEMPTY_LINES_FILE_BYTES,
+        read_bytes_limited,
+        reject_symlink,
+    )
+
     items: list[str] = []
     if not path.exists():
         return items
-    for line in path.read_text(encoding="utf-8").splitlines():
+    p = Path(path)
+    reject_symlink(p)
+    raw = read_bytes_limited(p, max_bytes=MAX_NONEMPTY_LINES_FILE_BYTES)
+    text = raw.decode("utf-8")
+    for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
         items.append(line)
+        if len(items) > MAX_NONEMPTY_LINES_COUNT:
+            raise ValueError(
+                f"sources_list_too_many_lines path={p} max_lines={MAX_NONEMPTY_LINES_COUNT}"
+            )
     return items
 
 
@@ -329,10 +368,17 @@ def download_dataset_file(
 
 
 def load_latest_source_manifest(path: Path) -> dict[str, dict]:
+    """Parse JSONL manifest with a bounded read (prefix only if file exceeds cap)."""
+    from ai_image_detector.io_limits import read_bytes_limited, reject_symlink
+
     latest: dict[str, dict] = {}
     if not path.exists():
         return latest
-    for line in path.read_text(encoding="utf-8").splitlines():
+    p = Path(path)
+    reject_symlink(p)
+    raw = read_bytes_limited(p, max_bytes=_MAX_SOURCE_MANIFEST_BYTES)
+    text = raw.decode("utf-8")
+    for line in text.splitlines():
         line = line.strip()
         if not line:
             continue

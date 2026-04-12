@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from _support import write_rgb_image
+from tests._support import write_rgb_image
 import audit_diversity
 
 

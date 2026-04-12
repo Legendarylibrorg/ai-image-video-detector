@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import unittest
 
-from _support import ROOT
+from tests._support import ROOT
 
 
 class LocalShTests(unittest.TestCase):
@@ -25,6 +25,7 @@ class LocalShTests(unittest.TestCase):
             "usage: ./local.sh [setup|deps|doctor|docker-doctor|collect|run|train|retrain|finetune|continuous|status|collect-status|smoke|smoke-real]",
             out,
         )
+        self.assertIn("Local research pipeline", out)
         self.assertIn("docs/COMMANDS.md", out)
         self.assertIn("docs/STARTUP.md", out)
         self.assertIn("typical native path", out.lower())

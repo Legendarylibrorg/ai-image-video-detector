@@ -1,0 +1,37 @@
+# Heavy end-to-end: synthetic data + tiny training via scripts/smoke_resume_eval.sh.
+# Complements fast PR CI (.github/workflows/tests.yml); opt-in unittest sets AID_E2E_SMOKE=1.
+name: E2E smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.repository }}-aid-e2e-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: smoke_resume_eval (locked venv)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Setup CI Python
+        id: aid_py
+        uses: ./.github/actions/setup-aid-python
+        with:
+          cache-dependency-path: requirements.lock
+
+      - name: Install dependencies from lock
+        run: bash scripts/install_deps.sh
+
+      - name: Run smoke_resume_eval (AID_E2E_SMOKE)
+        env:
+          AID_E2E_SMOKE: "1"
+        run: .venv/bin/python -m unittest tests.test_e2e_smoke -v

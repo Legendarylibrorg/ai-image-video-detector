@@ -1,6 +1,8 @@
 # Command Guide
 
-This file lists **`./local.sh`** and related command surfaces. For VM boundaries, host requirements, native `apt-get` bootstrap, and the full secure clone-to-run script, use [STARTUP.md](STARTUP.md). On macOS or Windows, use the platform sections there instead of assuming Linux-native steps here.
+This file is the **canonical map** for the **local AI image & video research pipeline**: what **`./local.sh`** runs, how it delegates to **`scripts/do.sh`**, and how Compose wraps the same flow. For VM boundaries, host requirements, native `apt-get` bootstrap, and the full secure clone-to-run script, use [STARTUP.md](STARTUP.md). On macOS or Windows, use the platform sections there instead of assuming Linux-native steps here.
+
+There is **one operator surface** at the repo root: **`./local.sh`** (thin wrapper over **`bash scripts/do.sh …`**). Stage scripts such as **`scripts/full_pipeline_4090.sh`** or **`scripts/smoke_resume_eval.sh`** are **pipeline building blocks** invoked from `do.sh` / `scripts/lib/*.sh`, not duplicate competing CLIs—run stages through **`./local.sh …`** or **`bash scripts/do.sh …`** so `PYTHONPATH` and the venv stay correct (see [REFERENCE.md](REFERENCE.md) § *Operator entrypoints vs pipeline scripts*).
 
 The recommended path is a dedicated Linux VM, then Docker Compose. The main venv for that path is the isolated container virtualenv at `/opt/aid-venv`. Native fallback uses `./.venv` from `./local.sh setup` (also installs `huggingface_hub`, the `hf` CLI, and repo CLIs). Snippets use Linux `bash` syntax unless noted.
 
@@ -140,6 +142,8 @@ Main surface:
   Run the continuous collection and retraining loop for a long-lived machine.
 
 Everything else in the repo is internal support for the pipeline and is intentionally not part of the normal command surface.
+
+**Lint (contributors):** CI runs **Ruff** on **`src/ai_image_detector`** and **`tests`** after the lock install (see **`pyproject.toml`** `[tool.ruff]` and **`.pre-commit-config.yaml`**). Run **`ruff check src/ai_image_detector tests`** locally before pushing.
 
 If you need lower-level scripts or environment controls, use [docs/REFERENCE.md](docs/REFERENCE.md).
 

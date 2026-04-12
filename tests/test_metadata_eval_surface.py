@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from _support import ROOT, write_rgb_image  # noqa: F401
+from tests._support import ROOT, write_rgb_image  # noqa: F401
 
 IMPORT_ERROR: Exception | None = None
 try:

@@ -5,7 +5,6 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 
-from _support import ROOT, SCRIPTS
 
 import build_best_dataset_sources
 

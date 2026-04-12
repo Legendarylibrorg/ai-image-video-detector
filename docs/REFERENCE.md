@@ -1,6 +1,6 @@
 # Reference
 
-This file keeps the README short and startup-focused while collecting the broader concepts in one place.
+This file keeps the README short and startup-focused while collecting the broader concepts in one place: the **local research pipeline** (data → train → evaluate → report), not a production serving stack.
 
 ## Documentation map
 
@@ -15,10 +15,11 @@ This file keeps the README short and startup-focused while collecting the broade
 
 ## What This Repo Does
 
-- collects image and video data locally
-- trains local detectors
-- supports resumable setup and pipeline runs
-- stays in training-only mode; production serving is intentionally disabled
+- runs a **local research pipeline**: collect and version data, prepare training sets, train image (and optional video) models, gate releases, and write reports
+- collects image and video data locally (Hugging Face–centric, with safety bounds documented in [SECURITY.md](../SECURITY.md))
+- trains local detectors (PyTorch; CUDA on Linux when available)
+- supports resumable setup and pipeline runs (`./local.sh`, `scripts/do.sh`, Compose)
+- stays in **training / research** mode; production serving is intentionally disabled
 - targets a simple local CUDA + PyTorch workflow, especially on RTX 4090-class hardware
 
 ## Repo Layout
@@ -31,7 +32,33 @@ This file keeps the README short and startup-focused while collecting the broade
 - `docs/`: user-facing documentation
 - `scripts/`: internal pipeline helpers and advanced wrappers
 - `src/ai_image_detector/`: Python package code (includes `checkpoint_io` for staged checkpoint reads and `io_limits` for media/config bounds)
+- Image training is intentionally split for reviewability: `train.py` (CLI entry), `train_main.py` (argument parser + loop), `train_support.py` (loss, EMA, eval helpers), `train_run_artifacts.py` (run config + dataset manifest), `train_post.py` (optional `test/` metrics + release bundle after training).
 - `tests/`: regression coverage
+
+## Architecture at a glance
+
+| Layer | Role | Where |
+|-------|------|--------|
+| **Operator** | Stable command surface; wires venv + `PYTHONPATH` | **`./local.sh`** → **`scripts/do.sh`** for pipeline work (`collect`, `run`→`pipeline`, `train`→`train-existing`, `smoke`, `retrain`, `status`, …) |
+| **Bootstrap** | Works before a full pipeline shell session | **`setup`**→`scripts/setup_linux.sh`, **`deps`**→`scripts/install_deps.sh`, **`docker-doctor`**→`scripts/doctor.sh` (**no** `do.sh` hop) |
+| **Orchestration** | Stage functions, locks, shared env | **`scripts/lib/core.sh`**, **`collection.sh`**, **`training.sh`**; stage drivers like **`full_pipeline_4090.sh`**, **`smoke_resume_eval.sh`**, **`smoke_real_stack.sh`**, **`continuous_training.sh`** |
+| **Drivers** | HF / dataset / reporting Python | **`scripts/*.py`** via **`run_repo_python`** |
+| **Library** | Training, inference, limits, checkpoints | **`src/ai_image_detector/`** (`import ai_image_detector…`, **`python -m ai_image_detector.train`**, etc.) |
+
+### Operator entrypoints vs pipeline scripts
+
+Stage shell scripts are **not** a second public CLI for the same operations—call **`./local.sh …`** or **`bash scripts/do.sh …`** unless you are editing a stage. **Optional** packaging / IDE entrypoints (**`python -m ai_image_detector.train`**, **`video_temporal`**, **`ai_image_detector.cli`**) stay thin; use **`./local.sh deps`** when you need a **lock-matched** venv like CI.
+
+### Python modules: `src/` vs `scripts/`
+
+Two trees intentionally share one process:
+
+| Location | Role |
+|----------|------|
+| **`src/ai_image_detector/`** | Installable library: training, inference, limits, checkpoints, metrics. Import as **`ai_image_detector.*`**. |
+| **`scripts/*.py`** | Pipeline drivers and HF helpers (e.g. **`hf_data`**, **`build_best_dataset_sources`**). Not installed as top-level packages; they expect **`PYTHONPATH`** to include **`./src`** and **`./scripts`** (same as **`run_repo_python`** / **`./local.sh`**). |
+
+**Do this:** run collection and training through **`./local.sh`**, **`bash scripts/do.sh …`**, or **`run_repo_python`** from **`scripts/lib/core.sh`** so imports resolve. **Avoid:** `python3 scripts/build_best_dataset.py` from a random directory without that **`PYTHONPATH`** — imports will fail or pick the wrong tree. For library-only work, use **`python -m ai_image_detector.train`** (or tests) with the venv that **`./local.sh setup`** created.
 
 ## Public commands
 

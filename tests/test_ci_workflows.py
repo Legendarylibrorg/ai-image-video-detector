@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import re
 import subprocess
 import sys
 import unittest
 
-from _support import ROOT, source_tree_env
+from tests._support import ROOT, source_tree_env
 
 
 def _workflow_text(name: str) -> str:
@@ -117,9 +116,42 @@ class CodeqlWorkflowTests(unittest.TestCase):
         self.assertIn("cancel-in-progress: false", text)
         self.assertIn('cron: "30 6 * * 1"', text)
         self.assertIn('AID_CI_IMPORT_PACKAGE: "ai_image_detector"', text)
-        self.assertIn('AID_CI_PYPROJECT_NAME: "ai-image-detector"', text)
+        self.assertIn('AID_CI_PYPROJECT_NAME: "ai-image-video-detector"', text)
         self.assertIn("name: Analyze (${{ env.AID_CI_IMPORT_PACKAGE }})", text)
         self.assertIn("${{ github.repository }}-aid-codeql-", text)
+
+
+class UnitTestsWorkflowTests(unittest.TestCase):
+    def test_tests_workflow_installs_lock_and_runs_unittest(self) -> None:
+        text = _workflow_text("tests.yml")
+
+        self.assertIn("name: Tests", text)
+        self.assertIn("pull_request:", text)
+        self.assertIn('branches: ["main"]', text)
+        self.assertIn("workflow_dispatch:", text)
+        self.assertIn("timeout-minutes: 45", text)
+        self.assertIn("uses: ./.github/actions/setup-aid-python", text)
+        self.assertIn("bash scripts/install_deps.sh", text)
+        self.assertIn("Lint with Ruff", text)
+        self.assertIn(".venv/bin/ruff check src/ai_image_detector tests", text)
+        self.assertIn(".venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v", text)
+        self.assertIn("${{ github.repository }}-aid-tests-", text)
+
+
+class E2ESmokeWorkflowTests(unittest.TestCase):
+    def test_e2e_smoke_workflow_runs_locked_install_and_opt_in_test(self) -> None:
+        text = _workflow_text("e2e-smoke.yml")
+
+        self.assertIn("name: E2E smoke", text)
+        self.assertIn("workflow_dispatch:", text)
+        self.assertIn("schedule:", text)
+        self.assertIn('cron: "0 5 * * 0"', text)
+        self.assertIn("timeout-minutes: 60", text)
+        self.assertIn("uses: ./.github/actions/setup-aid-python", text)
+        self.assertIn("bash scripts/install_deps.sh", text)
+        self.assertIn("AID_E2E_SMOKE: \"1\"", text)
+        self.assertIn(".venv/bin/python -m unittest tests.test_e2e_smoke -v", text)
+        self.assertIn("${{ github.repository }}-aid-e2e-smoke-", text)
 
 
 class CiPythonVersionSourceTests(unittest.TestCase):

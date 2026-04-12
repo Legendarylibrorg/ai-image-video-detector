@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-from _support import ROOT, source_tree_env, write_rgb_image
+from tests._support import ROOT, source_tree_env, write_rgb_image
 
 
 class MetadataFinetuneSurfaceTests(unittest.TestCase):
@@ -27,14 +27,18 @@ class MetadataFinetuneSurfaceTests(unittest.TestCase):
         self.assertIn("metadata_feature_dim() if use_metadata_features else 0", text)
 
     def test_train_and_infer_support_metadata_features(self) -> None:
-        train_text = (ROOT / "src" / "ai_image_detector" / "train.py").read_text(encoding="utf-8")
+        train_text = (ROOT / "src" / "ai_image_detector" / "train_main.py").read_text(encoding="utf-8")
+        train_post_text = (ROOT / "src" / "ai_image_detector" / "train_post.py").read_text(encoding="utf-8")
         infer_text = (ROOT / "src" / "ai_image_detector" / "infer.py").read_text(encoding="utf-8")
         ensemble_text = (ROOT / "src" / "ai_image_detector" / "ensemble.py").read_text(encoding="utf-8")
         wrapper_text = (ROOT / "scripts" / "metadata_finetune_4090.sh").read_text(encoding="utf-8")
         self.assertIn("--use-metadata-features", train_text)
         self.assertIn("--init-from", train_text)
         self.assertIn("metadata_feature_dim=metadata_dim", train_text)
-        self.assertIn("MetadataImageFolder if bool(best.get(\"use_metadata_features\", False)) else datasets.ImageFolder", train_text)
+        self.assertIn(
+            "MetadataImageFolder if bool(best.get(\"use_metadata_features\", False)) else datasets.ImageFolder",
+            train_post_text,
+        )
         self.assertIn("extract_metadata_features", infer_text)
         self.assertIn("metadata_features=metadata_features", infer_text)
         self.assertIn('metadata_dim = int(ckpt.get("metadata_feature_dim", 0))', ensemble_text)

@@ -22,6 +22,12 @@ MAX_PROVENANCE_SCAN_BYTES = int(os.environ.get("AID_MAX_PROVENANCE_SCAN_BYTES", 
 # JSON configs (ensemble, domain, tools).
 MAX_JSON_CONFIG_BYTES = int(os.environ.get("AID_MAX_JSON_CONFIG_BYTES", str(2 * 1024 * 1024)))
 
+# Line-based text manifests (e.g. HF source id lists read by reporting scripts).
+MAX_NONEMPTY_LINES_FILE_BYTES = int(
+    os.environ.get("AID_MAX_NONEMPTY_LINES_FILE_BYTES", str(32 * 1024 * 1024))
+)
+MAX_NONEMPTY_LINES_COUNT = int(os.environ.get("AID_MAX_NONEMPTY_LINES_COUNT", str(500_000)))
+
 # Video files (OpenCV decode DoS mitigation).
 MAX_VIDEO_FILE_BYTES = int(os.environ.get("AID_MAX_VIDEO_FILE_BYTES", str(2 * 1024**3)))
 MAX_VIDEO_DECODE_FRAMES = int(os.environ.get("AID_MAX_VIDEO_DECODE_FRAMES", str(500_000)))

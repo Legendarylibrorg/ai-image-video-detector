@@ -3,10 +3,18 @@
 Runs `scripts/smoke_resume_eval.sh` (synthetic data, tiny epochs, no malware scan).
 Disabled by default so `python -m unittest discover` stays fast locally.
 
-Enable explicitly:
-  AID_E2E_SMOKE=1 .venv/bin/python -m unittest tests.test_e2e_smoke
+Enable explicitly (default venv is ``./.venv``, same as ``scripts/install_deps.sh``):
 
-GitHub Actions for this repo focus on security scans; run this smoke locally before release.
+  AID_E2E_SMOKE=1 ./.venv/bin/python -m unittest tests.test_e2e_smoke
+
+Use a different virtualenv (absolute path, or path relative to repo root) without
+touching ``./.venv``:
+
+  VENV_DIR=/path/to/venv AID_E2E_SMOKE=1 python -m unittest tests.test_e2e_smoke
+
+GitHub Actions runs the fast suite on every PR (``.github/workflows/tests.yml``) and can run this
+case weekly or manually via ``.github/workflows/e2e-smoke.yml``. Locally, opt in with
+``AID_E2E_SMOKE=1`` before release.
 """
 
 from __future__ import annotations
@@ -17,7 +25,16 @@ import sys
 import unittest
 from pathlib import Path
 
-from _support import ROOT
+from tests._support import ROOT
+
+
+def _resolved_venv_dir() -> Path:
+    """Virtualenv directory for smoke (``VENV_DIR`` or repo ``./.venv``)."""
+    raw = os.environ.get("VENV_DIR", "").strip()
+    if not raw:
+        return (ROOT / ".venv").resolve()
+    candidate = Path(raw)
+    return candidate.resolve() if candidate.is_absolute() else (ROOT / candidate).resolve()
 
 
 @unittest.skipUnless(
@@ -26,15 +43,21 @@ from _support import ROOT
 )
 class E2ESmokeTests(unittest.TestCase):
     def test_smoke_resume_eval_script_exits_zero(self) -> None:
-        venv_py = ROOT / ".venv" / "bin" / "python"
+        venv_dir = _resolved_venv_dir()
+        venv_py = venv_dir / "bin" / "python"
         if not venv_py.is_file():
-            self.skipTest("missing .venv; run bash scripts/install_deps.sh first")
+            self.skipTest(
+                "missing venv python at "
+                f"{venv_py}; set VENV_DIR or run "
+                "`VENV_DIR=... bash scripts/install_deps.sh` / `./local.sh deps`"
+            )
 
-        # Same entrypoint as CI: repo_python via core.sh expects .venv
+        env = {**os.environ, "VENV_DIR": str(venv_dir)}
+        env["PATH"] = str(venv_dir / "bin") + os.pathsep + env.get("PATH", "")
         proc = subprocess.run(
             ["bash", "scripts/smoke_resume_eval.sh"],
             cwd=ROOT,
-            env={**os.environ, "PATH": str(ROOT / ".venv" / "bin") + os.pathsep + os.environ.get("PATH", "")},
+            env=env,
             capture_output=True,
             text=True,
             timeout=900,

@@ -6,7 +6,6 @@ from types import SimpleNamespace
 import tempfile
 import unittest
 
-from _support import ROOT, SCRIPTS
 
 IMPORT_ERROR: Exception | None = None
 try:

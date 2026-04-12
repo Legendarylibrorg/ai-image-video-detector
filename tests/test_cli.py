@@ -41,7 +41,7 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(raised.exception.code, 2)
         message = stderr.getvalue()
-        self.assertIn('run=python -m pip install --upgrade "ai-image-detector[training]"', message)
+        self.assertIn('run=python -m pip install --upgrade "ai-image-video-detector[training]"', message)
         self.assertNotIn("install_hint=install_missing_extra", message)
 
     def test_missing_dependency_repo_hint_quotes_paths_with_spaces(self) -> None:

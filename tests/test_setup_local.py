@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 import unittest
 
-from _support import ROOT
+from tests._support import ROOT
 
 
 class SetupLinuxSurfaceTests(unittest.TestCase):
