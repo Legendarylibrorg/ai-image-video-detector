@@ -96,7 +96,7 @@ def _download_with_retry(
 def _passes_video_quality(path: Path, min_bytes: int, max_bytes: int) -> bool:
     try:
         n = path.stat().st_size
-    except Exception:
+    except OSError:
         return False
     if n < int(min_bytes):
         return False

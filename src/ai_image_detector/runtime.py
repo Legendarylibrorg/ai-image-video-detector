@@ -46,7 +46,7 @@ def configure_torch_runtime(device: torch.device, deterministic: bool) -> None:
         torch.backends.cudnn.deterministic = True
         try:
             torch.use_deterministic_algorithms(True, warn_only=True)
-        except Exception:
+        except (RuntimeError, TypeError):
             pass
         return
     if device.type != "cuda":
@@ -69,7 +69,7 @@ def build_adamw(
     if device.type == "cuda":
         try:
             return AdamW(params, fused=True, **kwargs)
-        except Exception:
+        except TypeError:
             pass
     return AdamW(params, **kwargs)
 
@@ -84,6 +84,6 @@ def maybe_compile_model(
         return model
     try:
         return torch.compile(model, mode=mode)
-    except Exception as exc:
+    except (ImportError, OSError, RuntimeError, TypeError) as exc:
         print(f"compile_disabled reason={exc}")
         return model

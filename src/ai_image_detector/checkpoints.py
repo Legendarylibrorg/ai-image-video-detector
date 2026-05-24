@@ -84,12 +84,12 @@ def _json_default(value: Any) -> Any:
         torch = _torch()
         if isinstance(value, torch.device):
             return str(value)
-    except Exception:
+    except (ImportError, AttributeError):
         pass
     if hasattr(value, "item"):
         try:
             return value.item()
-        except Exception:
+        except (AttributeError, TypeError, ValueError):
             pass
     return str(value)
 
@@ -187,7 +187,7 @@ def load_safetensors_checkpoint(path: str | Path, map_location: Any = None) -> d
                 parsed = json.loads(meta_text) if meta_text else {}
                 if isinstance(parsed, dict):
                     meta = parsed
-            except Exception:
+            except json.JSONDecodeError:
                 meta = {}
 
         if map_location is not None:

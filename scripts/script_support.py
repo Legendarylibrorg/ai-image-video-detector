@@ -11,11 +11,34 @@ def ensure_src_path() -> None:
         sys.path.insert(0, src_entry)
 
 
+def _import_utils():
+    from ai_image_detector.utils import (
+        git_commit,
+        read_json_dict,
+        read_nonempty_lines,
+        write_json_dict,
+    )
+
+    return git_commit, read_json_dict, read_nonempty_lines, write_json_dict
+
+
 try:
-    from ai_image_detector.utils import git_commit, read_json_dict, read_nonempty_lines, write_json_dict
+    git_commit, read_json_dict, read_nonempty_lines, write_json_dict = _import_utils()
 except ModuleNotFoundError:
     ensure_src_path()
-    from ai_image_detector.utils import git_commit, read_json_dict, read_nonempty_lines, write_json_dict
+    git_commit, read_json_dict, read_nonempty_lines, write_json_dict = _import_utils()
+
+
+__all__ = [
+    "ensure_src_path",
+    "git_commit",
+    "iter_member_dirs",
+    "read_json_dict",
+    "read_nonempty_lines",
+    "resolve_checkpoint",
+    "resolve_preferred_checkpoint",
+    "write_json_dict",
+]
 
 
 def iter_member_dirs(ens_out: Path) -> list[Path]:

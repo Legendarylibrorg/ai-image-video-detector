@@ -48,8 +48,7 @@ def analyze_provenance(image_bytes: bytes) -> dict[str, Any]:
 
     pil_buf = image_bytes[: min(len(image_bytes), MAX_IMAGE_FILE_BYTES)]
     try:
-        img = Image.open(io.BytesIO(pil_buf))
-        try:
+        with Image.open(io.BytesIO(pil_buf)) as img:
             info = {str(k).lower(): _safe_text(v).lower() for k, v in img.info.items()}
             joined = " ".join([f"{k}:{v}" for k, v in info.items()])
             if "c2pa" in joined or "content credentials" in joined:
@@ -58,9 +57,7 @@ def analyze_provenance(image_bytes: bytes) -> dict[str, Any]:
             if any(s in joined for s in ("stable diffusion", "midjourney", "dall", "firefly")):
                 flags.append("metadata_ai_tool_marker")
                 score += 0.35
-        finally:
-            img.close()
-    except Exception:
+    except OSError:
         flags.append("unreadable_provenance")
         score += 0.10
 

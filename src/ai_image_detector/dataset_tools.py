@@ -38,15 +38,19 @@ def _sha256(path: Path) -> str:
 def _dhash(path: Path) -> str:
     try:
         from PIL import Image
-    except Exception:
+    except ImportError:
         return ""
     configure_pil_limits()
     try:
         check_file_size(path, max_bytes=MAX_IMAGE_FILE_BYTES)
     except (OSError, ValueError):
         return ""
-    img = Image.open(path).convert("L").resize((9, 8))
-    px = list(img.tobytes())
+    try:
+        with Image.open(path) as img:
+            small = img.convert("L").resize((9, 8))
+            px = list(small.tobytes())
+    except OSError:
+        return ""
     bits = []
     for y in range(8):
         row = px[y * 9 : (y + 1) * 9]

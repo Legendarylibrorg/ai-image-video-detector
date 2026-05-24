@@ -223,7 +223,7 @@ def run_image_training(args: argparse.Namespace) -> None:
         if "scheduler" in ckpt:
             try:
                 sched.load_state_dict(ckpt["scheduler"])
-            except Exception as exc:
+            except (KeyError, RuntimeError, ValueError) as exc:
                 print(f"scheduler_state_skipped reason={exc}")
         if "scaler" in ckpt:
             scaler.load_state_dict(ckpt["scaler"])

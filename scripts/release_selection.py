@@ -19,7 +19,7 @@ def _float_metric(obj: dict[str, Any], *keys: str, default: float = 0.0) -> floa
             value = obj.get(key, default)
             try:
                 return float(value)
-            except Exception:
+            except (TypeError, ValueError):
                 break
     return float(default)
 
