@@ -11,7 +11,8 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 
 from .checkpoints import load_checkpoint
-from .data import MetadataImageFolder, build_loader_kwargs, make_eval_transform
+from .data import MetadataImageFolder, build_loader_kwargs, make_eval_transform, make_jailed_rgb_loader
+from .io_limits import configure_pil_limits
 from .model import build_model
 from .release_tools import write_timestamped_release
 from .train_support import (
@@ -47,9 +48,12 @@ def run_holdout_test_metrics_if_ready(
         eval_model = eval_model.to(memory_format=torch.channels_last)
     eval_model.eval()
 
-    test_tf = make_eval_transform(args.img_size)
+    configure_pil_limits()
+    img_size = int(best.get("img_size", args.img_size))
+    test_tf = make_eval_transform(img_size)
     test_dataset_cls = MetadataImageFolder if bool(best.get("use_metadata_features", False)) else datasets.ImageFolder
-    test_ds = test_dataset_cls(test_dir, transform=test_tf)
+    test_loader_fn = make_jailed_rgb_loader(test_dir)
+    test_ds = test_dataset_cls(test_dir, transform=test_tf, loader=test_loader_fn)
     test_loader = DataLoader(
         test_ds,
         batch_size=args.batch_size,
@@ -76,7 +80,7 @@ def run_holdout_test_metrics_if_ready(
     test_report = _eval_metrics_from_probs(
         np.asarray(probs_list, dtype=np.float64),
         np.asarray(labels_list, dtype=np.float64),
-        threshold=float(best.get("threshold", args.decision_threshold)),
+        threshold=float(best.get("threshold") or args.decision_threshold or 0.5),
     )
     test_report["test_loss"] = avg_loss
     write_json_atomic(out / "test_metrics.json", test_report, indent=2)

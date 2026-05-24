@@ -30,8 +30,12 @@ while true; do
 
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) continuous_training_cycle_start"
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) continuous_training_collect_start"
-  if bash scripts/do.sh collect; then
+  collect_rc=0
+  bash scripts/do.sh collect || collect_rc=$?
+  if [[ "$collect_rc" -eq 0 ]]; then
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) continuous_training_collect_done"
+  elif [[ "$collect_rc" -eq "${COLLECTION_SKIPPED_EXIT:-75}" ]]; then
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) continuous_training_collect_skipped reason=training_active"
   else
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) continuous_training_collect_failed sleep_sec=$FAILURE_SLEEP_SEC"
     if [[ "$RUN_ONCE" == "1" ]]; then

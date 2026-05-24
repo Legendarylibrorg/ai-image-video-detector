@@ -331,10 +331,6 @@ def load_matching_checkpoint_state(model: nn.Module, init_ckpt: dict[str, Any]) 
 
 
 def _dataset_counts(root: Path) -> dict[str, dict[str, int]]:
-    out: dict[str, dict[str, int]] = {}
-    for split in ("train", "val", "test"):
-        out[split] = {}
-        for cls in ("ai", "real"):
-            d = root / split / cls
-            out[split][cls] = len(list(d.glob("*"))) if d.exists() else 0
-    return out
+    from .dataset_layout import image_counts
+
+    return image_counts(root, allow_train_root_alias=False, include_symlinks=False)

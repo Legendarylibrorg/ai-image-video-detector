@@ -173,10 +173,7 @@ def _extract_metadata_features_cached(image_path: str, mtime_ns: int, size: int)
         image_format = (image.format or "").upper()
         rgb_image = image.convert("RGB")
 
-    try:
-        image_bytes = read_bytes_limited(image_file, max_bytes=MAX_IMAGE_FILE_BYTES)
-    except OSError:
-        image_bytes = b""
+    image_bytes = read_bytes_limited(image_file, max_bytes=MAX_IMAGE_FILE_BYTES)
     exif_dict = _load_exif_dict(image_path)
     fields = _extract_fields(exif_dict)
     analysis = _analyze_metadata_values(image_format, exif_dict, fields)

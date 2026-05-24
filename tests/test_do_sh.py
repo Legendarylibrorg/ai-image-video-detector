@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import tempfile
 import subprocess
@@ -357,6 +358,51 @@ class DoShTests(unittest.TestCase):
 
         self.assertIn("training_lock=stale_cleared", out)
         self.assertEqual(out.strip().splitlines()[-1], "cleared")
+
+    def test_stale_clear_does_not_remove_live_training_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "training.lock"
+            lock_path.write_text(f"2020-01-01T00:00:00Z\npid={os.getpid()}\n", encoding="utf-8")
+            out = self.run_bash(
+                f"source scripts/do.sh; "
+                f"TRAIN_LOCK='{lock_path}'; "
+                "TRAIN_LOCK_STALE_SEC=0; "
+                "clear_stale_training_lock_if_needed || true; "
+                f"[[ -f '{lock_path}' ]] && echo still_present"
+            )
+
+        self.assertNotIn("training_lock=stale_cleared", out)
+        self.assertIn("still_present", out)
+
+    def test_stale_clear_reclaims_dead_holder_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "training.lock"
+            lock_path.write_text("2020-01-01T00:00:00Z\npid=999999\n", encoding="utf-8")
+            out = self.run_bash(
+                f"source scripts/do.sh; "
+                f"TRAIN_LOCK='{lock_path}'; "
+                "clear_stale_training_lock_if_needed; "
+                f"[[ ! -f '{lock_path}' ]] && echo cleared"
+            )
+
+        self.assertIn("reason=dead_holder", out)
+        self.assertEqual(out.strip().splitlines()[-1], "cleared")
+
+    def test_run_collection_command_skipped_while_training_returns_75(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "training.lock"
+            lock_path.write_text(f"2026-01-01T00:00:00Z\npid={os.getpid()}\n", encoding="utf-8")
+            proc = self.run_bash_proc(
+                f"source scripts/do.sh; "
+                f"TRAIN_LOCK='{lock_path}'; "
+                "ensure_malware_scan_ready() { :; }; "
+                "my_collect() { echo collect; }; "
+                "run_collection_command my_collect"
+            )
+
+        self.assertEqual(proc.returncode, 75)
+        self.assertIn("collection skipped because training is active", proc.stdout)
+        self.assertNotIn("collect", proc.stdout.split("collection skipped")[0])
 
     def test_preflight_command_requires_gpu(self) -> None:
         proc = subprocess.run(

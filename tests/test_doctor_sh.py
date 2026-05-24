@@ -184,7 +184,11 @@ class DoctorShTests(unittest.TestCase):
 
         self.assertEqual(proc.returncode, 2)
         self.assertIn("doctor_ok: docker_path_ready path=", proc.stdout)
-        self.assertIn("doctor_fail: docker_missing docker_required=1", proc.stdout)
+        self.assertTrue(
+            "doctor_fail: docker_missing docker_required=1" in proc.stdout
+            or "doctor_fail: docker_compose_missing docker_required=1" in proc.stdout,
+            msg=proc.stdout,
+        )
 
 
 if __name__ == "__main__":

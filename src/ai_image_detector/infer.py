@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+from io import BytesIO
 from pathlib import Path
 
 import torch
 
 from .data import make_eval_transform
-from .io_limits import configure_pil_limits, open_image_rgb, read_bytes_limited, reject_symlink
+from .io_limits import configure_pil_limits, read_bytes_limited, reject_symlink
 from .decision import combined_risk, decide_label, image_ood_score
 from .domain import classify_domain, load_domain_config, resolve_domain_threshold
 from .ensemble import EnsembleDetector, load_models
@@ -50,7 +51,10 @@ def main():
     image_path = Path(args.image)
     reject_symlink(image_path)
     image_bytes = read_bytes_limited(image_path)
-    img = open_image_rgb(image_path, allow_symlink=False)
+    from PIL import Image
+
+    with Image.open(BytesIO(image_bytes)) as opened:
+        img = opened.convert("RGB")
     x = tf(img).unsqueeze(0).to(device)
     metadata_features = torch.tensor([extract_metadata_features(args.image)], dtype=x.dtype, device=device)
 

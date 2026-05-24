@@ -182,13 +182,22 @@ def load_safetensors_checkpoint(path: str | Path, map_location: Any = None) -> d
 
         meta_text = metadata.get("checkpoint_meta", "{}") or "{}"
         meta: dict[str, Any] = {}
-        if len(meta_text.encode("utf-8")) <= MAX_SAFETENSORS_METADATA_BYTES:
+        meta_bytes = len(meta_text.encode("utf-8"))
+        if meta_bytes > MAX_SAFETENSORS_METADATA_BYTES:
+            raise ValueError(
+                f"checkpoint_metadata_too_large path={in_path} bytes={meta_bytes} "
+                f"max={MAX_SAFETENSORS_METADATA_BYTES}"
+            )
+        if not meta_text or meta_text.strip() in ("", "{}"):
+            meta = {}
+        else:
             try:
-                parsed = json.loads(meta_text) if meta_text else {}
-                if isinstance(parsed, dict):
-                    meta = parsed
-            except Exception:
-                meta = {}
+                parsed = json.loads(meta_text)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"invalid_checkpoint_metadata path={in_path}") from exc
+            if not isinstance(parsed, dict):
+                raise ValueError(f"invalid_checkpoint_metadata path={in_path} expected_object=1")
+            meta = parsed
 
         if map_location is not None:
             target = str(map_location)

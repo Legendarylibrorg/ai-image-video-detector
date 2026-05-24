@@ -223,8 +223,12 @@ def run_image_training(args: argparse.Namespace) -> None:
         if "scheduler" in ckpt:
             try:
                 sched.load_state_dict(ckpt["scheduler"])
-            except Exception as exc:
-                print(f"scheduler_state_skipped reason={exc}")
+            except (KeyError, TypeError, ValueError, RuntimeError) as exc:
+                msg = str(exc).lower()
+                if "size mismatch" in msg or "unexpected key" in msg or "state dict" in msg:
+                    print(f"scheduler_state_skipped reason={exc}")
+                else:
+                    raise
         if "scaler" in ckpt:
             scaler.load_state_dict(ckpt["scaler"])
         best_auc = float(ckpt.get("best_auc", best_auc))
@@ -262,7 +266,9 @@ def run_image_training(args: argparse.Namespace) -> None:
                     loss = loss_fn(logits, y_bin) / grad_accum
                 if not torch.isfinite(loss):
                     skipped_batches += 1
-                    opt.zero_grad(set_to_none=True)
+                    if step_idx > 0:
+                        opt.zero_grad(set_to_none=True)
+                        step_idx = 0
                     print(f"warn epoch={epoch} skipped_batch=non_finite_loss")
                     continue
 

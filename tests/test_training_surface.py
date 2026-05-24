@@ -9,6 +9,12 @@ from tests._support import ROOT
 
 
 class TrainingSurfaceTests(unittest.TestCase):
+    def test_holdout_eval_uses_jailed_loader_and_checkpoint_img_size(self) -> None:
+        text = (ROOT / "src" / "ai_image_detector" / "train_post.py").read_text(encoding="utf-8")
+        self.assertIn("make_jailed_rgb_loader(test_dir)", text)
+        self.assertIn('int(best.get("img_size", args.img_size))', text)
+        self.assertIn("configure_pil_limits()", text)
+
     def test_api_module_is_removed(self) -> None:
         self.assertFalse((ROOT / "src" / "ai_image_detector" / "api.py").exists())
         self.assertFalse((ROOT / "src" / "ai_image_detector" / "multimodal.py").exists())

@@ -72,6 +72,12 @@ class CheckpointsTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "symlink_not_allowed"):
                 checkpoints.load_checkpoint(link, map_location="cpu")
 
+    def test_load_safetensors_checkpoint_rejects_invalid_metadata_json(self) -> None:
+        text = (ROOT / "src" / "ai_image_detector" / "checkpoints.py").read_text(encoding="utf-8")
+        self.assertIn("invalid_checkpoint_metadata", text)
+        self.assertIn("checkpoint_metadata_too_large", text)
+        self.assertIn("json.JSONDecodeError", text)
+
     def test_load_checkpoint_rejects_oversized_safetensors(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "big.safetensors"

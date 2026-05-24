@@ -3,6 +3,8 @@ source "$ROOT_DIR/scripts/lib/env.sh"
 source "$ROOT_DIR/scripts/lib/hf_default_queries.inc.sh"
 
 TRAIN_LOCK_STALE_SEC="${TRAIN_LOCK_STALE_SEC:-7200}"
+# Exit code when collection is skipped because training holds the lock (not a hard failure).
+COLLECTION_SKIPPED_EXIT="${COLLECTION_SKIPPED_EXIT:-75}"
 GPU_REQUIRED_CMDS="${GPU_REQUIRED_CMDS:-pipeline,smoke-real}"
 
 # Bash-only trim (avoid `echo | xargs` — xargs can fail in sandboxes via sysconf).
@@ -50,8 +52,27 @@ ensure_env() {
   ENV_READY=1
 }
 
+training_lock_pid() {
+  [[ -f "$TRAIN_LOCK" ]] || return 1
+  local pid=""
+  pid="$(grep -E '^pid=' "$TRAIN_LOCK" 2>/dev/null | head -1 | sed 's/^pid=//')"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  printf '%s' "$pid"
+}
+
+training_lock_holder_alive() {
+  local pid=""
+  pid="$(training_lock_pid 2>/dev/null || true)"
+  [[ -n "$pid" ]] || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
 is_training_active() {
-  [[ -f "$TRAIN_LOCK" ]]
+  training_lock_holder_alive
+}
+
+write_training_lock_file() {
+  ( set -o noclobber; printf '%s\npid=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$" > "$TRAIN_LOCK" ) 2>/dev/null
 }
 
 lock_file_age_sec() {
@@ -70,8 +91,16 @@ lock_file_age_sec() {
 
 clear_stale_training_lock_if_needed() {
   [[ -f "$TRAIN_LOCK" ]] || return 1
+  if training_lock_holder_alive; then
+    return 1
+  fi
   local age_sec
   age_sec="$(lock_file_age_sec "$TRAIN_LOCK" || echo 0)"
+  if grep -qE '^pid=' "$TRAIN_LOCK" 2>/dev/null; then
+    echo "training_lock=stale_cleared path=$TRAIN_LOCK age_sec=$age_sec reason=dead_holder"
+    rm -f "$TRAIN_LOCK"
+    return 0
+  fi
   if [[ "$age_sec" =~ ^[0-9]+$ ]] && (( age_sec >= TRAIN_LOCK_STALE_SEC )); then
     echo "training_lock=stale_cleared path=$TRAIN_LOCK age_sec=$age_sec threshold_sec=$TRAIN_LOCK_STALE_SEC"
     rm -f "$TRAIN_LOCK"
@@ -82,17 +111,29 @@ clear_stale_training_lock_if_needed() {
 
 wait_for_training_to_finish() {
   local reason="${1:-pipeline}"
+  clear_stale_training_lock_if_needed || true
   while is_training_active; do
     clear_stale_training_lock_if_needed && continue
     echo "${reason}: training lock present ($TRAIN_LOCK), sleeping ${PIPELINE_WAIT_FOR_TRAINING_SEC}s"
     sleep "$PIPELINE_WAIT_FOR_TRAINING_SEC"
   done
+  clear_stale_training_lock_if_needed || true
 }
 
 acquire_training_lock() {
   mkdir -p "$(dirname "$TRAIN_LOCK")"
   clear_stale_training_lock_if_needed || true
-  if ( set -o noclobber; printf "%s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$TRAIN_LOCK" ) 2>/dev/null; then
+  if write_training_lock_file; then
+    return 0
+  fi
+  if training_lock_holder_alive; then
+    echo "training lock active path=$TRAIN_LOCK holder_pid=$(training_lock_pid 2>/dev/null || echo unknown)"
+    return 1
+  fi
+  rm -f "$TRAIN_LOCK"
+  clear_stale_training_lock_if_needed || true
+  if write_training_lock_file; then
+    echo "training_lock=reclaimed path=$TRAIN_LOCK"
     return 0
   fi
   echo "training lock active path=$TRAIN_LOCK"
@@ -129,7 +170,7 @@ skip_collection_if_training() {
 
 run_collection_command() {
   if skip_collection_if_training; then
-    return 0
+    return "$COLLECTION_SKIPPED_EXIT"
   fi
   ensure_malware_scan_ready
   "$@"

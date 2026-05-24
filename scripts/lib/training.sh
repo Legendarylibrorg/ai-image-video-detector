@@ -170,7 +170,7 @@ run_retrain_pipeline() {
 run_review_queue_ingest() {
   run_repo_python scripts/review_queue_to_dataset.py \
     --queue "${REVIEW_QUEUE_DIR:-./incoming_review_queue}" \
-    --dst "${NEW_DATA_DST:-./data_new/train}" || true
+    --dst "${NEW_DATA_DST:-./data_new/train}"
 }
 
 run_weekly_retrain_cycle() {
