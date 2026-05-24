@@ -60,3 +60,23 @@ def validate_collection_io_paths(
             continue
         require_under_collection_workspace(raw, w)
 
+
+def validate_review_queue_paths(
+    *,
+    workspace: Path | None = None,
+    queue: str | Path,
+    dst: str | Path,
+    archive: str | Path,
+) -> tuple[Path, Path, Path]:
+    """Resolve review-queue ingest paths under the collection workspace."""
+    w = workspace if workspace is not None else collection_workspace_root()
+    q = require_under_collection_workspace(queue, w)
+    d = require_under_collection_workspace(dst, w)
+    a = require_under_collection_workspace(archive, w)
+    return q, d, a
+
+
+def resolve_workspace_json_config(path: str | Path, workspace: Path | None = None) -> Path:
+    """Resolve a JSON config path (ensemble/domain/tools) under the workspace."""
+    return require_under_collection_workspace(path, workspace)
+

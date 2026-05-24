@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -49,11 +48,12 @@ def classify_domain(image: "Image.Image", text_score: float = 0.0) -> str:
 def load_domain_config(path: str = "") -> dict[str, Any]:
     if not path:
         return {}
-    p = Path(path)
-    if not p.exists():
-        return {}
+    from .collection_paths import resolve_workspace_json_config
     from .io_limits import read_json_file_limited, validate_domain_config
 
+    p = resolve_workspace_json_config(path)
+    if not p.exists():
+        return {}
     cfg = read_json_file_limited(p)
     validate_domain_config(cfg)
     return cfg

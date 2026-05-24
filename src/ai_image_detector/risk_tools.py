@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from .io_limits import read_json_file_limited, validate_tools_config
@@ -9,7 +8,9 @@ from .io_limits import read_json_file_limited, validate_tools_config
 def load_tools_config(path: str = "") -> dict[str, Any]:
     if not path:
         return {}
-    p = Path(path)
+    from .collection_paths import resolve_workspace_json_config
+
+    p = resolve_workspace_json_config(path)
     if not p.exists():
         return {}
     cfg = read_json_file_limited(p)

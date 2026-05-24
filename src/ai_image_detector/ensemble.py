@@ -164,7 +164,10 @@ def load_models(model_paths: list[str], device: torch.device, ensemble_config: s
     if not model_paths:
         raise ValueError("At least one model path is required")
 
-    loaded = [_load_single(p, device) for p in model_paths]
+    from .collection_paths import require_under_collection_workspace
+
+    resolved_paths = [str(require_under_collection_workspace(p)) for p in model_paths]
+    loaded = [_load_single(p, device) for p in resolved_paths]
     models = [x[0] for x in loaded]
     img_sizes = [x[1] for x in loaded]
     thresholds = [x[2] for x in loaded]
@@ -176,9 +179,12 @@ def load_models(model_paths: list[str], device: torch.device, ensemble_config: s
     temperature = float(sum(temps) / len(temps))
 
     if ensemble_config:
-        cfg = read_json_file_limited(ensemble_config)
+        from .collection_paths import resolve_workspace_json_config
+
+        cfg_path = resolve_workspace_json_config(ensemble_config)
+        cfg = read_json_file_limited(cfg_path)
         validate_ensemble_config(cfg)
-        weights = _resolve_model_weights(model_paths, cfg)
+        weights = _resolve_model_weights(resolved_paths, cfg)
         if "threshold" in cfg:
             threshold = float(cfg["threshold"])
         if "temperature" in cfg:

@@ -5,16 +5,33 @@ from __future__ import annotations
 import errno
 import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
 from .io_limits import check_file_size, reject_symlink
+
+_staging_disable_warned = False
 
 
 def checkpoint_load_staging_enabled() -> bool:
     """When true, checkpoint loads copy via ``O_NOFOLLOW`` (or a safe fallback) to reduce TOCTOU."""
     v = (os.environ.get("AID_CHECKPOINT_LOAD_STAGING") or "1").strip().lower()
     return v not in ("0", "false", "no", "off")
+
+
+def warn_if_checkpoint_staging_disabled() -> None:
+    """Emit a one-time stderr warning when staging is off (trusted paths only)."""
+    global _staging_disable_warned
+    if checkpoint_load_staging_enabled() or _staging_disable_warned:
+        return
+    _staging_disable_warned = True
+    print(
+        "warning_checkpoint_staging_disabled=1 "
+        "set AID_CHECKPOINT_LOAD_STAGING=1 for untrusted checkpoint paths",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def materialize_checkpoint_file(path: str | Path, *, max_bytes: int) -> Path:

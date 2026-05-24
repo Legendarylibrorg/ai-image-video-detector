@@ -172,6 +172,7 @@ class DoctorShTests(unittest.TestCase):
             {
                 "DOCTOR_REQUIRE_DOCKER": "1",
                 "DOCTOR_REQUIRE_TOKEN": "0",
+                "DOCTOR_MIN_FREE_GB": "0",
             }
         )
         proc = subprocess.run(

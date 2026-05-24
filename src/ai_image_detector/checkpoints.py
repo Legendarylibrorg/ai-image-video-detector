@@ -6,7 +6,11 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from .checkpoint_io import checkpoint_load_staging_enabled, materialize_checkpoint_file
+from .checkpoint_io import (
+    checkpoint_load_staging_enabled,
+    materialize_checkpoint_file,
+    warn_if_checkpoint_staging_disabled,
+)
 from .io_limits import (
     MAX_SAFETENSORS_FILE_BYTES,
     MAX_SAFETENSORS_METADATA_BYTES,
@@ -169,6 +173,7 @@ def load_safetensors_checkpoint(path: str | Path, map_location: Any = None) -> d
             staged = materialize_checkpoint_file(in_path, max_bytes=MAX_SAFETENSORS_FILE_BYTES)
             load_path = staged
         else:
+            warn_if_checkpoint_staging_disabled()
             reject_symlink(in_path)
             check_file_size(in_path, max_bytes=MAX_SAFETENSORS_FILE_BYTES)
             load_path = in_path
@@ -237,6 +242,7 @@ def load_training_checkpoint(path: str | Path, map_location: Any = None) -> dict
             staged = materialize_checkpoint_file(p, max_bytes=_MAX_TRAINING_CHECKPOINT_BYTES)
             load_path = staged
         else:
+            warn_if_checkpoint_staging_disabled()
             reject_symlink(p)
             check_file_size(p, max_bytes=_MAX_TRAINING_CHECKPOINT_BYTES)
             load_path = p

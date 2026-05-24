@@ -8,7 +8,9 @@ import unittest
 from ai_image_detector.collection_paths import (
     collection_workspace_root,
     require_under_collection_workspace,
+    resolve_workspace_json_config,
     validate_collection_io_paths,
+    validate_review_queue_paths,
 )
 
 
@@ -80,6 +82,26 @@ class CollectionPathsTests(unittest.TestCase):
             w = Path(tmp).resolve()
             (w / "out").mkdir()
             validate_collection_io_paths(workspace=w, out=w / "out", cache_dir=w / ".cache")
+
+    def test_validate_review_queue_paths_smoke(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            w = Path(tmp).resolve()
+            q, d, a = validate_review_queue_paths(
+                workspace=w,
+                queue=w / "incoming_review_queue",
+                dst=w / "data_new" / "train",
+                archive=w / "incoming_review_queue" / "_processed",
+            )
+            self.assertEqual(q, (w / "incoming_review_queue").resolve())
+
+    def test_resolve_workspace_json_config_rejects_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as parent:
+            w = Path(parent) / "workspace"
+            w.mkdir()
+            outsider = Path(parent) / "evil.json"
+            outsider.write_text("{}", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                resolve_workspace_json_config(outsider, w)
 
 
 if __name__ == "__main__":

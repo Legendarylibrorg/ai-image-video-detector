@@ -3,10 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 from io import BytesIO
-from pathlib import Path
 
 import torch
 
+from .collection_paths import require_under_collection_workspace
 from .data import make_eval_transform
 from .io_limits import configure_pil_limits, read_bytes_limited, reject_symlink
 from .decision import combined_risk, decide_label, image_ood_score
@@ -38,7 +38,8 @@ def main():
 
     configure_pil_limits()
     device = training_device()
-    loaded = load_models(args.model, device, ensemble_config=args.ensemble_config)
+    model_paths = [str(require_under_collection_workspace(p)) for p in args.model]
+    loaded = load_models(model_paths, device, ensemble_config=args.ensemble_config)
     model = EnsembleDetector(loaded.models, weights=loaded.weights, img_sizes=loaded.img_sizes).to(device)
     model.eval()
 
@@ -48,7 +49,7 @@ def main():
 
     tf = make_eval_transform(loaded.img_size)
 
-    image_path = Path(args.image)
+    image_path = require_under_collection_workspace(args.image)
     reject_symlink(image_path)
     image_bytes = read_bytes_limited(image_path)
     from PIL import Image
@@ -56,7 +57,7 @@ def main():
     with Image.open(BytesIO(image_bytes)) as opened:
         img = opened.convert("RGB")
     x = tf(img).unsqueeze(0).to(device)
-    metadata_features = torch.tensor([extract_metadata_features(args.image)], dtype=x.dtype, device=device)
+    metadata_features = torch.tensor([extract_metadata_features(str(image_path))], dtype=x.dtype, device=device)
 
     with torch.no_grad():
         views = [x]
@@ -67,7 +68,7 @@ def main():
         logit = torch.stack([model(v, metadata_features=metadata_features) for v in views], dim=0).mean(dim=0)
         prob_ai = torch.sigmoid(logit / max(loaded.temperature, 1e-6)).item()
 
-    meta = analyze_metadata(args.image)
+    meta = analyze_metadata(str(image_path))
     prov = analyze_provenance(image_bytes)
     ood = image_ood_score(img)
     text = analyze_text_signals(img)
