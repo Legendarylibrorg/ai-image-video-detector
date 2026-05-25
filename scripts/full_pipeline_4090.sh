@@ -435,35 +435,10 @@ if [[ "$SKIP_DATA" != "1" ]]; then
   dataset_cmd=(
     repo_python scripts/build_best_dataset.py
     --out "$DATA_DIR"
-    --train-per-class "$TRAIN_PER_CLASS"
-    --val-per-class "$VAL_PER_CLASS"
-    --test-per-class "$TEST_PER_CLASS"
-    --near-hamming "$BEST_DS_NEAR_HAMMING"
-    --near-window "$BEST_DS_NEAR_WINDOW"
-    --min-side "$BEST_DS_MIN_SIDE"
-    --max-aspect-ratio "$BEST_DS_MAX_ASPECT_RATIO"
-    --min-entropy "$BEST_DS_MIN_ENTROPY"
-    --max-unique-per-source "$BEST_DS_MAX_UNIQUE_PER_SOURCE"
-    --max-per-source-class "$BEST_DS_MAX_PER_SOURCE_CLASS"
-    --max-per-source-split-class "$BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS"
-    --jpeg-quality "$BEST_DS_JPEG_QUALITY"
-    --hardneg-fraction "$BEST_DS_HARDNEG_FRACTION"
-    --cache-dir "$BEST_DS_CACHE_DIR"
-    --hf-cache-only-if-present
-    --stream-buffer-size "$BEST_DS_STREAM_BUFFER_SIZE"
-    --max-samples-per-source "$BEST_DS_MAX_SAMPLES_PER_SOURCE"
-    --acceptance-warmup-samples "$BEST_DS_ACCEPTANCE_WARMUP_SAMPLES"
-    --min-acceptance-rate "$BEST_DS_MIN_ACCEPTANCE_RATE"
-    --min-hf-sources-with-accepted "$BEST_DS_MIN_HF_SOURCES_WITH_ACCEPTED"
-    --min-hf-sources-per-class "$BEST_DS_MIN_HF_SOURCES_PER_CLASS"
-    --min-hf-sources-per-split-class "$BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS"
-    --repo-base-pause-ms "$BEST_DS_REPO_BASE_PAUSE_MS"
-    --repo-jitter-ms "$BEST_DS_REPO_JITTER_MS"
-    --repo-cooldown-ms "$BEST_DS_REPO_COOLDOWN_MS"
-    --transient-error-cooldown-ms "$BEST_DS_TRANSIENT_ERROR_COOLDOWN_MS"
-    --max-consecutive-failures "$BEST_DS_MAX_CONSECUTIVE_FAILURES"
-    --require-full-targets
   )
+  while IFS= read -r line; do
+    dataset_cmd+=("$line")
+  done < <(print_best_dataset_common_args)
 
   if [[ "$BEST_DS_STREAMING" == "1" ]]; then
     dataset_cmd+=(--streaming)
@@ -472,18 +447,9 @@ if [[ "$SKIP_DATA" != "1" ]]; then
   fi
 
   if [[ "$BEST_DS_DISCOVER_HF" == "1" ]]; then
-    dataset_cmd+=(
-      --discover-hf
-      --hf-discovery-limit "$BEST_DS_HF_DISCOVERY_LIMIT"
-      --hf-max-sources "$BEST_DS_HF_MAX_SOURCES"
-      --hf-min-downloads "$BEST_DS_HF_MIN_DOWNLOADS"
-      --hf-min-likes "$BEST_DS_HF_MIN_LIKES"
-      --hf-min-quality-score "$BEST_DS_HF_MIN_QUALITY_SCORE"
-      --hf-print-top "$BEST_DS_HF_PRINT_TOP"
-      --hf-discovery-workers "$BEST_DS_HF_DISCOVERY_WORKERS"
-      --hf-query-pause-ms "$BEST_DS_HF_QUERY_PAUSE_MS"
-      --hf-cache-file "$BEST_DS_HF_CACHE_FILE"
-    )
+    while IFS= read -r line; do
+      dataset_cmd+=("$line")
+    done < <(print_best_dataset_discovery_args)
   fi
 
   read_aid_csv_cli_buf --hf-query "${BEST_DS_HF_QUERIES:-}"

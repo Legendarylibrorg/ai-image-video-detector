@@ -11,8 +11,9 @@ from typing import Dict, List
 
 from ai_image_detector.collection_paths import validate_collection_io_paths
 from ai_image_detector.dataset_integrity import sha256_path
+from ai_image_detector.dataset_layout import video_counts
 
-from dataset_builder_common import HF_CACHE_DIR_DEFAULT, configure_hf_cache_env, count_existing_split_classes, targets_met
+from dataset_builder_common import HF_CACHE_DIR_DEFAULT, configure_hf_cache_env, targets_met
 from hf_data import download_dataset_file, list_dataset_repo_files, resolve_hf_token_value, snapshot_dataset_repo
 
 hf_hub_download = download_dataset_file
@@ -47,19 +48,7 @@ def done(have: Dict[str, Dict[str, int]], need: Dict[str, Dict[str, int]]) -> bo
 
 
 def count_existing(out: Path) -> Dict[str, Dict[str, int]]:
-    have = count_existing_split_classes(out, ("train", "val"), ("ai", "real"), "*")
-    for split in ("train", "val"):
-        for cls in ("ai", "real"):
-            split_dir = out / split / cls
-            if not split_dir.exists():
-                have[split][cls] = 0
-                continue
-            have[split][cls] = sum(
-                1
-                for path in split_dir.glob("*")
-                if path.is_file() and path.suffix.lower() in EXTS_LOWER
-            )
-    return have
+    return video_counts(out)
 
 
 def _collect_snapshot_files(root: Path, prefixes: List[str]) -> List[Path]:

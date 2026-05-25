@@ -12,6 +12,7 @@ from typing import Callable, DefaultDict, Dict, List, Optional, Tuple
 from PIL import Image, ImageFilter
 
 from ai_image_detector.collection_paths import validate_collection_io_paths
+from ai_image_detector.dataset_layout import count_split_class_files
 from ai_image_detector.io_limits import configure_pil_limits, jpeg_roundtrip_rgb, open_image_rgb
 from build_best_dataset_policy import (
     next_split_for_class,
@@ -157,18 +158,14 @@ def done(have: Dict[str, Dict[str, int]], need: Dict[str, Dict[str, int]]) -> bo
 
 
 def count_output_files(out: Path, include_hardneg: bool = True) -> Dict[str, Dict[str, int]]:
-    counts: Dict[str, Dict[str, int]] = {split: {cls: 0 for cls in CLASSES} for split in SPLITS}
+    counts = count_split_class_files(out, splits=SPLITS, classes=CLASSES, exts={".jpg"})
+    if include_hardneg:
+        return counts
     for split in SPLITS:
         for cls in CLASSES:
-            split_dir = out / split / cls
-            if not split_dir.exists():
-                continue
-            total = 0
-            for path in split_dir.glob("*.jpg"):
-                if not include_hardneg and path.name.startswith("hardneg="):
-                    continue
-                total += 1
-            counts[split][cls] = total
+            bucket = out / split / cls
+            if bucket.exists():
+                counts[split][cls] -= sum(1 for _ in bucket.glob("hardneg=*.jpg"))
     return counts
 
 def counts_snapshot(counts: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, int]]:

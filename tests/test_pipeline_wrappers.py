@@ -35,6 +35,7 @@ class PipelineWrapperTests(unittest.TestCase):
         self.assertIn("repo_python() {", core_text)
         self.assertIn("ensure_env() {", core_text)
         self.assertIn('source "$ROOT_DIR/scripts/lib/core.sh"', full_text)
+        self.assertIn("print_best_dataset_common_args", full_text)
         self.assertIn("read_aid_csv_cli_buf --hf-query", full_text)
         self.assertIn("run_cmd repo_python scripts/fit_ensemble.py", full_text)
         self.assertIn("repo_python scripts/eval_test_ensemble.py", full_text)

@@ -99,6 +99,53 @@ print_diverse_audit_args() {
     --max-source-share-per-split-class "DIVERSE_MAX_SOURCE_SHARE_PER_SPLIT_CLASS" "0.3"
 }
 
+print_best_dataset_common_args() {
+  print_cli_flag_value_from_env_triplets \
+    --train-per-class "TRAIN_PER_CLASS" "40000" \
+    --val-per-class "VAL_PER_CLASS" "9000" \
+    --test-per-class "TEST_PER_CLASS" "9000" \
+    --near-hamming "BEST_DS_NEAR_HAMMING" "2" \
+    --near-window "BEST_DS_NEAR_WINDOW" "2400" \
+    --min-side "BEST_DS_MIN_SIDE" "160" \
+    --max-aspect-ratio "BEST_DS_MAX_ASPECT_RATIO" "4.0" \
+    --min-entropy "BEST_DS_MIN_ENTROPY" "3.2" \
+    --max-unique-per-source "BEST_DS_MAX_UNIQUE_PER_SOURCE" "220000" \
+    --max-per-source-class "BEST_DS_MAX_PER_SOURCE_CLASS" "6000" \
+    --max-per-source-split-class "BEST_DS_MAX_PER_SOURCE_SPLIT_CLASS" "1800" \
+    --jpeg-quality "BEST_DS_JPEG_QUALITY" "92" \
+    --hardneg-fraction "BEST_DS_HARDNEG_FRACTION" "0.6"
+  print_cli_flag_value_from_env --cache-dir "BEST_DS_CACHE_DIR" "$HF_CACHE_DIR_DEFAULT"
+  print_cli_flag --hf-cache-only-if-present
+  print_cli_flag_value_from_env_triplets \
+    --stream-buffer-size "BEST_DS_STREAM_BUFFER_SIZE" "18000" \
+    --max-samples-per-source "BEST_DS_MAX_SAMPLES_PER_SOURCE" "18000" \
+    --acceptance-warmup-samples "BEST_DS_ACCEPTANCE_WARMUP_SAMPLES" "224" \
+    --min-acceptance-rate "BEST_DS_MIN_ACCEPTANCE_RATE" "0.008" \
+    --min-hf-sources-with-accepted "BEST_DS_MIN_HF_SOURCES_WITH_ACCEPTED" "48" \
+    --min-hf-sources-per-class "BEST_DS_MIN_HF_SOURCES_PER_CLASS" "28" \
+    --min-hf-sources-per-split-class "BEST_DS_MIN_HF_SOURCES_PER_SPLIT_CLASS" "16" \
+    --repo-base-pause-ms "BEST_DS_REPO_BASE_PAUSE_MS" "75" \
+    --repo-jitter-ms "BEST_DS_REPO_JITTER_MS" "75" \
+    --repo-cooldown-ms "BEST_DS_REPO_COOLDOWN_MS" "8000" \
+    --transient-error-cooldown-ms "BEST_DS_TRANSIENT_ERROR_COOLDOWN_MS" "1200" \
+    --max-consecutive-failures "BEST_DS_MAX_CONSECUTIVE_FAILURES" "6"
+  print_cli_flag --require-full-targets
+}
+
+print_best_dataset_discovery_args() {
+  print_cli_flag --discover-hf
+  print_cli_flag_value_from_env_triplets \
+    --hf-discovery-limit "BEST_DS_HF_DISCOVERY_LIMIT" "360" \
+    --hf-max-sources "BEST_DS_HF_MAX_SOURCES" "720" \
+    --hf-min-downloads "BEST_DS_HF_MIN_DOWNLOADS" "25" \
+    --hf-min-likes "BEST_DS_HF_MIN_LIKES" "1" \
+    --hf-min-quality-score "BEST_DS_HF_MIN_QUALITY_SCORE" "1.35" \
+    --hf-print-top "BEST_DS_HF_PRINT_TOP" "36" \
+    --hf-discovery-workers "BEST_DS_HF_DISCOVERY_WORKERS" "8" \
+    --hf-query-pause-ms "BEST_DS_HF_QUERY_PAUSE_MS" "0" \
+    --hf-cache-file "BEST_DS_HF_CACHE_FILE" "./.local/hf_discovered_sources.txt"
+}
+
 collect_diverse_image_data() {
   local out="${DATA_DIR:-./data_best}"
   local query_csv="${DIVERSE_HF_QUERIES:-$BEST_HF_QUERY_CSV_DEFAULT}"
