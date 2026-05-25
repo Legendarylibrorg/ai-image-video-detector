@@ -13,7 +13,7 @@ from typing import Any, DefaultDict, Iterable, Iterator, Sequence
 from PIL import Image
 
 from build_best_dataset_sources import DEFAULT_ALLOWED_LICENSE_TAGS, build_source_list
-from dataset_builder_common import HF_CACHE_DIR_DEFAULT
+from dataset_builder_common import HF_CACHE_DIR_DEFAULT, targets_met
 from hf_data import LoadedDatasetSource, load_hf_dataset_source, resolve_hf_token_value
 from image_materialize import ImageDeduper, ImageQualityPolicy, open_example_image, passes_quality_filters, save_img
 from script_support import ensure_src_path
@@ -475,7 +475,7 @@ def _count_output_files(root: Path, *, positive_dir: str, negative_dir: str) -> 
 
 
 def _done(counts: dict[str, dict[str, int]], targets: dict[str, dict[str, int]], classes: Sequence[str]) -> bool:
-    return all(counts[split][cls] >= targets[split][cls] for split in SPLITS for cls in classes)
+    return targets_met(counts, targets, SPLITS, classes)
 
 
 def choose_split(

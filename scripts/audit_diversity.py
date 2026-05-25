@@ -7,6 +7,8 @@ import re
 import sys
 from typing import Dict
 
+from ai_image_detector.utils import read_json_dict_lenient
+
 
 SOURCE_RE = re.compile(r"source=([^_]+(?:_[^_]+)*)__")
 HARDNEG_RE = re.compile(r"hardneg=([a-z0-9]+)__")
@@ -58,9 +60,7 @@ def main() -> int:
 
     root = Path(args.data)
     report_path = root / "dataset_build_report.json"
-    report = {}
-    if report_path.exists():
-        report = json.loads(report_path.read_text(encoding="utf-8"))
+    report = read_json_dict_lenient(report_path)
 
     failures: list[str] = []
     info: dict[str, object] = {}

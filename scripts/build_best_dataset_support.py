@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
-import json
 from pathlib import Path
 from typing import Any, Callable, DefaultDict, Iterable
+
+from ai_image_detector.utils import write_json_dict
 
 
 SPLITS = ("train", "val", "test")
@@ -156,6 +157,6 @@ def build_summary(
 
 
 def write_summary_files(out: Path, summary: dict[str, Any], run_summary: dict[str, Any]) -> None:
-    (out / "dataset_build_report.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    (out / "dataset_state.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    (out / "dataset_run_summary.json").write_text(json.dumps(run_summary, indent=2), encoding="utf-8")
+    write_json_dict(out / "dataset_build_report.json", summary)
+    write_json_dict(out / "dataset_state.json", summary)
+    write_json_dict(out / "dataset_run_summary.json", run_summary)

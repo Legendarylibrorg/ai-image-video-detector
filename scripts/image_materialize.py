@@ -10,6 +10,7 @@ from typing import Iterable
 from PIL import Image
 
 from ai_image_detector.io_limits import open_image_rgb
+from ai_image_detector.perceptual_hash import dhash_hex, hamming_hex
 
 
 @dataclass(frozen=True)
@@ -77,21 +78,6 @@ class ImageDeduper:
 
 def hash_img_bytes(img: Image.Image) -> str:
     return hashlib.sha256(img.convert("RGB").tobytes()).hexdigest()
-
-
-def dhash_hex(img: Image.Image) -> str:
-    g = img.convert("L").resize((9, 8), Image.BILINEAR)
-    px = list(g.tobytes())
-    bits: list[str] = []
-    for y in range(8):
-        row = px[y * 9 : (y + 1) * 9]
-        for x in range(8):
-            bits.append("1" if row[x] > row[x + 1] else "0")
-    return f"{int(''.join(bits), 2):016x}"
-
-
-def hamming_hex(a: str, b: str) -> int:
-    return (int(a, 16) ^ int(b, 16)).bit_count()
 
 
 def image_entropy_bits(img: Image.Image) -> float:

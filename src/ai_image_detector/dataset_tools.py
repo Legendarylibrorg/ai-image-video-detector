@@ -8,6 +8,7 @@ from pathlib import Path
 from .dataset_integrity import sha256_file
 from .dataset_layout import IMAGE_EXTS, image_counts, video_counts
 from .io_limits import MAX_IMAGE_FILE_BYTES, check_file_size, configure_pil_limits
+from .perceptual_hash import dhash_path, hamming_hex
 from .utils import read_json_dict_lenient
 
 
@@ -24,36 +25,6 @@ def _walk_images(root: Path):
         yield p
 
 
-def _dhash(path: Path) -> str:
-    try:
-        from PIL import Image
-    except ImportError:
-        return ""
-    configure_pil_limits()
-    try:
-        check_file_size(path, max_bytes=MAX_IMAGE_FILE_BYTES)
-    except (OSError, ValueError):
-        return ""
-    try:
-        with Image.open(path) as img:
-            small = img.convert("L").resize((9, 8))
-            px = list(small.tobytes())
-    except OSError:
-        return ""
-    bits = []
-    for y in range(8):
-        row = px[y * 9 : (y + 1) * 9]
-        for x in range(8):
-            bits.append("1" if row[x] > row[x + 1] else "0")
-    return f"{int(''.join(bits), 2):016x}"
-
-
-def _hamming_hex(a: str, b: str) -> int:
-    if not a or not b:
-        return 64
-    return (int(a, 16) ^ int(b, 16)).bit_count()
-
-
 def cmd_manifest(data_root: str, out_csv: str):
     configure_pil_limits()
     root = Path(data_root)
@@ -68,7 +39,7 @@ def cmd_manifest(data_root: str, out_csv: str):
             "split": split,
             "class": klass,
             "sha256": sha256_file(p),
-            "dhash": _dhash(p),
+            "dhash": dhash_path(p),
             "size": p.stat().st_size,
         })
 
@@ -111,14 +82,14 @@ def cmd_near_dupes(data_root: str, max_images: int, max_hamming: int):
     for i, p in enumerate(_walk_images(root)):
         if i >= max_images:
             break
-        items.append((p, _dhash(p)))
+        items.append((p, dhash_path(p)))
 
     pairs = []
     for i in range(len(items)):
         p1, h1 = items[i]
         for j in range(i + 1, len(items)):
             p2, h2 = items[j]
-            d = _hamming_hex(h1, h2)
+            d = hamming_hex(h1, h2)
             if d <= max_hamming:
                 pairs.append((str(p1), str(p2), d))
 
