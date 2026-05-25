@@ -94,7 +94,9 @@ def main() -> None:
                 try:
                     p.unlink()
                 except OSError:
-                    pass
+                    # Best-effort cleanup: duplicate source files may be concurrently removed
+                    # or temporarily inaccessible; ignore and continue ingestion.
+                    ...
                 continue
 
             try:
