@@ -101,7 +101,7 @@ def is_version_compatible(requires_python: str | None, python_floor: Version) ->
         return True
     try:
         return python_floor in SpecifierSet(requires_python)
-    except Exception:
+    except (InvalidVersion, ValueError):
         return True
 
 

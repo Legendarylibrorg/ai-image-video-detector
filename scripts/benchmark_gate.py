@@ -144,7 +144,7 @@ def main() -> int:
                 continue
             try:
                 row = json.loads(line)
-            except Exception:
+            except json.JSONDecodeError:
                 continue
             best_acc = max(best_acc, float(row.get("val_acc", 0.0)))
         checks["video_best_val_acc"] = best_acc

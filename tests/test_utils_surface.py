@@ -38,6 +38,14 @@ class UtilsSurfaceTests(unittest.TestCase):
         self.assertEqual(lines[2], "0")
         self.assertEqual(lines[3], "True")
 
+    def test_git_commit_returns_hex_or_unknown(self) -> None:
+        from ai_image_detector.utils.jsonio import git_commit
+
+        value = git_commit()
+        if value == "unknown":
+            return
+        self.assertRegex(value, r"^[0-9a-f]{7,40}$")
+
     def test_write_json_atomic_writes_valid_json(self) -> None:
         from ai_image_detector.utils.jsonio import write_json_atomic
 

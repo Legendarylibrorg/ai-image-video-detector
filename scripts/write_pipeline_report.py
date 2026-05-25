@@ -22,7 +22,7 @@ def _now() -> str:
 def _disk_free_gb(root: Path) -> float:
     try:
         usage = shutil.disk_usage(root)
-    except Exception:
+    except OSError:
         return -1.0
     return round(usage.free / (1024 ** 3), 2)
 

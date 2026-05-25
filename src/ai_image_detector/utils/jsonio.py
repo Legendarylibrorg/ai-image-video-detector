@@ -84,5 +84,5 @@ def read_nonempty_lines(path: str | Path) -> list[str]:
 def git_commit() -> str:
     try:
         return subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL, text=True).strip()
-    except Exception:
+    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
         return "unknown"

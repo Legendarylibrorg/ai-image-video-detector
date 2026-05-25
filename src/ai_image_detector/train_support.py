@@ -177,15 +177,15 @@ def _eval_metrics_from_probs(probs: np.ndarray, labels: np.ndarray, threshold: f
     prec, rec, f1, support = precision_recall_fscore_support(y_true, y_pred, labels=[0, 1], zero_division=0)
     try:
         auc = float(roc_auc_score(y_true, probs))
-    except Exception:
+    except ValueError:
         auc = 0.5
     try:
         pr_auc = float(average_precision_score(y_true, probs))
-    except Exception:
+    except ValueError:
         pr_auc = 0.5
     try:
         bal_acc = float(balanced_accuracy_score(y_true, y_pred))
-    except Exception:
+    except ValueError:
         bal_acc = 0.0
     tn, fp, fn, tp = cm.ravel()
     pred_unique = np.unique(y_pred)

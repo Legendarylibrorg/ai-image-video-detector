@@ -12,7 +12,7 @@ from typing import Callable, DefaultDict, Dict, List, Optional, Tuple
 from PIL import Image, ImageFilter
 
 from ai_image_detector.collection_paths import validate_collection_io_paths
-from ai_image_detector.io_limits import configure_pil_limits, open_image_rgb
+from ai_image_detector.io_limits import configure_pil_limits, jpeg_roundtrip_rgb, open_image_rgb
 from build_best_dataset_policy import (
     next_split_for_class,
     next_split_for_source_class,
@@ -101,12 +101,7 @@ def build_label_resolver(ds_split, label_field: str) -> Callable[[object], Optio
 
 def augment_hard_negative(img: Image.Image, mode: str) -> Image.Image:
     if mode == "jpeg35":
-        import io
-
-        bio = io.BytesIO()
-        img.save(bio, format="JPEG", quality=35)
-        bio.seek(0)
-        return Image.open(bio).convert("RGB")
+        return jpeg_roundtrip_rgb(img, 35)
     if mode == "blur":
         return img.filter(ImageFilter.GaussianBlur(radius=1.2))
     if mode == "resize60":
@@ -213,7 +208,7 @@ def generate_hard_negatives(
         for path in base_files[: min(hard_target, len(base_files))]:
             try:
                 img = open_image_rgb(path)
-            except Exception:
+            except (OSError, ValueError):
                 continue
             mode = mode_rng.choice(hard_modes)
             aug = augment_hard_negative(img, mode)
