@@ -85,6 +85,7 @@ def _json_default(value: Any) -> Any:
         if isinstance(value, torch.device):
             return str(value)
     except (ImportError, AttributeError):
+        # torch is optional; if unavailable or missing attributes, fall back to generic handling below.
         pass
     if hasattr(value, "item"):
         try:
