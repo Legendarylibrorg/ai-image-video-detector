@@ -279,14 +279,6 @@ resolve_current_hf_token() {
   return 0
 }
 
-current_hf_token() {
-  resolve_current_hf_token
-  if [[ -n "$CURRENT_HF_TOKEN" ]]; then
-    printf "%s\n" "$CURRENT_HF_TOKEN"
-  fi
-  return 0
-}
-
 set_hf_token_vars() {
   local token="$1"
   export HF_TOKEN="$token"

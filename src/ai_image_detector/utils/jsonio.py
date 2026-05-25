@@ -42,6 +42,17 @@ def read_json_dict(path: str | Path) -> dict[str, Any]:
     return read_json_file_limited(path)
 
 
+def read_json_dict_lenient(path: str | Path) -> dict[str, Any]:
+    """Like ``read_json_dict``, but return ``{}`` when the file is missing or unreadable."""
+    target = Path(path)
+    if not target.exists():
+        return {}
+    try:
+        return read_json_dict(target)
+    except (OSError, ValueError):
+        return {}
+
+
 def write_json_dict(path: str | Path, payload: dict[str, Any], *, indent: int = 2) -> None:
     """Write a JSON object; uses atomic replace so readers never see a half-written file."""
     write_json_atomic(path, payload, indent=indent, sort_keys=False)

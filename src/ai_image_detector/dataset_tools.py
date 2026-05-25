@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 from pathlib import Path
 
+from .dataset_integrity import sha256_file
 from .dataset_layout import IMAGE_EXTS, image_counts, video_counts
 from .io_limits import MAX_IMAGE_FILE_BYTES, check_file_size, configure_pil_limits
-from .utils import read_json_dict
+from .utils import read_json_dict_lenient
 
 
 def _walk_images(root: Path):
@@ -22,17 +22,6 @@ def _walk_images(root: Path):
         except (OSError, ValueError):
             continue
         yield p
-
-
-def _sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        while True:
-            b = f.read(1 << 20)
-            if not b:
-                break
-            h.update(b)
-    return h.hexdigest()
 
 
 def _dhash(path: Path) -> str:
@@ -78,7 +67,7 @@ def cmd_manifest(data_root: str, out_csv: str):
             "path": str(rel),
             "split": split,
             "class": klass,
-            "sha256": _sha256(p),
+            "sha256": sha256_file(p),
             "dhash": _dhash(p),
             "size": p.stat().st_size,
         })
@@ -99,7 +88,7 @@ def cmd_dedupe(data_root: str, dry_run: bool):
     dupes: list[Path] = []
 
     for p in _walk_images(root):
-        h = _sha256(p)
+        h = sha256_file(p)
         if h in seen:
             dupes.append(p)
         else:
@@ -153,10 +142,6 @@ def cmd_balance_report(data_root: str):
     print(json.dumps(report, indent=2))
 
 
-def _read_json(path: Path) -> dict:
-    return read_json_dict(path)
-
-
 def _count_image_files(root: Path) -> dict[str, dict[str, int]]:
     return image_counts(root, allow_train_root_alias=True)
 
@@ -195,9 +180,9 @@ def cmd_collection_status(
     state_path = root / "dataset_state.json"
     manifest_path = root / "dataset_source_manifest.jsonl"
 
-    build_report = _read_json(report_path)
-    run_summary = _read_json(run_summary_path)
-    state = _read_json(state_path)
+    build_report = read_json_dict_lenient(report_path)
+    run_summary = read_json_dict_lenient(run_summary_path)
+    state = read_json_dict_lenient(state_path)
     manifest_entries = _load_manifest_entries(manifest_path)
 
     latest_by_source: dict[str, dict] = {}

@@ -9,9 +9,6 @@ from tests._support import ROOT
 
 
 class DoShTests(unittest.TestCase):
-    def print_image_collection_args_best(self) -> str:
-        return self.run_bash("source scripts/do.sh; print_image_collection_args best")
-
     def run_bash(self, script: str) -> str:
         proc = subprocess.run(
             ["bash", "-lc", script],
@@ -31,8 +28,12 @@ class DoShTests(unittest.TestCase):
             text=True,
         )
 
-    def test_best_profile_defaults_to_hf_sources_only(self) -> None:
-        out = self.print_image_collection_args_best()
+    def test_diverse_profile_defaults_to_hf_sources_only(self) -> None:
+        out = self.run_bash(
+            "source scripts/do.sh; "
+            "print_diverse_common_args; "
+            "print_diverse_discovery_args"
+        )
         self.assertNotIn("--local-source\n", out)
         self.assertNotIn("--local-source-real\n", out)
         self.assertNotIn("--local-source-ai\n", out)
@@ -40,13 +41,17 @@ class DoShTests(unittest.TestCase):
         self.assertIn("--hf-cache-only-if-present\n", out)
         self.assertIn("--quiet-progress\n", out)
 
-    def test_best_profile_emits_split_source_diversity_gate(self) -> None:
-        out = self.print_image_collection_args_best()
+    def test_diverse_profile_emits_split_source_diversity_gate(self) -> None:
+        out = self.run_bash(
+            "source scripts/do.sh; "
+            "print_diverse_common_args; "
+            "print_diverse_audit_args 1"
+        )
+        self.assertIn("--min-sources-per-split-class\n8\n", out)
+        self.assertIn("--max-per-source-class\n6000\n", out)
+        self.assertIn("--max-per-source-split-class\n1800\n", out)
         self.assertIn("--min-hf-sources-per-split-class\n20\n", out)
-        self.assertIn("--max-per-source-class\n5000\n", out)
-        self.assertIn("--max-per-source-split-class\n1500\n", out)
-        self.assertIn("--hf-discovery-workers\n12\n", out)
-        self.assertIn("--hardneg-fraction\n0.35\n", out)
+        self.assertIn("--hardneg-fraction\n0.5\n", out)
         self.assertIn("--min-side\n160\n", out)
         self.assertIn("--max-aspect-ratio\n4.0\n", out)
 
@@ -118,11 +123,15 @@ class DoShTests(unittest.TestCase):
         )
         self.assertEqual(out.strip(), "")
 
-    def test_profiled_image_collection_helper_is_shared(self) -> None:
-        out = self.run_bash("source scripts/do.sh; declare -f collect_profiled_image_data; declare -f collect_image_data")
-        self.assertIn("collect_profiled_image_data ()", out)
-        self.assertIn('collect_profiled_image_data best "$out" "$query_csv"', out)
-        self.assertNotIn('collect_profiled_image_data fast "$out" "$query_csv"', out)
+    def test_removed_profiled_image_collection_helpers_are_gone(self) -> None:
+        out = self.run_bash(
+            "source scripts/do.sh; "
+            "declare -f collect_profiled_image_data 2>/dev/null || true; "
+            "declare -f collect_image_data 2>/dev/null || true; "
+            "declare -f print_image_collection_args 2>/dev/null || true; "
+            "declare -f run_image_dataset_build 2>/dev/null || true"
+        )
+        self.assertEqual(out.strip(), "")
 
     def test_collect_diverse_image_data_builds_cached_args_without_mapfile(self) -> None:
         out = self.run_bash(
@@ -150,23 +159,6 @@ class DoShTests(unittest.TestCase):
             "run_collection_command my_collect"
         )
         self.assertEqual(out.strip().splitlines(), ["ready", "collect"])
-
-    def test_run_image_dataset_build_scans_before_and_after_build(self) -> None:
-        out = self.run_bash(
-            "tmpdir=.tmp_scan_fixture; "
-            "rm -rf \"$tmpdir\"; "
-            "mkdir -p \"$tmpdir/out\"; "
-            "source scripts/do.sh; "
-            "run_malware_scan(){ printf 'scan:%q\\n' \"$@\"; }; "
-            "run_image_dataset_builder(){ printf 'builder:%q\\n' \"$@\"; }; "
-            "run_image_dataset_build \"$tmpdir/out\" \"query one,query two\" --flag value; "
-            "rm -rf \"$tmpdir\""
-        )
-        lines = out.strip().splitlines()
-        self.assertGreaterEqual(len(lines), 3)
-        self.assertEqual(lines[0], "scan:.tmp_scan_fixture/out")
-        self.assertTrue(lines[1].startswith("builder:.tmp_scan_fixture/out"))
-        self.assertEqual(lines[-1], "scan:.tmp_scan_fixture/out")
 
     def test_prepare_training_image_data_works_without_copy_flag(self) -> None:
         out = self.run_bash(
