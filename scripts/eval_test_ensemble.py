@@ -12,6 +12,7 @@ from torchvision import datasets
 from ai_image_detector.data import MetadataImageFolder, build_loader_kwargs, make_eval_transform, unpack_image_batch
 from ai_image_detector.ensemble import EnsembleDetector, load_models
 from ai_image_detector.metrics import full_metric_report
+from ai_image_detector.utils import write_json_dict
 
 
 def main():
@@ -72,7 +73,7 @@ def main():
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    write_json_dict(out, report)
     print(json.dumps(report, indent=2))
     print(f"saved={out}")
 

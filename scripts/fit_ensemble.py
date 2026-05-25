@@ -15,6 +15,7 @@ from ai_image_detector.data import MetadataImageFolder, build_loader_kwargs, mak
 from ai_image_detector.ensemble import load_models, stack_model_logits
 from ai_image_detector.metrics import find_best_threshold, full_metric_report, roc_auc
 from ai_image_detector.runtime import seed_all
+from ai_image_detector.utils import write_json_dict
 
 
 def main() -> None:
@@ -159,7 +160,7 @@ def main() -> None:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(out_cfg, indent=2), encoding="utf-8")
+    write_json_dict(out, out_cfg)
     print(json.dumps(out_cfg, indent=2))
     print(f"saved={out}")
 

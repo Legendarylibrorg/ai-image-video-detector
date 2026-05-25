@@ -13,6 +13,7 @@ ensure_src_path()
 
 from ai_image_detector.dataset_integrity import sha256_file
 from ai_image_detector.dataset_layout import CLASSES, IMAGE_EXTS, IMAGE_SPLITS, image_counts, iter_bucket_files
+from ai_image_detector.utils import write_json_dict
 
 
 def _same_content(a: Path, b: Path) -> bool:
@@ -131,7 +132,7 @@ def main() -> int:
 
     out.mkdir(parents=True, exist_ok=True)
     report_path = out / "training_data_report.json"
-    report_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    write_json_dict(report_path, summary)
     print(json.dumps(summary, indent=2))
 
     if missing_buckets:

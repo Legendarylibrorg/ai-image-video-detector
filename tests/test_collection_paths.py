@@ -81,6 +81,20 @@ class CollectionPathsTests(unittest.TestCase):
             (w / "out").mkdir()
             validate_collection_io_paths(workspace=w, out=w / "out", cache_dir=w / ".cache")
 
+    def test_require_under_rejects_symlink_leaf(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            w = Path(tmp).resolve()
+            target = w / "real_out"
+            target.mkdir()
+            link = w / "out_link"
+            try:
+                link.symlink_to(target)
+            except OSError:
+                self.skipTest("symlinks not supported")
+            with self.assertRaises(ValueError) as ctx:
+                require_under_collection_workspace(link, w)
+            self.assertIn("symlink_not_allowed", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
