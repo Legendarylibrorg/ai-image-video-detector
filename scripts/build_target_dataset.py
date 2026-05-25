@@ -20,7 +20,8 @@ from script_support import ensure_src_path
 
 ensure_src_path()
 
-from ai_image_detector.collection_paths import validate_collection_io_paths
+from ai_image_detector.collection_paths import require_under_collection_workspace, validate_collection_io_paths
+from ai_image_detector.utils import read_json_dict, write_json_dict
 from ai_image_detector.dataset_layout import IMAGE_EXTS, count_split_class_files
 
 
@@ -168,10 +169,10 @@ def build_default_target_spec(
 def resolve_target_spec(args) -> TargetSpec:
     file_data: dict[str, Any] = {}
     if args.target_spec_file:
-        path = Path(args.target_spec_file)
-        file_data = json.loads(path.read_text(encoding="utf-8"))
+        spec_path = require_under_collection_workspace(args.target_spec_file)
+        file_data = read_json_dict(spec_path)
         if not isinstance(file_data, dict):
-            raise ValueError(f"target spec must be a JSON object: {path}")
+            raise ValueError(f"target spec must be a JSON object: {spec_path}")
 
     target_name = str(args.target_name or file_data.get("target_name") or "").strip()
     target_description = str(args.target_description or file_data.get("target_description") or "").strip()
@@ -686,21 +687,17 @@ def build_target_dataset_from_sources(
     }
 
     out.mkdir(parents=True, exist_ok=True)
-    (out / "target_spec_resolved.json").write_text(json.dumps(asdict(spec), indent=2) + "\n", encoding="utf-8")
-    (out / "target_label_aliases.json").write_text(json.dumps(summary["target_aliases"], indent=2) + "\n", encoding="utf-8")
-    (out / "target_dataset_build_report.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-    (out / "dataset_run_summary.json").write_text(
-        json.dumps(
-            {
-                "positive_label": spec.target_name,
-                "negative_label": f"not_{_slugify(spec.target_name)}",
-                "full_targets_ok": bool(summary["full_targets_ok"]),
-                "report_path": str((out / "target_dataset_build_report.json").resolve()),
-            },
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
+    write_json_dict(out / "target_spec_resolved.json", asdict(spec))
+    write_json_dict(out / "target_label_aliases.json", summary["target_aliases"])
+    write_json_dict(out / "target_dataset_build_report.json", summary)
+    write_json_dict(
+        out / "dataset_run_summary.json",
+        {
+            "positive_label": spec.target_name,
+            "negative_label": f"not_{_slugify(spec.target_name)}",
+            "full_targets_ok": bool(summary["full_targets_ok"]),
+            "report_path": str((out / "target_dataset_build_report.json").resolve()),
+        },
     )
     return summary
 

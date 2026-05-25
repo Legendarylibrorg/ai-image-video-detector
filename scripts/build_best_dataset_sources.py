@@ -20,6 +20,8 @@ from hf_data import (
     write_noncomment_lines,
 )
 
+from ai_image_detector.utils import write_json_dict
+
 try:
     from huggingface_hub import HfApi
 except ImportError:  # pragma: no cover - optional dependency path
@@ -394,7 +396,7 @@ def load_cache_policy(cache_path: Path) -> dict[str, object] | None:
 def save_cache_policy(cache_path: Path, policy: dict[str, object]) -> None:
     policy_path = cache_policy_path(cache_path)
     policy_path.parent.mkdir(parents=True, exist_ok=True)
-    policy_path.write_text(json.dumps(policy, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    write_json_dict(policy_path, policy)
 
 
 def read_sources_file(path: Path) -> list[str]:

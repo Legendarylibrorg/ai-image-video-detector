@@ -13,6 +13,7 @@ from .data import make_eval_transform, make_jailed_rgb_loader
 from .io_limits import jpeg_roundtrip_rgb
 from .ensemble import EnsembleDetector, load_models, metadata_features_from_paths
 from .metrics import full_metric_report
+from .utils import write_json_dict
 from .runtime import training_device
 
 
@@ -97,7 +98,7 @@ def main() -> None:
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    write_json_dict(out_path, report)
     print(json.dumps(report, indent=2))
     print(f"saved={out_path}")
 

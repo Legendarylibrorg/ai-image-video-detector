@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .io_limits import reject_symlink
+
 
 def collection_workspace_root() -> Path:
     """Directory that all collection inputs and outputs must stay under.
@@ -29,6 +31,8 @@ def require_under_collection_workspace(path: str | Path, workspace: Path | None 
     """
     w = workspace if workspace is not None else collection_workspace_root()
     p = Path(path).expanduser()
+    if p.exists():
+        reject_symlink(p)
     resolved = p.resolve()
     try:
         resolved.relative_to(w)

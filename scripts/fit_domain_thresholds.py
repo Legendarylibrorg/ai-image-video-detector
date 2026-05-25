@@ -14,6 +14,7 @@ from ai_image_detector.domain import DOMAIN_NAMES, classify_domain
 from ai_image_detector.ensemble import EnsembleDetector, load_models, metadata_features_from_paths
 from ai_image_detector.metrics import find_best_threshold, full_metric_report
 from ai_image_detector.text_signals import analyze_text_signals
+from ai_image_detector.utils import write_json_dict
 
 
 def main() -> None:
@@ -86,7 +87,7 @@ def main() -> None:
     }
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    write_json_dict(out_path, out)
     print(json.dumps(out, indent=2))
     print(f"saved={out_path}")
 
