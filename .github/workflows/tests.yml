@@ -37,7 +37,7 @@ jobs:
 
       - name: Lint with Ruff
         run: |
-          .venv/bin/python -m pip install --progress-bar off "ruff==0.9.10"
+          .venv/bin/python -m pip install --progress-bar off "ruff==0.15.14"
           .venv/bin/ruff check src/ai_image_detector tests
 
       - name: Run unit tests

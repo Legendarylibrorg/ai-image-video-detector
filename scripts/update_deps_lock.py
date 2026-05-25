@@ -11,6 +11,8 @@ import argparse
 import json
 from pathlib import Path
 import re
+import subprocess
+from urllib.error import URLError
 from urllib.request import urlopen
 
 try:
@@ -42,6 +44,7 @@ PYPI_VERSION_JSON = "https://pypi.org/pypi/{project}/{version}/json"
 MANIFEST_MAX_WHEEL_CP = Version("3.14")
 
 TORCHVISION_SERIES_BY_TORCH_SERIES = {
+    "2.12": "0.27",
     "2.11": "0.26",
     "2.10": "0.25",
     "2.9": "0.24",
@@ -56,8 +59,12 @@ TORCHVISION_SERIES_BY_TORCH_SERIES = {
 
 
 def fetch_json(url: str) -> dict:
-    with urlopen(url) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urlopen(url, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (URLError, OSError):
+        out = subprocess.check_output(["curl", "-sS", "--max-time", "30", url], text=True)
+        return json.loads(out)
 
 
 def normalize_requirement_name(requirement: str) -> str:

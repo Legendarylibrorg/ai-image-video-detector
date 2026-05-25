@@ -88,7 +88,7 @@ PY
 
 ensure_packaging_toolchain() {
   if [[ "$UPGRADE_TOOLCHAIN" == "1" ]] || ! toolchain_supports_editable_install; then
-    if ! pip_cmd install --quiet --retries 1 --timeout 15 --upgrade "pip>=21.3" "setuptools>=82.0.1" "wheel>=0.46.3"; then
+    if ! pip_cmd install --quiet --retries 1 --timeout 15 --upgrade "pip>=21.3" "setuptools>=82.0.1" "wheel>=0.47.0"; then
       echo "warning_toolchain_upgrade_failed using_existing_versions=1"
     fi
   fi
