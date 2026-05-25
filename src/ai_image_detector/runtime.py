@@ -46,8 +46,8 @@ def configure_torch_runtime(device: torch.device, deterministic: bool) -> None:
         torch.backends.cudnn.deterministic = True
         try:
             torch.use_deterministic_algorithms(True, warn_only=True)
-        except (RuntimeError, TypeError):
-            pass
+        except (RuntimeError, TypeError) as exc:
+            print(f"deterministic_algorithms_not_fully_enabled reason={exc}")
         return
     if device.type != "cuda":
         return
