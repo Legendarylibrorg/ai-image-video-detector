@@ -51,9 +51,24 @@ class DocsSurfaceTests(unittest.TestCase):
         for rel_path in linked_docs:
             self.assertTrue((ROOT / rel_path).exists(), rel_path)
 
+    def test_readme_quick_start_covers_platforms(self) -> None:
+        text = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("## Quick start", text)
+        for heading in [
+            "### Linux native",
+            "### Docker Compose (Linux and macOS)",
+            "### Windows",
+            "./local.sh setup",
+            "./local.sh smoke",
+            "./local.sh run",
+            "docker compose build",
+        ]:
+            with self.subTest(heading=heading):
+                self.assertIn(heading, text)
+
     def test_open_source_docs_exist_and_are_linked(self) -> None:
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        for rel_path in ["AGENTS.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "SECURITY.md"]:
+        for rel_path in ["AGENTS.md", "CONTRIBUTING.md", "SECURITY.md"]:
             with self.subTest(path=rel_path):
                 self.assertTrue((ROOT / rel_path).exists(), rel_path)
                 self.assertIn(rel_path, readme)

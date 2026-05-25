@@ -2,12 +2,14 @@
 
 This guide expands the startup path from the main README for the **local AI image & video research pipeline** (clone → environment → first `./local.sh` runs).
 
-This guide is Linux-VM-first.
+**Short copy-paste paths:** see [Quick start](../README.md#quick-start) in the README for numbered steps on **Linux**, **macOS**, and **Windows**.
+
+This guide is Linux-VM-first for security detail.
 The main venv for that path is the isolated container virtualenv at `/opt/aid-venv`.
 The repo also supports a native Linux fallback that uses a pinned local virtualenv at `./.venv` for its Python dependencies and runtime.
 Unless a section says otherwise, the shell snippets in this document use Linux `bash` command syntax.
 
-If you are on macOS or Windows, do not copy the Linux-native `apt-get` commands below into your shell; use the Docker or platform sections in this document instead.
+If you are on macOS or Windows, start with the README **Quick start**; do not copy Linux-native `apt-get` commands into macOS or PowerShell.
 
 ## Dedicated Linux VM + Docker Compose startup
 
@@ -250,21 +252,22 @@ macOS is **not** a substitute for a Linux + NVIDIA box for full CUDA training. U
 1. **Docker Desktop + Compose (recommended)** — same repo commands as Linux, CPU-only `pipeline` service (no `pipeline-gpu` unless you have a supported GPU stack).
 2. **Native Python (optional)** — clone the repo, create `./.venv`, run **unit tests** or small experiments; large training and HF collection still belong in Linux or Docker.
 
+Numbered steps: [README Quick start — Docker Compose](../README.md#docker-compose-linux-and-macos).
+
 ### macOS: Docker Desktop workflow
 
 Prerequisites: [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Mac, `git`, and a clone of this repo.
 
-From the repo root (same as Linux):
+From the repo root:
 
-```bash
-cd ai-image-video-detector
-./local.sh docker-doctor
-docker compose build
-docker compose run --rm pipeline ./local.sh deps
-docker compose run --rm pipeline ./local.sh doctor
-printf "HF_TOKEN='your_token_here'\n" >> .env
-docker compose run --rm pipeline ./local.sh smoke
-```
+1. `./local.sh docker-doctor`
+2. `docker compose build`
+3. `docker compose run --rm pipeline ./local.sh deps`
+4. `docker compose run --rm pipeline ./local.sh doctor`
+5. `printf "HF_TOKEN='your_token_here'\n" >> .env`
+6. `docker compose run --rm pipeline ./local.sh smoke`
+7. `docker compose run --rm pipeline ./local.sh run`
+8. `docker compose run --rm pipeline ./local.sh status`
 
 Use `pipeline` only on Mac (CPU). Do **not** expect `pipeline-gpu` to provide CUDA on Apple Silicon the same way as an NVIDIA Linux VM.
 
@@ -290,20 +293,25 @@ Notes:
 
 Windows is not a supported native PowerShell or Command Prompt path for this repo.
 
-Use one of these options instead:
+Numbered steps: [README Quick start — Windows](../README.md#windows).
 
-1. WSL2 Ubuntu, then follow the Linux commands in this document from inside WSL.
-2. Docker Desktop plus Compose:
+### Option A — WSL2 Ubuntu (recommended)
 
-```bash
-docker compose run --rm pipeline ./local.sh doctor
-docker compose run --rm pipeline ./local.sh collect
-```
+1. Install WSL2 with Ubuntu ([Microsoft WSL install guide](https://learn.microsoft.com/en-us/windows/wsl/install)).
+2. Open the **Ubuntu** terminal.
+3. Follow the [Linux native](../README.md#linux-native-ubuntudebian--nvidia-gpu) steps in the README (from system packages through `./local.sh status`).
+4. For NVIDIA GPU in WSL, install [CUDA on WSL](https://docs.nvidia.com/cuda/wsl-user-guide/index.html) before the full run.
+
+### Option B — Docker Desktop
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (enable WSL2 backend when prompted).
+2. Open **WSL2 Ubuntu** or **Git Bash** — not PowerShell for `./local.sh`.
+3. Clone the repo and follow [Docker Compose](../README.md#docker-compose-linux-and-macos) steps in the README.
 
 Notes:
-- do not run the Linux `apt-get` commands from PowerShell or Command Prompt
-- if you want the closest match to the documented Linux path, use WSL2 Ubuntu
-- Compose is the cleaner isolation path when you want to avoid mixing repo deps into the Windows host
+- do not run Linux `apt-get` or `./local.sh` from PowerShell or Command Prompt unless you are inside WSL
+- WSL2 Ubuntu is the closest match to the documented Linux native path
+- Compose avoids mixing repo Python deps into the Windows host
 
 ## Python dependencies
 
