@@ -10,6 +10,13 @@ from tests._support import ROOT
 
 
 class DoctorShTests(unittest.TestCase):
+    @staticmethod
+    def _doctor_env(**overrides: str) -> dict[str, str]:
+        env = os.environ.copy()
+        env.setdefault("DOCTOR_MIN_FREE_GB", "0")
+        env.update(overrides)
+        return env
+
     def test_doctor_uses_custom_venv_dir_for_dep_and_token_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -25,14 +32,11 @@ class DoctorShTests(unittest.TestCase):
                 fake_cli.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
                 fake_cli.chmod(0o755)
 
-            env = os.environ.copy()
-            env.update(
-                {
-                    "VENV_DIR": str(venv_dir),
-                    "HF_TOKEN": "from_env",
-                    "HUGGINGFACE_HUB_TOKEN": "",
-                    "DOCTOR_REQUIRE_TOKEN": "0",
-                }
+            env = self._doctor_env(
+                VENV_DIR=str(venv_dir),
+                HF_TOKEN="from_env",
+                HUGGINGFACE_HUB_TOKEN="",
+                DOCTOR_REQUIRE_TOKEN="0",
             )
             proc = subprocess.run(
                 ["bash", "scripts/doctor.sh"],
@@ -64,14 +68,11 @@ class DoctorShTests(unittest.TestCase):
             fake_hf.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
             fake_hf.chmod(0o755)
 
-            env = os.environ.copy()
-            env.update(
-                {
-                    "VENV_DIR": str(venv_dir),
-                    "HF_TOKEN": "",
-                    "HUGGINGFACE_HUB_TOKEN": "",
-                    "DOCTOR_REQUIRE_TOKEN": "0",
-                }
+            env = self._doctor_env(
+                VENV_DIR=str(venv_dir),
+                HF_TOKEN="",
+                HUGGINGFACE_HUB_TOKEN="",
+                DOCTOR_REQUIRE_TOKEN="0",
             )
             proc = subprocess.run(
                 ["bash", "scripts/doctor.sh"],
@@ -91,13 +92,10 @@ class DoctorShTests(unittest.TestCase):
     def test_doctor_profile_aware_setup_hint_preserves_collection_profile(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             venv_dir = Path(tmpdir) / "missing-venv"
-            env = os.environ.copy()
-            env.update(
-                {
-                    "VENV_DIR": str(venv_dir),
-                    "DOCTOR_DEPS_EXTRA": "collection",
-                    "DOCTOR_REQUIRE_TOKEN": "0",
-                }
+            env = self._doctor_env(
+                VENV_DIR=str(venv_dir),
+                DOCTOR_DEPS_EXTRA="collection",
+                DOCTOR_REQUIRE_TOKEN="0",
             )
             proc = subprocess.run(
                 ["bash", "scripts/doctor.sh"],
@@ -125,12 +123,9 @@ class DoctorShTests(unittest.TestCase):
             fake_python.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
             fake_python.chmod(0o755)
 
-            env = os.environ.copy()
-            env.update(
-                {
-                    "VENV_DIR": str(venv_dir),
-                    "DOCTOR_REQUIRE_TOKEN": "0",
-                }
+            env = self._doctor_env(
+                VENV_DIR=str(venv_dir),
+                DOCTOR_REQUIRE_TOKEN="0",
             )
             proc = subprocess.run(
                 ["bash", "scripts/doctor.sh"],
@@ -146,13 +141,10 @@ class DoctorShTests(unittest.TestCase):
         )
 
     def test_doctor_can_require_gpu_and_clamav(self) -> None:
-        env = os.environ.copy()
-        env.update(
-            {
-                "DOCTOR_REQUIRE_GPU": "1",
-                "DOCTOR_REQUIRE_CLAMAV": "1",
-                "DOCTOR_REQUIRE_TOKEN": "0",
-            }
+        env = self._doctor_env(
+            DOCTOR_REQUIRE_GPU="1",
+            DOCTOR_REQUIRE_CLAMAV="1",
+            DOCTOR_REQUIRE_TOKEN="0",
         )
         proc = subprocess.run(
             ["bash", "scripts/doctor.sh"],
@@ -167,12 +159,10 @@ class DoctorShTests(unittest.TestCase):
         self.assertIn("doctor_fail: clamscan_missing clamav_required=1", proc.stdout)
 
     def test_doctor_can_require_docker(self) -> None:
-        env = os.environ.copy()
-        env.update(
-            {
-                "DOCTOR_REQUIRE_DOCKER": "1",
-                "DOCTOR_REQUIRE_TOKEN": "0",
-            }
+        env = self._doctor_env(
+            DOCTOR_REQUIRE_DOCKER="1",
+            DOCTOR_REQUIRE_TOKEN="0",
+            DOCTOR_FORCE_DOCKER_STATE="missing",
         )
         proc = subprocess.run(
             ["bash", "scripts/doctor.sh"],

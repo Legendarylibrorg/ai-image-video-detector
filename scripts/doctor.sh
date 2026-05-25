@@ -131,11 +131,28 @@ check_docker_stack() {
     fi
   done
 
+  if [[ "${DOCTOR_FORCE_DOCKER_STATE:-}" == "missing" ]]; then
+    if [[ "$DOCTOR_REQUIRE_DOCKER" == "1" ]]; then
+      emit_fail "docker_missing docker_required=1"
+    else
+      emit_warn "docker_missing"
+    fi
+    return
+  fi
+
   if ! command -v docker >/dev/null 2>&1; then
     if [[ "$DOCTOR_REQUIRE_DOCKER" == "1" ]]; then
       emit_fail "docker_missing docker_required=1"
     else
       emit_warn "docker_missing"
+    fi
+    return
+  fi
+  if [[ "${DOCTOR_FORCE_DOCKER_COMPOSE_STATE:-}" == "missing" ]]; then
+    if [[ "$DOCTOR_REQUIRE_DOCKER" == "1" ]]; then
+      emit_fail "docker_compose_missing docker_required=1"
+    else
+      emit_warn "docker_compose_missing"
     fi
     return
   fi

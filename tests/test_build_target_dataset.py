@@ -101,7 +101,7 @@ class BuildTargetDatasetTests(unittest.TestCase):
         )
 
         self.assertEqual(positive.label, "positive")
-        self.assertEqual(positive.reason, "positive_term")
+        self.assertEqual(positive.reason, "positive_label_value")
         self.assertIn("smoke detector", positive.positive_hits)
         self.assertIsNone(excluded.label)
         self.assertEqual(excluded.reason, "excluded_terms")

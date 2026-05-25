@@ -273,6 +273,7 @@ class BuildBestDatasetSourcesTests(unittest.TestCase):
                     hf_print_top=0,
                     hf_query_pause_ms=0,
                     token_env="HF_TOKEN",
+                    hf_audit_sources=False,
                 )
                     open(args.hf_cache_file, "w", encoding="utf-8").close()
 
@@ -326,6 +327,7 @@ class BuildBestDatasetSourcesTests(unittest.TestCase):
                         hf_print_top=0,
                         hf_query_pause_ms=0,
                         token_env="HF_TOKEN",
+                        hf_audit_sources=False,
                     )
 
                     found = build_best_dataset_sources.build_source_list(args)

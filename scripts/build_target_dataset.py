@@ -96,6 +96,18 @@ def _normalize_field_selector(value: object) -> str:
     return re.sub(r"\s+", "", str(value or "").strip().lower())
 
 
+def _normalize_field_selectors(values: Iterable[object]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        item = _normalize_field_selector(value)
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        normalized.append(item)
+    return tuple(normalized)
+
+
 def _normalize_terms(values: Iterable[object]) -> tuple[str, ...]:
     normalized = []
     seen: set[str] = set()
@@ -148,7 +160,7 @@ def build_default_target_spec(
         positive_label_values=_normalize_terms([cleaned_target, *positive_label_values, *positive_terms]),
         negative_label_values=_normalize_terms(negative_label_values),
         required_context_terms=_normalize_terms(required_context_terms),
-        text_fields=_normalize_terms(text_fields),
+        text_fields=_normalize_field_selectors(text_fields),
         treat_other_labeled_as_negative=bool(treat_other_labeled_as_negative),
     )
 
