@@ -283,7 +283,9 @@ def iter_source_examples(
         try:
             split = split.shuffle(seed=seed, buffer_size=max(500, int(shuffle_buffer_size)))
         except (AttributeError, TypeError, ValueError):
-            pass
+            # Some streaming split implementations do not support shuffle with
+            # these arguments; intentionally fall back to unshuffled sampling.
+            split = split
         yield from split.take(limit)
         return
 
