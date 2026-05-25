@@ -330,6 +330,8 @@ def _iter_feature_entries(features: object) -> list[tuple[str, object]]:
             if entries:
                 return entries
         except (AttributeError, RuntimeError, TypeError, ValueError):
+            # Some feature containers expose `.items()` but may fail at runtime.
+            # Ignore this probing failure and continue with other parsing paths.
             pass
 
     if isinstance(features, (list, tuple)):
