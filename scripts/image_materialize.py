@@ -127,14 +127,14 @@ def open_example_image(example: dict, image_field: str) -> Image.Image | None:
         return img.convert("RGB")
     try:
         return Image.fromarray(img).convert("RGB")
-    except Exception:
+    except (TypeError, ValueError):
         return None
 
 
 def open_local_image(path: Path) -> Image.Image | None:
     try:
         return open_image_rgb(path)
-    except Exception:
+    except (OSError, ValueError):
         return None
 
 

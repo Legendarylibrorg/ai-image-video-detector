@@ -280,8 +280,9 @@ def strip_metadata(input_path: str, output_path: str) -> None:
     from .io_limits import MAX_IMAGE_FILE_BYTES, check_file_size
 
     check_file_size(input_path, max_bytes=MAX_IMAGE_FILE_BYTES)
-    img = Image.open(input_path).convert("RGB")
-    img.save(output_path, quality=95)
+    with Image.open(input_path) as img:
+        rgb = img.convert("RGB")
+    rgb.save(output_path, quality=95)
 
 
 def modify_metadata(
@@ -297,7 +298,8 @@ def modify_metadata(
     from .io_limits import MAX_IMAGE_FILE_BYTES, check_file_size
 
     check_file_size(input_path, max_bytes=MAX_IMAGE_FILE_BYTES)
-    img = Image.open(input_path).convert("RGB")
+    with Image.open(input_path) as img:
+        rgb = img.convert("RGB")
     exif_dict = _load_exif_dict(input_path)
 
     if software is not None:
@@ -309,7 +311,7 @@ def modify_metadata(
         exif_dict["Exif"][piexif.ExifIFD.UserComment] = prefix + user_comment.encode("ascii", errors="ignore")
 
     exif_bytes = piexif.dump(exif_dict)
-    img.save(output_path, exif=exif_bytes, quality=95)
+    rgb.save(output_path, exif=exif_bytes, quality=95)
 
 
 def main() -> None:

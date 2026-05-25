@@ -86,15 +86,17 @@ def main() -> None:
             try:
                 check_file_size(p, max_bytes=MAX_IMAGE_FILE_BYTES)
                 raw = p.read_bytes()
-            except Exception:
+            except (OSError, ValueError):
                 continue
 
             h = hash_bytes(raw)
             if h in seen:
                 try:
                     p.unlink()
-                except Exception:
-                    pass
+                except OSError:
+                    # Best-effort cleanup: duplicate source files may be concurrently removed
+                    # or temporarily inaccessible; ignore and continue ingestion.
+                    ...
                 continue
 
             try:
@@ -104,7 +106,7 @@ def main() -> None:
                         continue
                     out = dst_cls / f"source=model_output__{cls}_{h[:16]}.jpg"
                     rgb.save(out, quality=args.jpeg_quality)
-            except Exception:
+            except OSError:
                 continue
 
             seen.add(h)
@@ -114,8 +116,8 @@ def main() -> None:
                 if arch.exists():
                     arch = archive_cls / f"{p.stem}_{h[:8]}{p.suffix.lower()}"
                 shutil.move(str(p), str(arch))
-            except Exception:
-                pass
+            except OSError as exc:
+                print(f"warning: failed to archive '{p}' to '{archive_cls}': {exc}")
 
     save_hashes(hash_manifest, seen)
     print(

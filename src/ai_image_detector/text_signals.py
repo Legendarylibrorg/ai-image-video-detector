@@ -11,7 +11,7 @@ def analyze_text_signals(image: "Image.Image") -> dict[str, Any]:
 
     try:
         import cv2  # type: ignore
-    except Exception:
+    except ImportError:
         cv2 = None
 
     arr = np.asarray(image.convert("L"), dtype=np.uint8)

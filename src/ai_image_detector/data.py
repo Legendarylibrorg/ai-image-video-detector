@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import random
 from pathlib import Path
 
@@ -10,7 +9,7 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import datasets, transforms
 
 from .dataset_integrity import preflight_dataset_tree
-from .io_limits import open_image_rgb
+from .io_limits import jpeg_roundtrip_rgb, open_image_rgb
 from .metadata import extract_metadata_features, metadata_feature_dim
 from .runtime import resolve_num_workers
 
@@ -24,10 +23,7 @@ class RandomJpegCompression:
         if random.random() > self.p:
             return img
         q = random.randint(*self.quality_range)
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=q)
-        buf.seek(0)
-        return Image.open(buf).convert("RGB")
+        return jpeg_roundtrip_rgb(img, q)
 
 
 class RandomResizeRoundtrip:

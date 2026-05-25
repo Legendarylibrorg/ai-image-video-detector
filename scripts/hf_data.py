@@ -11,7 +11,7 @@ from typing import Iterable, Iterator, Sequence
 
 try:
     from datasets import are_progress_bars_disabled, disable_progress_bars, enable_progress_bars, load_dataset
-except Exception:  # pragma: no cover - optional dependency path
+except ImportError:  # pragma: no cover - optional dependency path
     load_dataset = None  # type: ignore[assignment]
 
     def are_progress_bars_disabled() -> bool:  # type: ignore[override]
@@ -184,7 +184,8 @@ def resolve_hf_token_value(token_env: str = "HF_TOKEN") -> tuple[str | None, str
         token = normalize_hf_token(get_token())
         if token:
             return token, "hf_auth_login"
-    except Exception:
+    except ImportError:
+        # Optional dependency is unavailable; fall back to env-only resolution.
         pass
     return None, "missing"
 
@@ -281,8 +282,10 @@ def iter_source_examples(
         split = source.split
         try:
             split = split.shuffle(seed=seed, buffer_size=max(500, int(shuffle_buffer_size)))
-        except Exception:
-            pass
+        except (AttributeError, TypeError, ValueError):
+            # Some streaming split implementations do not support shuffle with
+            # these arguments; intentionally fall back to unshuffled sampling.
+            split = split
         yield from split.take(limit)
         return
 

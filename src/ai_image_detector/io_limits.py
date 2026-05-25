@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Resource and path-safety limits for untrusted image/config inputs."""
 
+import io
 import json
 import math
 import os
@@ -95,6 +96,18 @@ def prepare_video_path(path: str | Path) -> Path:
     return p
 
 
+def jpeg_roundtrip_rgb(img: "Image.Image", quality: int) -> "Image.Image":
+    """JPEG compress/decompress; returns an independent RGB copy (closes buffer handles)."""
+    configure_pil_limits()
+    from PIL import Image
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=int(quality))
+    buf.seek(0)
+    with Image.open(buf) as decoded:
+        return decoded.convert("RGB").copy()
+
+
 def open_image_rgb(
     path: str | Path,
     *,
@@ -112,11 +125,8 @@ def open_image_rgb(
     elif not allow_symlink:
         reject_symlink(p)
     check_file_size(p, max_bytes=MAX_IMAGE_FILE_BYTES)
-    img = Image.open(p)
-    try:
-        return img.convert("RGB")
-    finally:
-        img.close()
+    with Image.open(p) as img:
+        return img.convert("RGB").copy()
 
 
 def read_json_file_limited(path: str | Path, *, max_bytes: int = MAX_JSON_CONFIG_BYTES) -> dict[str, Any]:

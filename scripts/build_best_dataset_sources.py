@@ -22,7 +22,7 @@ from hf_data import (
 
 try:
     from huggingface_hub import HfApi
-except Exception:  # pragma: no cover - optional dependency path
+except ImportError:  # pragma: no cover - optional dependency path
     HfApi = None  # type: ignore[assignment]
 
 
@@ -329,7 +329,9 @@ def _iter_feature_entries(features: object) -> list[tuple[str, object]]:
                 entries.append((clean_name, feature))
             if entries:
                 return entries
-        except Exception:
+        except (AttributeError, RuntimeError, TypeError, ValueError):
+            # Some feature containers expose `.items()` but may fail at runtime.
+            # Ignore this probing failure and continue with other parsing paths.
             pass
 
     if isinstance(features, (list, tuple)):

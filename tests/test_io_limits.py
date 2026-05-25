@@ -7,6 +7,7 @@ import unittest
 from tests._support import write_rgb_image
 from ai_image_detector.io_limits import (
     MAX_JSON_CONFIG_BYTES,
+    jpeg_roundtrip_rgb,
     open_image_rgb,
     path_must_be_under,
     prepare_video_path,
@@ -85,6 +86,17 @@ class IoLimitsTests(unittest.TestCase):
             out = open_image_rgb(img_path, root=root.resolve())
             self.assertEqual(out.size, (8, 8))
             out.close()
+
+    def test_jpeg_roundtrip_rgb_returns_independent_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            img_path = Path(tmp) / "src.png"
+            write_rgb_image(img_path, color=(10, 20, 30), size=(16, 16))
+            src = open_image_rgb(img_path)
+            out = jpeg_roundtrip_rgb(src, quality=80)
+            self.assertEqual(out.size, (16, 16))
+            self.assertEqual(out.mode, "RGB")
+            out.close()
+            src.close()
 
 
 if __name__ == "__main__":

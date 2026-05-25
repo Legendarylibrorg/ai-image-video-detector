@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import io
 import json
 from pathlib import Path
 
@@ -11,16 +10,10 @@ from PIL import Image, ImageFilter
 from torchvision import datasets
 
 from .data import make_eval_transform, make_jailed_rgb_loader
+from .io_limits import jpeg_roundtrip_rgb
 from .ensemble import EnsembleDetector, load_models, metadata_features_from_paths
 from .metrics import full_metric_report
 from .runtime import training_device
-
-
-def _jpeg_roundtrip(img: Image.Image, quality: int) -> Image.Image:
-    b = io.BytesIO()
-    img.save(b, format="JPEG", quality=quality)
-    b.seek(0)
-    return Image.open(b).convert("RGB")
 
 
 def _resize_roundtrip(img: Image.Image, scale: float) -> Image.Image:
@@ -33,8 +26,8 @@ def _resize_roundtrip(img: Image.Image, scale: float) -> Image.Image:
 def _variants(img: Image.Image) -> dict[str, Image.Image]:
     return {
         "clean": img,
-        "jpeg_q60": _jpeg_roundtrip(img, quality=60),
-        "jpeg_q35": _jpeg_roundtrip(img, quality=35),
+        "jpeg_q60": jpeg_roundtrip_rgb(img, 60),
+        "jpeg_q35": jpeg_roundtrip_rgb(img, 35),
         "blur": img.filter(ImageFilter.GaussianBlur(radius=1.2)),
         "resize_0.6": _resize_roundtrip(img, scale=0.6),
     }
