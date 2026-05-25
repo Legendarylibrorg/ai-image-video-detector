@@ -153,7 +153,7 @@ Pipeline scripts use:
 - **`run_repo_python_with_timeout`** — like **`run_repo_python`**, but wraps the interpreter with **`timeout`** when available; **`PYTHONPATH`** matches **`run_repo_python`**.
 - **`ensure_env`** — in **`DRY_RUN=1`**, dry-run lines are written to **stderr** so **stdout** stays clean for structured output and command substitutions.
 
-Collection gates such as **`require_pipeline_collection_data`** (in **`scripts/lib/training.sh`**) use **`run_repo_python`** when reading **`dataset_build_report.json`** so the parse uses the same environment as the rest of the pipeline.
+Collection gates such as **`require_pipeline_collection_data`** (in **`scripts/lib/training.sh`**) run at the start of **`./local.sh train`** / **`train-existing`** and use **`run_repo_python`** when reading **`dataset_build_report.json`** so the parse uses the same environment as the rest of the pipeline.
 
 ## `scripts/*.py` inventory
 
@@ -175,6 +175,11 @@ All of these live under `scripts/` (repo root on `PYTHONPATH` when invoked via `
 | `write_pipeline_report.py` | **Operator**: dataset QA / final / failure reports. Used by `full_pipeline_4090.sh`, `smoke_resume_eval.sh`. |
 | `export_best_release.py` | **Operator**: release bundle under `artifacts_ens/release`. Used by `full_pipeline_4090.sh`, `smoke_resume_eval.sh`. |
 | `benchmark_gate.py` | **Operator**: threshold gate on metrics. Used by `training.sh`, `smoke_resume_eval.sh`. |
+| `build_target_dataset.py` | **Manual**: targeted HF dataset build from a `TargetSpec` (not wired to `./local.sh`; tests + offline use). |
+| `extract_recent_training_spec.py` | **Manual**: summarize incremental data and emit LLM prompts for target specs (offline helper). |
+| `deps_profile.py` | **Operator**: resolve/validate `DEPS_EXTRA` profiles for install/doctor. Used by `install_deps.sh`, `doctor.sh`. |
+| `update_deps_lock.py` | **Operator**: regenerate/verify `requirements.lock*`. Used by CI and `scripts/update_deps_lock.sh`. |
+| `lib/install_validate.py` | **Operator**: validate install rev/dir before clone. Used by `install.sh`. |
 | `hf_data.py` | **Internal**: HF downloads, cache helpers, manifests. Imported by dataset builders. |
 | `dataset_builder_common.py` | **Internal**: shared HF env and target counting. Imported by image/video builders. |
 | `build_best_dataset_policy.py` | **Internal**: policy knobs for `build_best_dataset`. |
@@ -203,7 +208,7 @@ data/
     ai/
 ```
 
-For **`./data_best`**, when **`dataset_build_report.json`** is present and reports **`full_targets_ok`**, the training shell helpers can skip minimum per-class image counts unless you set explicit **`PIPELINE_MIN_*`** / **`TRAIN_PER_CLASS`** minima (see **`require_pipeline_collection_data`** in **`scripts/lib/training.sh`**).
+For **`./data_best`**, when **`dataset_build_report.json`** is present and reports **`full_targets_ok`**, **`require_pipeline_collection_data`** skips minimum per-class image counts unless you set explicit **`PIPELINE_MIN_*`** / **`TRAIN_PER_CLASS`** minima (see **`scripts/lib/training.sh`**).
 
 Typical video dataset layout:
 

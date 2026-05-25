@@ -6,6 +6,8 @@ cd "$ROOT_DIR"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env}"
 VENV_DIR="${VENV_DIR:-$ROOT_DIR/.venv}"
 source "$ROOT_DIR/scripts/lib/core.sh"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/lib/collection.sh"
 
 load_env_file
 
@@ -507,25 +509,10 @@ fi
 if [[ "$RUN_VIDEO_DATA_PULL" == "1" ]]; then
   PIPELINE_STAGE="collect_video"
   require_disk_free_gb "$PIPELINE_STAGE"
-  video_data_cmd=(
-    repo_python scripts/build_video_dataset.py
-    --out "$VIDEO_OUT"
-    --train-per-class "$VIDEO_TRAIN_PER_CLASS"
-    --val-per-class "$VIDEO_VAL_PER_CLASS"
-    --mode "$VIDEO_MODE"
-    --cache-dir "$VIDEO_CACHE_DIR"
-    --snapshot-max-workers "$VIDEO_SNAPSHOT_MAX_WORKERS"
-    --repo-base-pause-ms "$VIDEO_REPO_BASE_PAUSE_MS"
-    --repo-jitter-ms "$VIDEO_REPO_JITTER_MS"
-    --copy-sleep-ms "$VIDEO_COPY_SLEEP_MS"
-    --sleep-ms "$VIDEO_SLEEP_MS"
-    --jitter-ms "$VIDEO_JITTER_MS"
-    --chunk-pause-ms "$VIDEO_CHUNK_PAUSE_MS"
-    --repo-cooldown-ms "$VIDEO_REPO_COOLDOWN_MS"
-    --retries "$VIDEO_RETRIES"
-    --min-video-bytes "$VIDEO_MIN_BYTES"
-    --max-video-bytes "$VIDEO_MAX_BYTES"
-  )
+  video_data_cmd=(repo_python scripts/build_video_dataset.py)
+  while IFS= read -r line; do
+    video_data_cmd+=("$line")
+  done < <(print_video_collection_args)
   run_cmd "${video_data_cmd[@]}"
   if [[ "${MALWARE_SCAN:-1}" == "1" ]]; then
     run_cmd bash scripts/malware_scan.sh "$VIDEO_OUT"

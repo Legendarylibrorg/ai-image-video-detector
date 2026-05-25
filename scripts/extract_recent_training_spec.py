@@ -13,6 +13,7 @@ from script_support import ensure_src_path
 ensure_src_path()
 
 from ai_image_detector.dataset_layout import IMAGE_EXTS
+from ai_image_detector.utils import read_json_dict_lenient
 
 SCHEMA_TEMPLATE = {
     "target_name": "",
@@ -48,16 +49,6 @@ GENERIC_TOKENS = {
     "tiff",
     "id",
 }
-
-
-def _read_json_dict(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
 
 
 def _utc_iso_from_mtime_ns(mtime_ns: int) -> str:
@@ -118,7 +109,7 @@ def _flatten_scalar_text(value: object, *, path: str, out: list[tuple[str, str]]
 
 def _read_sidecar_summary(image_path: Path, *, max_items: int = 12) -> dict[str, Any]:
     sidecar = image_path.with_suffix(".json")
-    data = _read_json_dict(sidecar)
+    data = read_json_dict_lenient(sidecar)
     if not data:
         return {}
     flattened: list[tuple[str, str]] = []
@@ -149,11 +140,11 @@ def find_latest_target_spec(target_training_root: Path) -> dict[str, Any] | None
         "aliases_path": str(aliases_path.resolve()) if aliases_path.exists() else "",
         "report_path": str(report_path.resolve()) if report_path.exists() else "",
         "mtime_utc": _utc_iso_from_mtime_ns(latest.stat().st_mtime_ns),
-        "spec": _read_json_dict(latest),
-        "aliases": _read_json_dict(aliases_path),
+        "spec": read_json_dict_lenient(latest),
+        "aliases": read_json_dict_lenient(aliases_path),
         "report_summary": {
-            "full_targets_ok": bool(_read_json_dict(report_path).get("full_targets_ok", False)) if report_path.exists() else False,
-            "shortfalls": _read_json_dict(report_path).get("shortfalls", []) if report_path.exists() else [],
+            "full_targets_ok": bool(read_json_dict_lenient(report_path).get("full_targets_ok", False)) if report_path.exists() else False,
+            "shortfalls": read_json_dict_lenient(report_path).get("shortfalls", []) if report_path.exists() else [],
         },
     }
 

@@ -39,8 +39,7 @@ def _rel_str(data_root: Path, path: Path) -> str:
     return str(path.resolve().relative_to(data_root.resolve()))
 
 
-def sha256_file(path: Path) -> str:
-    check_file_size(path, max_bytes=MAX_IMAGE_FILE_BYTES)
+def sha256_path(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
         while True:
@@ -49,6 +48,11 @@ def sha256_file(path: Path) -> str:
                 break
             h.update(b)
     return h.hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    check_file_size(path, max_bytes=MAX_IMAGE_FILE_BYTES)
+    return sha256_path(path)
 
 
 def build_manifest_records(

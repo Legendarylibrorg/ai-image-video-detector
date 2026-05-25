@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-import hashlib
 import os
 from pathlib import Path
 import random
@@ -11,6 +10,7 @@ import time
 from typing import Dict, List
 
 from ai_image_detector.collection_paths import validate_collection_io_paths
+from ai_image_detector.dataset_integrity import sha256_path
 
 from dataset_builder_common import HF_CACHE_DIR_DEFAULT, configure_hf_cache_env, count_existing_split_classes, targets_met
 from hf_data import download_dataset_file, list_dataset_repo_files, resolve_hf_token_value, snapshot_dataset_repo
@@ -105,17 +105,6 @@ def _passes_video_quality(path: Path, min_bytes: int, max_bytes: int) -> bool:
     return True
 
 
-def _sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        while True:
-            chunk = f.read(1 << 20)
-            if not chunk:
-                break
-            h.update(chunk)
-    return h.hexdigest()
-
-
 def load_existing_video_hashes(out: Path) -> set[str]:
     paths: list[Path] = []
     for split in ("train", "val"):
@@ -131,7 +120,7 @@ def load_existing_video_hashes(out: Path) -> set[str]:
         return seen
     max_workers = min(8, max(1, (os.cpu_count() or 4) // 2))
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        for digest in ex.map(_sha256, paths):
+        for digest in ex.map(sha256_path, paths):
             seen.add(digest)
     return seen
 
@@ -229,7 +218,7 @@ def main():
                     dst = out / split / cls / f"src={repo.split('/')[-1]}__{n:05d}{p.suffix.lower()}"
                     if not dst.exists():
                         if _passes_video_quality(p, args.min_video_bytes, args.max_video_bytes):
-                            src_hash = _sha256(p)
+                            src_hash = sha256_path(p)
                             if src_hash in seen_hashes:
                                 continue
                             shutil.copy2(p, dst)
@@ -290,7 +279,7 @@ def main():
                         if not dst.exists():
                             local_path = Path(local)
                             if _passes_video_quality(local_path, args.min_video_bytes, args.max_video_bytes):
-                                src_hash = _sha256(local_path)
+                                src_hash = sha256_path(local_path)
                                 if src_hash in seen_hashes:
                                     continue
                                 shutil.copy2(local_path, dst)

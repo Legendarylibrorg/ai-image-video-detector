@@ -75,11 +75,6 @@ have_complete_video_training_data() {
   run_dataset_layout check-video-complete --root "$video_root" --quiet >/dev/null 2>&1
 }
 
-require_video_training_data() {
-  local video_root="${1:-${VIDEO_OUT:-./video_data}}"
-  run_dataset_layout check-video-complete --root "$video_root"
-}
-
 prepare_training_image_data() {
   local base_root="${DATA_DIR:-./data_best}"
   local incremental_root=""
@@ -126,6 +121,7 @@ run_prepared_max_quality_pipeline() {
 }
 
 train_existing_pipeline() {
+  require_pipeline_collection_data "${DATA_DIR:-./data_best}" || return 1
   prepare_training_image_data
   local collected_root="${DATA_DIR:-./data_best}"
   if have_complete_video_training_data "${VIDEO_OUT:-./video_data}"; then

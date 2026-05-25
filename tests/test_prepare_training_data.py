@@ -116,7 +116,9 @@ class PrepareTrainingDataTests(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, 0, msg=result.stderr)
 
-            counts = prepare_training_data._count_output_files(out)
+            from ai_image_detector.dataset_layout import image_counts
+
+            counts = image_counts(out, allow_train_root_alias=True, include_symlinks=False)
             self.assertEqual(counts["train"]["ai"], 1)
             self.assertEqual(counts["train"]["real"], 1)
             self.assertEqual(counts["val"]["ai"], 1)

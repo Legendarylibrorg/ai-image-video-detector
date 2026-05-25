@@ -9,12 +9,6 @@ from release_selection import select_public_model
 from script_support import read_json_dict
 
 
-def _read_json(path: Path) -> dict:
-    if not path.exists():
-        raise FileNotFoundError(path)
-    return read_json_dict(path)
-
-
 def _metric(obj: dict, *names: str, default: float | None = None) -> float:
     for name in names:
         if name in obj:
@@ -86,7 +80,7 @@ def main() -> int:
     failures: list[str] = []
     checks: dict[str, float | str] = {}
 
-    test_metrics = _read_json(ens / "test_metrics.json")
+    test_metrics = read_json_dict(ens / "test_metrics.json")
     _check_model_metrics(
         prefix="image",
         metrics=test_metrics,
@@ -100,7 +94,7 @@ def main() -> int:
         failures=failures,
     )
 
-    robust_eval = _read_json(ens / "robust_eval.json")
+    robust_eval = read_json_dict(ens / "robust_eval.json")
     clean_metrics = robust_eval.get("clean")
     if not isinstance(clean_metrics, dict):
         failures.append("missing clean robust_eval metrics")

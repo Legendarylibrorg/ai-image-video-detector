@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -12,22 +11,8 @@ from script_support import ensure_src_path
 
 ensure_src_path()
 
+from ai_image_detector.dataset_integrity import sha256_file
 from ai_image_detector.dataset_layout import CLASSES, IMAGE_EXTS, IMAGE_SPLITS, image_counts, iter_bucket_files
-
-
-def _count_output_files(root: Path) -> dict[str, dict[str, int]]:
-    return image_counts(root, allow_train_root_alias=True, include_symlinks=False)
-
-
-def _sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        while True:
-            chunk = f.read(1024 * 1024)
-            if not chunk:
-                break
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _same_content(a: Path, b: Path) -> bool:
@@ -40,7 +25,7 @@ def _same_content(a: Path, b: Path) -> bool:
             return True
     except OSError:
         pass
-    return _sha256(a) == _sha256(b)
+    return sha256_file(a) == sha256_file(b)
 
 
 def _link_or_copy(src: Path, dst: Path, copy_only: bool) -> str:
@@ -132,7 +117,7 @@ def main() -> int:
             stats["incremental_candidates"] = len(incremental_files)
             summary["bucket_stats"][split][cls] = stats
 
-    final_counts = _count_output_files(out)
+    final_counts = image_counts(out, allow_train_root_alias=True, include_symlinks=False)
     summary["final_counts"] = final_counts
 
     missing_buckets: list[str] = []
