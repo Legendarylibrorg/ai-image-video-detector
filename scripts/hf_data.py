@@ -185,6 +185,7 @@ def resolve_hf_token_value(token_env: str = "HF_TOKEN") -> tuple[str | None, str
         if token:
             return token, "hf_auth_login"
     except ImportError:
+        # Optional dependency is unavailable; fall back to env-only resolution.
         pass
     return None, "missing"
 
