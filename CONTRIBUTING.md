@@ -69,7 +69,7 @@ Run the full test suite before opening a PR:
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-**Ruff (matches CI):** with the repo venv active, `python3 -m pip install "ruff==0.9.10"` once if needed, then:
+**Ruff (matches CI):** with the repo venv active, `python3 -m pip install "ruff==0.15.14"` once if needed, then:
 
 ```bash
 ruff check src/ai_image_detector tests

@@ -42,7 +42,7 @@ class DependencyMetadataSurfaceTests(unittest.TestCase):
     def test_pre_commit_wires_detect_secrets_baseline(self) -> None:
         cfg = (ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
         self.assertIn("ruff-pre-commit", cfg)
-        self.assertIn("rev: v0.9.10", cfg)
+        self.assertIn("rev: v0.15.14", cfg)
         self.assertIn("detect-secrets", cfg)
         self.assertIn(".secrets.baseline", cfg)
         self.assertIn("--exclude-files", cfg)
@@ -117,7 +117,7 @@ class DependencyMetadataSurfaceTests(unittest.TestCase):
         collection = _toml_array_items(optional, "collection")
         video = _toml_array_items(optional, "video")
         pipeline = _toml_array_items(optional, "pipeline")
-        self.assertIn("torch>=2.11", inference)
+        self.assertIn("torch>=2.12", inference)
         self.assertTrue(any(x.startswith("numpy>=2.4") for x in inference), inference)
         self.assertIn("scikit-learn>=1.8", training)
         self.assertTrue(any(x.startswith("datasets>=4.8") for x in collection), collection)
