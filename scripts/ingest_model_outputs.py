@@ -114,8 +114,8 @@ def main() -> None:
                 if arch.exists():
                     arch = archive_cls / f"{p.stem}_{h[:8]}{p.suffix.lower()}"
                 shutil.move(str(p), str(arch))
-            except OSError:
-                pass
+            except OSError as exc:
+                print(f"warning: failed to archive '{p}' to '{archive_cls}': {exc}")
 
     save_hashes(hash_manifest, seen)
     print(
