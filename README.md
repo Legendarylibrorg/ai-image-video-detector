@@ -1,4 +1,4 @@
-# Local AI Image & Video Research Pipeline
+# Local AI Image & Video Research Pipeline-(Not to use against ai artists or artists, simply a local pipeline)
 
 **Summary:** Local AI image & video research pipeline — data, training, reports (not serving).
 
