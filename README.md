@@ -70,6 +70,8 @@ printf "HF_TOKEN='your_token_here'\n" >> .env
 
 Use this on **macOS** (CPU only) or on **Linux** when you want container isolation. Venv inside the container: `/opt/aid-venv`. Repo mounted at `/workspace`.
 
+**VM boundary note:** Docker Compose is not itself a VM. On Linux, run it inside a dedicated VM when you need a hard host boundary. On macOS and Windows, Docker Desktop typically runs Linux containers inside a lightweight VM or WSL2-backed microVM-style layer, but the repo still treats `pipeline` as the CPU container path and keeps CUDA training on Linux/WSL2.
+
 1. **Prerequisites**
    - **Linux:** Docker Engine + Compose plugin (+ NVIDIA Container Toolkit for `pipeline-gpu`)
    - **macOS:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) and `git`

@@ -7,7 +7,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from PIL import Image
+try:
+    from PIL import Image
+except ModuleNotFoundError as exc:
+    Image = None
+    IMPORT_ERROR = exc
+else:
+    IMPORT_ERROR = None
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -34,6 +40,7 @@ def _write_jpg(path: Path, *, color: str = "red") -> None:
     Image.new("RGB", (64, 64), color=color).save(path, format="JPEG")
 
 
+@unittest.skipUnless(Image is not None, f"optional image deps unavailable: {IMPORT_ERROR}")
 class ReviewQueueToDatasetTests(unittest.TestCase):
     def test_rejects_path_outside_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as parent:

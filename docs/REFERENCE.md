@@ -302,6 +302,7 @@ The Compose services:
 
 GPU mode requires Docker Engine, the Docker Compose plugin, and the NVIDIA Container Toolkit inside the dedicated Linux VM.
 The intended secure model is: host -> dedicated Linux VM -> Docker Engine -> Compose containers.
+Docker Desktop's lightweight Linux VM or WSL2-backed microVM-style boundary is appropriate for CPU `pipeline` checks on macOS and Windows, but it does not replace the dedicated Linux VM + `pipeline-gpu` path for production-like CUDA training.
 
 ## Pipeline entrypoints
 
