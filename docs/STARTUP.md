@@ -19,6 +19,7 @@ Important boundary:
 - Docker Compose does not create a real VM inside Docker.
 - The secure model here is: host -> dedicated Linux VM -> Docker Engine -> Compose containers.
 - On Linux, if you want a real VM boundary, you must create the VM first and then run Docker inside that VM.
+- On macOS and Windows, Docker Desktop may already run containers inside a lightweight Linux VM or WSL2-backed microVM-style layer. That is useful isolation for CPU workflows, but it is not the same as the dedicated GPU Linux VM path in this guide.
 
 Minimum needed inside the dedicated Linux VM:
 - `git`
@@ -136,6 +137,7 @@ Notes:
 - the container entrypoint creates or reuses an isolated venv volume at `/opt/aid-venv` and runs `bash scripts/install_deps.sh`
 - the Compose services drop all Linux capabilities, enable `no-new-privileges`, and keep scratch space in `tmpfs`
 - the VM is the main isolation boundary; Compose is the second layer inside it
+- Docker Desktop's lightweight VM/microVM-style boundary is appropriate for local CPU checks, but production-like GPU training should still use the dedicated Linux VM + Compose path
 
 Security model:
 - the dedicated Linux VM is the main defense against malicious packages reaching your normal host

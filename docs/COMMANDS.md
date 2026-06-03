@@ -6,6 +6,8 @@ There is **one operator surface** at the repo root: **`./local.sh`** (thin wrapp
 
 The recommended path is a dedicated Linux VM, then Docker Compose. The main venv for that path is the isolated container virtualenv at `/opt/aid-venv`. Native fallback uses `./.venv` from `./local.sh setup` (also installs `huggingface_hub`, the `hf` CLI, and repo CLIs). Snippets use Linux `bash` syntax unless noted.
 
+Docker Compose commands do not create a VM on Linux; create the VM first when that isolation boundary matters. Docker Desktop on macOS or Windows may provide a lightweight Linux VM or WSL2-backed microVM-style boundary for CPU container workflows, but the command surface below is still the same Compose surface.
+
 ## Dedicated Linux VM + Docker Compose commands
 
 From the repo root (the directory with `docker-compose.yml`, `local.sh`, and `scripts/install_deps.sh`):

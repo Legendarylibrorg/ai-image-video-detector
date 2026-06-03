@@ -8,12 +8,13 @@ import torch
 
 from .data import make_eval_transform
 from .io_limits import configure_pil_limits, open_image_rgb, read_bytes_limited, reject_symlink
-from .decision import combined_risk, decide_label, image_ood_score
+from .decision import image_ood_score
 from .domain import classify_domain, load_domain_config, resolve_domain_threshold
 from .ensemble import EnsembleDetector, load_models
+from .inference_report import ConfigReport, DecisionOptions, ModelReport, build_inference_report
 from .metadata import analyze_metadata, extract_metadata_features
 from .provenance import analyze_provenance
-from .risk_tools import apply_risk_tools, load_tools_config
+from .risk_tools import load_tools_config
 from .runtime import training_device
 from .text_signals import analyze_text_signals
 
@@ -68,64 +69,33 @@ def main():
     ood = image_ood_score(img)
     text = analyze_text_signals(img)
 
-    metadata_score = float(meta["metadata_score"])
-    provenance_score = float(prov["provenance_score"])
-    text_score = float(text["text_score"])
-    domain = classify_domain(img, text_score=text_score)
+    domain = classify_domain(img, text_score=float(text["text_score"]))
     threshold = resolve_domain_threshold(base_threshold, domain, domain_cfg)
-    c_risk = combined_risk(prob_ai, metadata_score, provenance_score, text_score)
-    adjusted = apply_risk_tools(
+    out = build_inference_report(
         prob_ai=prob_ai,
-        combined_risk=c_risk,
-        metadata_flags=meta["metadata_flags"],
-        ood_flags=ood["ood_flags"],
-        text_flags=text["text_flags"],
-        cfg=tools_cfg,
+        threshold=threshold,
+        metadata=meta,
+        provenance=prov,
+        text=text,
+        ood=ood,
+        domain=domain,
+        decision=DecisionOptions(
+            unknown_margin=float(args.unknown_margin),
+            unknown_margin_ai=float(args.unknown_margin_ai),
+            unknown_margin_real=float(args.unknown_margin_real),
+            borderline_ood_threshold=float(args.borderline_ood_threshold),
+            hard_ood_threshold=float(args.hard_ood_threshold),
+            tta_views=int(args.tta_views),
+        ),
+        model=ModelReport(
+            model_ids=loaded.model_ids,
+            weights=[float(w) for w in loaded.weights],
+            temperature=float(loaded.temperature),
+            ensemble_config=args.ensemble_config,
+        ),
+        config=ConfigReport(domain_config=args.domain_config, tools_config=args.tools_config),
+        tools_cfg=tools_cfg,
     )
-    prob_ai = float(adjusted["prob_ai"])
-    c_risk = float(adjusted["combined_risk"])
-    label = decide_label(
-        prob_ai,
-        threshold,
-        args.unknown_margin,
-        float(ood["ood_score"]),
-        borderline_ood_score=args.borderline_ood_threshold,
-        hard_ood_score=args.hard_ood_threshold,
-        ai_unknown_margin=args.unknown_margin_ai,
-        real_unknown_margin=args.unknown_margin_real,
-    )
-
-    out = {
-        "label": label,
-        "prob_ai": float(prob_ai),
-        "threshold": threshold,
-        "unknown_margin": float(args.unknown_margin),
-        "unknown_margin_ai": float(args.unknown_margin_ai),
-        "unknown_margin_real": float(args.unknown_margin_real),
-        "borderline_ood_threshold": float(args.borderline_ood_threshold),
-        "hard_ood_threshold": float(args.hard_ood_threshold),
-        "combined_risk": c_risk,
-        "metadata_score": metadata_score,
-        "metadata_flags": meta["metadata_flags"],
-        "metadata_fields": meta["metadata_fields"],
-        "provenance_score": provenance_score,
-        "provenance_flags": prov["provenance_flags"],
-        "text_score": text_score,
-        "text_flags": text["text_flags"],
-        "text_regions": int(text.get("text_regions", 0)),
-        "ood_score": float(ood["ood_score"]),
-        "ood_flags": ood["ood_flags"],
-        "model_ids": loaded.model_ids,
-        "model_count": len(loaded.model_ids),
-        "temperature": float(loaded.temperature),
-        "ensemble_weights": [float(w) for w in loaded.weights],
-        "ensemble_config": args.ensemble_config or None,
-        "domain": domain,
-        "domain_config": args.domain_config or None,
-        "tools_config": args.tools_config or None,
-        "tool_adjustments": adjusted["tool_adjustments"],
-        "tta_views": int(max(args.tta_views, 1)),
-    }
 
     if args.json:
         print(json.dumps(out, indent=2))

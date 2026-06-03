@@ -4,12 +4,22 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+from pathlib import Path
+import tomllib
 
 
 PIPELINE_EXTRAS = ("inference", "training", "collection", "video")
 
-# Must match ``[project.optional-dependencies]`` keys in ``pyproject.toml``.
-ALLOWED_DEPS_EXTRAS = frozenset(("pipeline", "inference", "training", "collection", "video"))
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_allowed_deps_extras(pyproject_path: Path = ROOT / "pyproject.toml") -> frozenset[str]:
+    with pyproject_path.open("rb") as handle:
+        data = tomllib.load(handle)
+    return frozenset(data["project"]["optional-dependencies"])
+
+
+ALLOWED_DEPS_EXTRAS = load_allowed_deps_extras()
 
 PYTHON_MODULES_BY_EXTRA: dict[str, tuple[str, ...]] = {
     "base": ("ai_image_detector",),
