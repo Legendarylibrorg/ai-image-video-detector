@@ -167,6 +167,19 @@ class DependencyMetadataSurfaceTests(unittest.TestCase):
         keys = frozenset(data["project"]["optional-dependencies"].keys())
         self.assertEqual(mod.ALLOWED_DEPS_EXTRAS, keys)
 
+    def test_shell_deps_extra_allowlist_matches_pyproject_optional_dependencies(self) -> None:
+        with (ROOT / "pyproject.toml").open("rb") as handle:
+            data = tomllib.load(handle)
+        expected = ["pipeline"] + [key for key in data["project"]["optional-dependencies"] if key != "pipeline"]
+        proc = subprocess.run(
+            ["bash", "-lc", "source scripts/lib/env.sh && deps_extra_allowed_tokens"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.stdout.strip().split(","), expected)
+
     def test_requirements_manifest_exists_and_tracks_lock_packages(self) -> None:
         manifest = json.loads((ROOT / "requirements.lock.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["generated_from"], "scripts/update_deps_lock.py")

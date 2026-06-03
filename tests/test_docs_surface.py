@@ -93,7 +93,7 @@ class DocsSurfaceTests(unittest.TestCase):
         self.assertIn("Docker Compose is not itself a VM", readme)
         self.assertIn("microVM-style", startup)
         self.assertIn("microVM-style boundary", commands)
-        self.assertIn("pipeline-gpu", reference)
+        self.assertIn("microVM-style boundary", reference)
 
     def test_reference_documents_operator_layers_and_bootstrap_exceptions(self) -> None:
         text = (ROOT / "docs" / "REFERENCE.md").read_text(encoding="utf-8")

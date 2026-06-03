@@ -109,27 +109,70 @@ resolve_deps_extra() {
   printf "pipeline\n"
 }
 
-# Must match ``scripts/deps_profile.py`` ``ALLOWED_DEPS_EXTRAS`` / ``pyproject.toml``
-# ``[project.optional-dependencies]`` (see ``tests/test_dependency_metadata_surface.py``).
+deps_extra_allowed_tokens() {
+  local pyproject="${ROOT_DIR:-$(pwd)}/pyproject.toml"
+  local tokens=""
+  if command -v awk >/dev/null 2>&1 && [[ -f "$pyproject" ]]; then
+    tokens="$(
+      awk '
+        /^\[project\.optional-dependencies\]$/ { in_optional = 1; next }
+        /^\[/ { in_optional = 0 }
+        in_optional && /^[a-z][a-z-]*[[:space:]]*=/ {
+          key = $0
+          sub(/[[:space:]]*=.*/, "", key)
+          if (key == "pipeline") {
+            pipeline = key
+          } else {
+            ordered[++count] = key
+          }
+        }
+        END {
+          if (pipeline != "") {
+            printf "%s", pipeline
+            for (i = 1; i <= count; i++) {
+              printf ",%s", ordered[i]
+            }
+            printf "\n"
+          }
+        }
+      ' "$pyproject" 2>/dev/null || true
+    )"
+    if [[ -n "$tokens" ]]; then
+      printf "%s\n" "$tokens"
+      return 0
+    fi
+  fi
+  printf "pipeline,training,collection,video,inference\n"
+}
+
 deps_extra_token_allowed() {
-  case "$1" in
-    pipeline|training|collection|video|inference) return 0 ;;
-    *) return 1 ;;
-  esac
+  local token="$1"
+  local allowed_csv="${2:-$(deps_extra_allowed_tokens)}"
+  local allowed=""
+  local -a allowed_tokens=()
+  IFS=',' read -r -a allowed_tokens <<< "$allowed_csv"
+  for allowed in "${allowed_tokens[@]}"; do
+    if [[ "$token" == "$allowed" ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 normalized_deps_extra() {
   local extras_csv="${1:-pipeline}"
   local extra=""
   local trimmed=""
+  local allowed_csv=""
   local -a extras=()
   local -a normalized=()
+  allowed_csv="$(deps_extra_allowed_tokens)"
   IFS=',' read -r -a extras <<< "$extras_csv"
   for extra in "${extras[@]}"; do
     trimmed="$(trim_env_value "$extra")"
     [[ -n "$trimmed" ]] || continue
-    if ! deps_extra_token_allowed "$trimmed"; then
-      echo "deps_fail=invalid_deps_extra_token token=${trimmed} allowed=pipeline,training,collection,video,inference" >&2
+    if ! deps_extra_token_allowed "$trimmed" "$allowed_csv"; then
+      echo "deps_fail=invalid_deps_extra_token token=${trimmed} allowed=${allowed_csv}" >&2
       return 1
     fi
     if [[ "$trimmed" == "pipeline" ]]; then
