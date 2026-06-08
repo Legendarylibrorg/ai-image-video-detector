@@ -87,27 +87,27 @@
     },
     {
       "artifact": {
-        "filename": "datasets-4.8.5.tar.gz",
+        "filename": "datasets-5.0.0.tar.gz",
         "packagetype": "sdist",
-        "sha256": "0f0c1c3d56ffff2c93b2f4c63c95bac94f3d7e8621aea2a2a576275233bba772",
-        "url": "https://files.pythonhosted.org/packages/66/34/14cd8e76f907f7d4dca2334cfeec9f81d30fd15c25a015f99aaea694eaed/datasets-4.8.5.tar.gz"
+        "sha256": "83dbbbdb07a33b82192b8c419deb18739b138ee2ce1a322d55ce6b100954ec1a",
+        "url": "https://files.pythonhosted.org/packages/d9/85/ce4f780c32f7e36d71257f1c27e8ba898ebe379cb54f211f5f2013f2c219/datasets-5.0.0.tar.gz"
       },
       "name": "datasets",
       "project": "datasets",
       "requires_python": ">=3.10.0",
-      "version": "4.8.5"
+      "version": "5.0.0"
     },
     {
       "artifact": {
-        "filename": "huggingface_hub-1.17.0.tar.gz",
+        "filename": "huggingface_hub-1.18.0.tar.gz",
         "packagetype": "sdist",
-        "sha256": "fad842b6763ef70ebc3919665b1b9273645203185400a7d6c5eddc2323cc3435",
-        "url": "https://files.pythonhosted.org/packages/bd/65/9826515abb600b5722bcf53f8b4a2fb58340b1f8bfcaee19f83561c13a44/huggingface_hub-1.17.0.tar.gz"
+        "sha256": "f0c5ecd1ef8c6a60f86f61ee278f2c1570ba9e279c9f54de9094210723b3613b",
+        "url": "https://files.pythonhosted.org/packages/fb/d8/748ea0a47f0fa15227fe682f7a80826b4b7c096e4818044b8f56d6cb66d6/huggingface_hub-1.18.0.tar.gz"
       },
       "name": "huggingface_hub",
       "project": "huggingface-hub",
       "requires_python": ">=3.10.0",
-      "version": "1.17.0"
+      "version": "1.18.0"
     },
     {
       "artifact": {
