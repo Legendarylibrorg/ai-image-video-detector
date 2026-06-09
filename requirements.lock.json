@@ -111,15 +111,15 @@
     },
     {
       "artifact": {
-        "filename": "safetensors-0.7.0.tar.gz",
+        "filename": "safetensors-0.8.0.tar.gz",
         "packagetype": "sdist",
-        "sha256": "07663963b67e8bd9f0b8ad15bb9163606cd27cc5a1b96235a50d8369803b96b0",
-        "url": "https://files.pythonhosted.org/packages/29/9c/6e74567782559a63bd040a236edca26fd71bc7ba88de2ef35d75df3bca5e/safetensors-0.7.0.tar.gz"
+        "sha256": "fabaf3e0f18a6618d9b36560682562157f77c2b71fcffc7b432be2baed9d753d",
+        "url": "https://files.pythonhosted.org/packages/45/06/f955dbbb1859e3bd23c8ac6141af5106e7ad5fedec4a3a6e3d60f94b7001/safetensors-0.8.0.tar.gz"
       },
       "name": "safetensors",
       "project": "safetensors",
-      "requires_python": ">=3.9",
-      "version": "0.7.0"
+      "requires_python": ">=3.10",
+      "version": "0.8.0"
     }
   ],
   "python_requires": ">=3.11"
