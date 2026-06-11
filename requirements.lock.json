@@ -99,15 +99,15 @@
     },
     {
       "artifact": {
-        "filename": "huggingface_hub-1.18.0.tar.gz",
+        "filename": "huggingface_hub-1.19.0.tar.gz",
         "packagetype": "sdist",
-        "sha256": "f0c5ecd1ef8c6a60f86f61ee278f2c1570ba9e279c9f54de9094210723b3613b",
-        "url": "https://files.pythonhosted.org/packages/fb/d8/748ea0a47f0fa15227fe682f7a80826b4b7c096e4818044b8f56d6cb66d6/huggingface_hub-1.18.0.tar.gz"
+        "sha256": "fd771622182d40977272a923953ee3b1b13538f9f8a7f5d78398f10af0f1c0bd",
+        "url": "https://files.pythonhosted.org/packages/88/27/629cfe58c582f92ded066c4a07d1a057ff617118ab7973200f770bd853cb/huggingface_hub-1.19.0.tar.gz"
       },
       "name": "huggingface_hub",
       "project": "huggingface-hub",
       "requires_python": ">=3.10.0",
-      "version": "1.18.0"
+      "version": "1.19.0"
     },
     {
       "artifact": {
