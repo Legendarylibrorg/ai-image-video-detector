@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import re
 import subprocess
 import sys
 import unittest
@@ -13,10 +12,6 @@ def _local_ci_text() -> str:
     return (ROOT / "scripts" / "run_ci_local.py").read_text(encoding="utf-8")
 
 
-def _workflow_text(name: str) -> str:
-    return (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
-
-
 def _load_update_deps_lock_module():
     path = ROOT / "scripts" / "update_deps_lock.py"
     spec = importlib.util.spec_from_file_location("update_deps_lock", path)
@@ -24,16 +19,6 @@ def _load_update_deps_lock_module():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
-
-
-def _named_step_block(text: str, step_name: str) -> str:
-    pattern = re.compile(
-        rf"(?ms)^      - name: {re.escape(step_name)}\n(?P<body>(?:        .*\n|          .*\n)+)"
-    )
-    match = pattern.search(text)
-    if match is None:
-        raise AssertionError(f"missing workflow step {step_name!r}")
-    return match.group("body")
 
 
 class SmokeResumeEvalWorkflowTests(unittest.TestCase):
@@ -99,21 +84,11 @@ class LocalCiRunnerTests(unittest.TestCase):
         self.assertIn("AID_E2E_SMOKE", text)
         self.assertIn("tests.test_e2e_smoke", text)
 
-
-class DependencyUpdateWorkflowTests(unittest.TestCase):
-    def test_dependency_update_workflow_exists_and_refreshes_lock(self) -> None:
-        text = _workflow_text("deps-update.yml")
-        refresh_step = _named_step_block(text, "Refresh lock and verify PyPI digests")
-        pr_step = _named_step_block(text, "Open PR if lock changed")
-
-        self.assertIn('cron: "0 13 * * *"', text)
-        self.assertIn("workflow_dispatch:", text)
-        self.assertIn("uses: ./.github/actions/setup-aid-python", text)
-        self.assertIn("${{ github.repository }}-aid-deps-update", text)
-        self.assertIn("bash scripts/update_deps_lock.sh", refresh_step)
-        self.assertIn("python3 scripts/update_deps_lock.py verify --require-current", refresh_step)
-        self.assertNotIn("unittest discover", text)
-        self.assertIn("peter-evans/create-pull-request@v8.1.1", pr_step)
+    def test_no_github_actions_workflows(self) -> None:
+        workflows_dir = ROOT / ".github" / "workflows"
+        if workflows_dir.is_dir():
+            self.assertEqual(list(workflows_dir.glob("*.yml")), [], "no GitHub Actions workflows")
+        self.assertFalse((ROOT / ".github" / "dependabot.yml").is_file())
 
 
 class CiPythonVersionSourceTests(unittest.TestCase):
