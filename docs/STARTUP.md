@@ -323,7 +323,7 @@ Notes:
 - **Minimums:** **`[project.optional-dependencies]`** extras (`pipeline`, `training`, `collection`, `video`, `inference`).
 - **Install matching the lock:** `./local.sh deps` or `./local.sh setup` (see **`scripts/install_deps.sh`**); profiles via `DEPS_EXTRA=…`.
 - **Refresh pins:** `bash scripts/update_deps_lock.sh` then `python3 scripts/update_deps_lock.py verify --require-current`; commit both lock files.
-- **CI alignment:** GitHub **Security Checks** / **Dependency Updates** use **`.github/ci-python-version.txt`** (via **`.github/actions/setup-aid-python`**); **`scripts/update_deps_lock.py`** uses **`MANIFEST_MAX_WHEEL_CP`** so **`requirements.lock.json`** wheel tags stay in step with that interpreter (see [REFERENCE.md](REFERENCE.md)).
+- **CI alignment:** the local quality gate and **Dependency Updates** use **`.github/ci-python-version.txt`** (via **`.github/actions/setup-aid-python`** for the workflow); **`scripts/update_deps_lock.py`** uses **`MANIFEST_MAX_WHEEL_CP`** so **`requirements.lock.json`** wheel tags stay in step with that interpreter (see [REFERENCE.md](REFERENCE.md) and [CI_LOCAL.md](CI_LOCAL.md)).
 
 Manual install (may differ from the lock until you re-run `./local.sh deps`):
 

@@ -12,8 +12,8 @@ touching ``./.venv``:
 
   VENV_DIR=/path/to/venv AID_E2E_SMOKE=1 python -m unittest tests.test_e2e_smoke
 
-GitHub Actions runs the fast suite on every PR (``.github/workflows/tests.yml``) and can run this
-case weekly or manually via ``.github/workflows/e2e-smoke.yml``. Locally, opt in with
+Run the local quality gate before every PR (**``make ci-fast``** / [docs/CI_LOCAL.md](../docs/CI_LOCAL.md)).
+For release merges, also run **``make ci``** (includes this test). Opt in with
 ``AID_E2E_SMOKE=1`` before release.
 """
 
