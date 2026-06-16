@@ -86,13 +86,4 @@ bash scripts/verify_secrets_scan.sh
 
 Optional: **`PYTHON_BIN`** to force the interpreter for security-tool installs.
 
----
-
-## Related automation (still on GitHub)
-
-These workflows **remain** — they are maintenance automation, not the PR test gate:
-
-- [`.github/workflows/deps-update.yml`](../.github/workflows/deps-update.yml) — daily lock refresh PRs
-- [`.github/dependabot.yml`](../.github/dependabot.yml) — grouped pip and GitHub Actions updates
-
 See also [CONTRIBUTING.md](../CONTRIBUTING.md) and [SECURITY.md](../SECURITY.md).

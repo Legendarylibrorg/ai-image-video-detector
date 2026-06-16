@@ -50,14 +50,13 @@ make ci         # full gate including e2e-smoke
 make ci-list    # show jobs and CI Python pin
 ```
 
-**CI Python version:** single source **`.github/ci-python-version.txt`** (one line, e.g. `3.14`). **Dependency Updates** installs it via **`.github/actions/setup-aid-python`**. When you bump CI Python, edit that file and **`MANIFEST_MAX_WHEEL_CP`** in **`scripts/update_deps_lock.py`** to the same minor, then refresh locks (see below).
+**CI Python version:** single source **`.github/ci-python-version.txt`**. When you bump CI Python, edit that file and **`MANIFEST_MAX_WHEEL_CP`** in **`scripts/update_deps_lock.py`** to the same minor, then refresh locks (see below).
 
 | What | Where | When |
 |------|-------|------|
 | **Local test + security** | `scripts/run_ci_local.py` / `make ci-fast` | Before every PR |
 | **Local E2E smoke** | `make ci` or `--job e2e-smoke` | Before release merges / training path changes |
-| **Dependency Updates** | `.github/workflows/deps-update.yml` | **Daily** `cron` (13:00 UTC) + **manual** only. Refreshes `requirements.lock` / `requirements.lock.json` and opens a PR if they change. |
-| **Dependabot** | `.github/dependabot.yml` | **Once per day** grouped PRs for **pip** (`/` manifests) and **github-actions** only. |
+| **Lock refresh** | `bash scripts/update_deps_lock.sh` locally | When changing `pyproject.toml` deps or CI Python |
 
 ## Checks To Run
 

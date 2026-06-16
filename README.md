@@ -203,7 +203,7 @@ More detail (tarball install, `install.sh`, path map): [docs/STARTUP.md](docs/ST
 
 **Default install (matches the lock):** `./local.sh deps` or `./local.sh setup` → **`scripts/install_deps.sh`** installs the selected profile from **`requirements.lock`** (default profile is **pipeline**), then editable-installs the package with **`--no-deps`** so the venv matches the lock. Narrower installs: `DEPS_EXTRA=collection ./local.sh deps`, etc. The `aid-*` wrappers land in `./.venv/bin`; if imports fail, stderr points you at `./local.sh deps`.
 
-**Refreshing dependencies:** `bash scripts/update_deps_lock.sh` picks **newest stable** PyPI releases for the pipeline profile (see **`scripts/update_deps_lock.py`**; **torch** / **torchvision** series map; **`MANIFEST_MAX_WHEEL_CP`** matches CI Python). Then `python3 scripts/update_deps_lock.py verify --require-current` and commit **both** lock files. Run **`make ci-fast`** to re-verify digests locally; **Dependency Updates** runs **daily** and can open a refresh PR. Details: [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [docs/CI_LOCAL.md](docs/CI_LOCAL.md).
+**Refreshing dependencies:** `bash scripts/update_deps_lock.sh` picks **newest stable** PyPI releases for the pipeline profile (see **`scripts/update_deps_lock.py`**; **torch** / **torchvision** series map; **`MANIFEST_MAX_WHEEL_CP`** matches CI Python). Then `python3 scripts/update_deps_lock.py verify --require-current` and commit **both** lock files. Run **`make ci-fast`** to re-verify digests locally. Details: [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [docs/CI_LOCAL.md](docs/CI_LOCAL.md).
 
 **Manual fallback (resolver, not the lock):**
 
