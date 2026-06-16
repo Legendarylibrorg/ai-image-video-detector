@@ -9,6 +9,10 @@ import unittest
 from tests._support import ROOT, source_tree_env
 
 
+def _local_ci_text() -> str:
+    return (ROOT / "scripts" / "run_ci_local.py").read_text(encoding="utf-8")
+
+
 def _workflow_text(name: str) -> str:
     return (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
 
@@ -51,37 +55,49 @@ class SmokeResumeEvalWorkflowTests(unittest.TestCase):
         self.assertIn("set AID_E2E_SMOKE=1", combined)
 
 
-class SecurityWorkflowTests(unittest.TestCase):
-    def test_security_workflow_declares_expected_entrypoints(self) -> None:
-        text = _workflow_text("security.yml")
+class LocalCiRunnerTests(unittest.TestCase):
+    def test_run_ci_local_help(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "run_ci_local.py"), "--help"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn("--job", proc.stdout)
+        self.assertIn("--fast", proc.stdout)
 
-        self.assertIn("schedule:", text)
-        self.assertIn('cron: "0 14 * * 1"', text)
-        self.assertIn("workflow_dispatch:", text)
-        self.assertIn("timeout-minutes: 15", text)
-        self.assertIn("uses: ./.github/actions/setup-aid-python", text)
-        self.assertIn("${{ github.repository }}-aid-security-", text)
+    def test_run_ci_local_list_documents_jobs(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "run_ci_local.py"), "--list"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn("docs/CI_LOCAL.md", proc.stdout)
+        for job in ("test", "security", "e2e-smoke"):
+            self.assertIn(job, proc.stdout)
 
-    def test_security_workflow_uses_locked_dependency_audit_step(self) -> None:
-        text = _workflow_text("security.yml")
-        audit_step = _named_step_block(text, "Audit locked dependencies")
+    def test_local_ci_runner_declares_test_job_steps(self) -> None:
+        text = _local_ci_text()
+        self.assertIn("scripts/install_deps.sh", text)
+        self.assertIn('"check", "src/ai_image_detector", "tests"', text)
+        self.assertIn("unittest discover", text)
 
-        self.assertIn("python3 -m pip_audit -r requirements.lock", audit_step)
-        self.assertNotIn("|| true", audit_step)
+    def test_local_ci_runner_declares_security_steps(self) -> None:
+        text = _local_ci_text()
+        self.assertIn("scripts/update_deps_lock.py", text)
+        self.assertIn("verify", text)
+        self.assertIn("--require-current", text)
+        self.assertIn("detect-secrets-hook", text)
+        self.assertIn("pip_audit", text)
+        self.assertIn(r"requirements\.lock\.json", text)
 
-    def test_security_workflow_verifies_lock_hashes(self) -> None:
-        text = _workflow_text("security.yml")
-        verify_step = _named_step_block(text, "Verify lock digests vs PyPI")
-
-        self.assertIn("python3 scripts/update_deps_lock.py verify --require-current", verify_step)
-
-    def test_security_workflow_excludes_lock_manifest_from_secret_scan(self) -> None:
-        text = _workflow_text("security.yml")
-        secret_step = _named_step_block(text, "Secret scan")
-
-        self.assertIn("detect-secrets-hook", secret_step)
-        self.assertIn("--exclude-files", secret_step)
-        self.assertIn(r"requirements\.lock\.json", secret_step)
+    def test_local_ci_runner_declares_e2e_smoke_opt_in(self) -> None:
+        text = _local_ci_text()
+        self.assertIn("AID_E2E_SMOKE", text)
+        self.assertIn("tests.test_e2e_smoke", text)
 
 
 class DependencyUpdateWorkflowTests(unittest.TestCase):
@@ -98,60 +114,6 @@ class DependencyUpdateWorkflowTests(unittest.TestCase):
         self.assertIn("python3 scripts/update_deps_lock.py verify --require-current", refresh_step)
         self.assertNotIn("unittest discover", text)
         self.assertIn("peter-evans/create-pull-request@v8.1.1", pr_step)
-
-
-class CodeqlWorkflowTests(unittest.TestCase):
-    def test_codeql_workflow_is_python_only(self) -> None:
-        text = _workflow_text("codeql.yml")
-
-        self.assertIn("name: Code scanning (Python)", text)
-        self.assertIn("languages: python", text)
-        self.assertIn("build-mode: none", text)
-        self.assertRegex(text, r"(?m)^\s*languages:\s*python\s*$")
-        self.assertNotIn("github/codeql-action/autobuild", text)
-        self.assertIn("github/codeql-action/init@v4.36.0", text)
-        self.assertIn("github/codeql-action/analyze@v4.36.0", text)
-        self.assertIn("pull_request:", text)
-        self.assertIn('branches: ["main"]', text)
-        self.assertIn("cancel-in-progress: false", text)
-        self.assertIn('cron: "30 6 * * 1"', text)
-        self.assertIn('AID_CI_IMPORT_PACKAGE: "ai_image_detector"', text)
-        self.assertIn('AID_CI_PYPROJECT_NAME: "ai-image-video-detector"', text)
-        self.assertIn("name: Analyze (${{ env.AID_CI_IMPORT_PACKAGE }})", text)
-        self.assertIn("${{ github.repository }}-aid-codeql-", text)
-
-
-class UnitTestsWorkflowTests(unittest.TestCase):
-    def test_tests_workflow_installs_lock_and_runs_unittest(self) -> None:
-        text = _workflow_text("tests.yml")
-
-        self.assertIn("name: Tests", text)
-        self.assertIn("pull_request:", text)
-        self.assertIn('branches: ["main"]', text)
-        self.assertIn("workflow_dispatch:", text)
-        self.assertIn("timeout-minutes: 45", text)
-        self.assertIn("uses: ./.github/actions/setup-aid-python", text)
-        self.assertIn("bash scripts/install_deps.sh", text)
-        self.assertIn("Lint with Ruff", text)
-        self.assertIn(".venv/bin/ruff check src/ai_image_detector tests", text)
-        self.assertIn(".venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v", text)
-        self.assertIn("${{ github.repository }}-aid-tests-", text)
-
-
-class E2ESmokeWorkflowTests(unittest.TestCase):
-    def test_e2e_smoke_workflow_runs_locked_install_and_opt_in_test(self) -> None:
-        text = _workflow_text("e2e-smoke.yml")
-
-        self.assertIn("name: E2E smoke", text)
-        self.assertIn("workflow_dispatch:", text)
-        self.assertIn("schedule:", text)
-        self.assertIn('cron: "0 5 * * 0"', text)
-        self.assertIn("timeout-minutes: 60", text)
-        self.assertIn("uses: ./.github/actions/setup-aid-python", text)
-        self.assertIn("bash scripts/install_deps.sh", text)
-        self.assertIn("AID_E2E_SMOKE: \"1\"", text)
-        self.assertIn(".venv/bin/python -m unittest tests.test_e2e_smoke -v", text)
-        self.assertIn("${{ github.repository }}-aid-e2e-smoke-", text)
 
 
 class CiPythonVersionSourceTests(unittest.TestCase):

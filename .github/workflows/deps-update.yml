@@ -1,6 +1,6 @@
 # Dependency Updates: regenerate this repo's requirements.lock* from ./pyproject.toml only.
 # Opens PR branch chore/dependency-refresh when the lock changes; same scripts as local CONTRIBUTING.md.
-# Schedule: daily 13:00 UTC (before Monday 14:00 Security Checks when all three align).
+# Schedule: daily 13:00 UTC. No push trigger — avoids noise; use workflow_dispatch for on-demand refresh.
 # No push trigger — avoids noise; use workflow_dispatch for on-demand refresh.
 name: Dependency Updates
 
@@ -50,5 +50,5 @@ jobs:
           body: |
             Updates `requirements.lock` / `requirements.lock.json` from `pyproject.toml` and runs `verify --require-current` (SHA256 vs PyPI).
 
-            Same locally: `bash scripts/update_deps_lock.sh` then `python3 scripts/update_deps_lock.py verify --require-current`, then commit. Full checks run in **Security Checks** on PRs.
+            Same locally: `bash scripts/update_deps_lock.sh` then `python3 scripts/update_deps_lock.py verify --require-current`, then commit. Full checks: `make ci-fast` (see docs/CI_LOCAL.md).
           labels: dependencies

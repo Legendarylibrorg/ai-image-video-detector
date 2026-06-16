@@ -155,6 +155,7 @@ Do **not** run `apt-get` or `./local.sh` from PowerShell or Command Prompt unles
 | [docs/REFERENCE.md](docs/REFERENCE.md) | Research pipeline diagram, **`scripts/*.py`** roles, repo layout, artifacts, **`AID_*`**, `aid-train` flags |
 | [AGENTS.md](AGENTS.md) | Short orientation for contributors and **coding agents** (architecture, commands, security pointer) |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contributor workflow, checks, and PR expectations |
+| [Local quality gate](docs/CI_LOCAL.md) | `make ci-fast` / `make ci` — test, security, E2E smoke |
 
 **Training Python layout:** `src/ai_image_detector/train.py` is the tiny **`python -m ai_image_detector.train`** entry; `train_main.py` holds the CLI argument parser and training loop; `train_support.py` has loss, EMA, and metric helpers; `train_run_artifacts.py` writes run config and dataset manifest; `train_post.py` runs optional holdout **test/** eval and release export. Pipeline drivers stay under **`scripts/`** (see [docs/REFERENCE.md](docs/REFERENCE.md)).
 
@@ -170,7 +171,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 
 - **`./local.sh`**: **most** subcommands call **`bash scripts/do.sh`** (`run`→`pipeline`, `smoke`, `train`→`train-existing`, …). **Exceptions** (bootstrap, no `do.sh` hop): **`setup`**, **`deps`**, **`docker-doctor`**. If `help` prints, the operator surface is wired.
 - **`bash scripts/do.sh`** with no arguments prints usage (exit code 2); that confirms `scripts/lib/core.sh` / `env.sh` load.
-- **`unittest discover`** exercises Python wiring (`src/`, `scripts/` imports, checkpoints, shell contract tests). CI runs the same command against **`requirements.lock`** (see `.github/workflows/tests.yml`).
+- **`unittest discover`** exercises Python wiring (`src/`, `scripts/` imports, checkpoints, shell contract tests). The local quality gate runs the same command against **`requirements.lock`** (see [docs/CI_LOCAL.md](docs/CI_LOCAL.md)).
 
 Optional **full smoke** (synthetic data, tiny training; requires a venv with **PyTorch** from **`./local.sh deps`**, default **`./.venv`**):
 
@@ -180,7 +181,7 @@ AID_E2E_SMOKE=1 ./.venv/bin/python -m unittest tests.test_e2e_smoke -v
 # VENV_DIR=/path/to/venv AID_E2E_SMOKE=1 python -m unittest tests.test_e2e_smoke -v
 ```
 
-That runs **`scripts/smoke_resume_eval.sh`** end-to-end. A scheduled / manual GitHub job does the same after a lock install (`.github/workflows/e2e-smoke.yml`).
+That runs **`scripts/smoke_resume_eval.sh`** end-to-end. Run via **`make ci`** or **`python3 scripts/run_ci_local.py --job e2e-smoke`** before release merges.
 
 ## Secure Linux VM + Docker Compose
 
@@ -202,7 +203,7 @@ More detail (tarball install, `install.sh`, path map): [docs/STARTUP.md](docs/ST
 
 **Default install (matches the lock):** `./local.sh deps` or `./local.sh setup` → **`scripts/install_deps.sh`** installs the selected profile from **`requirements.lock`** (default profile is **pipeline**), then editable-installs the package with **`--no-deps`** so the venv matches the lock. Narrower installs: `DEPS_EXTRA=collection ./local.sh deps`, etc. The `aid-*` wrappers land in `./.venv/bin`; if imports fail, stderr points you at `./local.sh deps`.
 
-**Refreshing dependencies:** `bash scripts/update_deps_lock.sh` picks **newest stable** PyPI releases for the pipeline profile (see **`scripts/update_deps_lock.py`**; **torch** / **torchvision** series map; **`MANIFEST_MAX_WHEEL_CP`** matches CI Python). Then `python3 scripts/update_deps_lock.py verify --require-current` and commit **both** lock files. **Security Checks** re-verifies digests; **Dependency Updates** runs **daily** and can open a refresh PR. Details: [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md).
+**Refreshing dependencies:** `bash scripts/update_deps_lock.sh` picks **newest stable** PyPI releases for the pipeline profile (see **`scripts/update_deps_lock.py`**; **torch** / **torchvision** series map; **`MANIFEST_MAX_WHEEL_CP`** matches CI Python). Then `python3 scripts/update_deps_lock.py verify --require-current` and commit **both** lock files. Run **`make ci-fast`** to re-verify digests locally; **Dependency Updates** runs **daily** and can open a refresh PR. Details: [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [docs/CI_LOCAL.md](docs/CI_LOCAL.md).
 
 **Manual fallback (resolver, not the lock):**
 

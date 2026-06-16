@@ -145,7 +145,7 @@ Main surface:
 
 Everything else in the repo is internal support for the pipeline and is intentionally not part of the normal command surface.
 
-**Lint (contributors):** CI runs **Ruff** on **`src/ai_image_detector`** and **`tests`** after the lock install (see **`pyproject.toml`** `[tool.ruff]` and **`.pre-commit-config.yaml`**). Run **`ruff check src/ai_image_detector tests`** locally before pushing.
+**Lint (contributors):** the local test job runs **Ruff** on **`src/ai_image_detector`** and **`tests`** after the lock install (see **`pyproject.toml`** `[tool.ruff]`, **`.pre-commit-config.yaml`**, and [docs/CI_LOCAL.md](CI_LOCAL.md)). Run **`ruff check src/ai_image_detector tests`** locally before pushing.
 
 If you need lower-level scripts or environment controls, use [docs/REFERENCE.md](docs/REFERENCE.md).
 

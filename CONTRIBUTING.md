@@ -42,34 +42,34 @@ DEPS_EXTRA=training ./local.sh deps
 - If you change **`pyproject.toml`** optional dependencies or `requires-python`, run **`bash scripts/update_deps_lock.sh`**, then **`python3 scripts/update_deps_lock.py verify --require-current`**, and commit **both** lock files in the same PR. When you bump CI’s Python in **`.github/ci-python-version.txt`**, also bump **`MANIFEST_MAX_WHEEL_CP`** in **`scripts/update_deps_lock.py`** to the same minor, then refresh the lock again.
 - **`pip install -e '.[pipeline]'`** alone follows **`pyproject.toml`** minimums only; **`./local.sh deps`** matches the lock.
 
-## GitHub automation (layout)
+Run the local quality gate before opening a PR (see [docs/CI_LOCAL.md](docs/CI_LOCAL.md)):
 
-This repository is **Python + shell + GitHub Actions** only (no application JavaScript/TypeScript, no npm lockfile). CI is scoped to that stack.
+```bash
+make ci-fast    # test + security (matches former PR CI)
+make ci         # full gate including e2e-smoke
+make ci-list    # show jobs and CI Python pin
+```
 
-**CI Python version:** single source **`.github/ci-python-version.txt`** (one line, e.g. `3.14`). **Tests**, **Security Checks**, and **Dependency Updates** install it via **`.github/actions/setup-aid-python`**. When you bump CI Python, edit that file and **`MANIFEST_MAX_WHEEL_CP`** in **`scripts/update_deps_lock.py`** to the same minor, then refresh locks (see below).
+**CI Python version:** single source **`.github/ci-python-version.txt`** (one line, e.g. `3.14`). **Dependency Updates** installs it via **`.github/actions/setup-aid-python`**. When you bump CI Python, edit that file and **`MANIFEST_MAX_WHEEL_CP`** in **`scripts/update_deps_lock.py`** to the same minor, then refresh locks (see below).
 
-| What | File | When |
-|------|------|------|
-| **Tests** | `.github/workflows/tests.yml` | Every **PR** and **push to `main`**, **manual** (`workflow_dispatch`). Runs **`scripts/install_deps.sh`** then **`python -m unittest discover`** against **`requirements.lock`**. |
-| **E2E smoke** | `.github/workflows/e2e-smoke.yml` | **Weekly** `cron` (Sunday 05:00 UTC) and **manual** only. Same lock install as Tests, then **`AID_E2E_SMOKE=1`** **`unittest tests.test_e2e_smoke`** (runs **`scripts/smoke_resume_eval.sh`**; slower than PR CI). |
-| **Security Checks** | `.github/workflows/security.yml` | Every **PR** and **push to `main`**, **weekly** `cron` (Monday 14:00 UTC), **manual** (`workflow_dispatch`). Verifies lock digests, runs secret scan + `pip-audit`. |
-| **Code scanning (Python)** | `.github/workflows/codeql.yml` | **PRs** and **pushes to `main`**, **weekly** `cron` (Monday 06:30 UTC), **manual**. CodeQL **Python only**, `build-mode: none` (no JS/TS job). |
+| What | Where | When |
+|------|-------|------|
+| **Local test + security** | `scripts/run_ci_local.py` / `make ci-fast` | Before every PR |
+| **Local E2E smoke** | `make ci` or `--job e2e-smoke` | Before release merges / training path changes |
 | **Dependency Updates** | `.github/workflows/deps-update.yml` | **Daily** `cron` (13:00 UTC) + **manual** only. Refreshes `requirements.lock` / `requirements.lock.json` and opens a PR if they change. |
 | **Dependabot** | `.github/dependabot.yml` | **Once per day** grouped PRs for **pip** (`/` manifests) and **github-actions** only. |
 
-### CodeQL default setup vs this workflow
-
-If **GitHub → Settings → Code security → Code scanning** shows **Default setup** *and* you see extra jobs (e.g. **Analyze (javascript-typescript)**) or duplicate CodeQL runs, **disable Default setup** or **Edit** it to **Python only** and rely on `.github/workflows/codeql.yml`. One configuration avoids noise and failed no-op language jobs.
-
 ## Checks To Run
 
-Run the full test suite before opening a PR:
+Run the local quality gate before opening a PR:
 
 ```bash
-python3 -m unittest discover -s tests -p 'test_*.py'
+make ci-fast
 ```
 
-**Ruff (matches CI):** with the repo venv active, `python3 -m pip install "ruff==0.15.14"` once if needed, then:
+Details: [docs/CI_LOCAL.md](docs/CI_LOCAL.md). For release merges or training-path changes, also run **`make ci`** (includes E2E smoke).
+
+**Ruff (matches local test job):** with the repo venv active after `./local.sh deps` or `bash scripts/install_deps.sh`, `python3 -m pip install "ruff==0.15.14"` once if needed, then:
 
 ```bash
 ruff check src/ai_image_detector tests
