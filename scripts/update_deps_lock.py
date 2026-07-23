@@ -44,6 +44,7 @@ PYPI_VERSION_JSON = "https://pypi.org/pypi/{project}/{version}/json"
 MANIFEST_MAX_WHEEL_CP = Version("3.14")
 
 TORCHVISION_SERIES_BY_TORCH_SERIES = {
+    "2.13": "0.28",
     "2.12": "0.27",
     "2.11": "0.26",
     "2.10": "0.25",
